@@ -1,7 +1,7 @@
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002000'
+export const RELEASE_NOTES_BUILD: string = '1002001'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -44,6 +44,15 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.0（1002001）· 虚拟鼠标与横屏操控', [
+            '手机和平板新增可开关的虚拟鼠标，支持左右键点击、按住拖动、滚轮滚动和中键操作，并记住开关状态。',
+            '虚拟鼠标采用透明蓝灰玻璃外观、细描边和淡蓝色按下反馈，清晰区分左右键、滚轮与移动区域。',
+            '修复虚拟鼠标与远端光标漂移、缩放和平移后位置不同步的问题，改善多屏切换后的光标对齐。',
+            '修复关闭虚拟鼠标后按钮仍显示选中，以及左右键、滚轮点击无效或重复触发的问题。',
+            '开启虚拟鼠标并放大画面后，可拖动鼠标移动远端光标，单指拖动画面其他区域平移视野。',
+            '手机和平板横屏时，“键”默认位于左上角、“控”位于右上角，展开方向改为向下；两组悬浮栏支持在屏幕内自由拖动。',
+            '长按“键 / 控”栏中的具体按钮可自定义排列顺序并保存；优化横屏软键盘弹出后的画面避让。',
+          ])
           this.buildSection('1.2.0（1002000）· 云同步、连接协议与界面体验', [
             '新增华为个人云空间同步，可在同一华为账号的设备间同步已保存连接、分组和服务器配置。',
             '密码与服务器密钥默认不上传；用户可选择使用 AES-256-GCM 加密后同步敏感信息，并支持手动同步和云端恢复。',

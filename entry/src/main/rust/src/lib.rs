@@ -1165,6 +1165,8 @@ pub extern "C" fn rust_send_mouse_event(x: f64, y: f64, action: i32, modifier_ma
         2 => (1 << 3) | 2, // left up
         3 => (2 << 3) | 1, // right down
         4 => (2 << 3) | 2, // right up
+        5 => (4 << 3) | 1, // middle down
+        6 => (4 << 3) | 2, // middle up
         _ => 0,
     };
     let (offset_x, offset_y) = current_display_origin();

@@ -87,7 +87,7 @@ assert.match(rust, /PEER_SAS_ENABLED\.store\(info\.sas_enabled/,
 
 const ts = require('C:/Program Files/Huawei/DevEco Studio/sdk/default/openharmony/ets/build-tools/ets-loader/node_modules/typescript');
 const stateStart = page.indexOf('  keyboardToolSelected(');
-assert.match(page, /buildKeyboardToolButton\('释放', 48, false, false, true, \(\) => \{\s*this\.releaseVirtualModifiers\(\);\s*\}, false\)/,
+assert.match(page, /buildKeyboardToolButton\('释放', vertical \? 96 : 48, false, false, true, \(\) => \{\s*this\.releaseVirtualModifiers\(\);\s*\}, false, item\)/,
   'Release clears modifiers without collapsing or refocusing the IME');
 assert.match(page, /fontSize\(label === '释放' \? 11/,
   'The two-character release label must fit in its fixed-width control');
@@ -114,16 +114,16 @@ const collapseEnd = page.indexOf('  @Builder', collapseStart);
 const collapseMethod = page.slice(collapseStart, collapseEnd);
 assert.match(collapseMethod, /duration: 200, curve: Curve.EaseOut/);
 assert.doesNotMatch(collapseMethod, /releaseVirtualModifiers\(|refocusRemoteKeyboard\(|requestRemoteInputFocus\(/);
-assert.equal((page.match(/\.transition\(this\.floatingPanelTransition\(\)\)/g) || []).length, 4,
-  'Both expanded panels and both collapsed capsules must animate');
+assert.ok((page.match(/\.transition\(this\.floatingPanelTransition\(\)\)/g) || []).length >= 4,
+  'Both expanded panels and both collapsed capsules must animate in every orientation');
 assert.match(page, /buildFloatingCollapseButton\(true\)/);
 assert.match(page, /buildFloatingCollapseButton\(false\)/);
 for (const name of ['RemoteToolbar', 'KeyboardTools']) {
   for (const axis of ['X', 'Y']) {
     const start = page.indexOf(`  clamp${name}Offset${axis}(`);
     const end = page.indexOf('\n  }', start);
-    assert.doesNotMatch(page.slice(start, end), /CurrentWidth|CurrentHeight/,
-      'Folding must not change the drag anchor bounds');
+    assert.match(page.slice(start, end), /CurrentWidth|CurrentHeight/,
+      'Collapsed controls must use their compact bounds so they can move anywhere on screen');
   }
 }
 console.log('PASS consistent floating-panel transitions and stable anchors');
@@ -132,7 +132,8 @@ for (const name of ['RemoteToolbar', 'KeyboardTools']) {
   assert.match(page, new RegExp(`\\.width\\(this.get${name}CurrentWidth\\(\\)\\)`),
     'A persistent outer panel must animate its width instead of swapping two backgrounds');
 }
-assert.match(page, /getRemoteToolbarHeight\(\): number \{\s*return 54;/);
+assert.match(page, /getRemoteToolbarHeight\(\): number \{[\s\S]*?isHandheldLandscape\(\)[\s\S]*?return 54;/,
+  'The portrait toolbar remains compact while landscape uses a downward panel');
 const inputModeBuilder = page.slice(page.indexOf('  buildInputModeButton(buttonWidth:'),
   page.indexOf('  buildGestureHelpOverlay()'));
 const horizontalInputMode = inputModeBuilder.slice(inputModeBuilder.indexOf('} else {'));

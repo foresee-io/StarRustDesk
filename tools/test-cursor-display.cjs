@@ -12,6 +12,8 @@ function page() {
     lastRemoteCursorSequence: -1, remoteWidth: 1920, remoteHeight: 1080,
     lastLocalPointerInputAt: 1000, localPointerGestureActive: false,
     preferAuthoritativeCursor: false, leftButtonHeld: false, showCursor: true,
+    virtualMouseDragActive: false,
+    alignVirtualMouseToRemotePosition(x,y) { this.virtualMousePosition=[x,y]; },
     updateCursorOverlayFromPosition(x,y) { this.showCursor=true; this.position=[x,y]; }
   });
 }
@@ -27,6 +29,7 @@ assert.equal(p.showCursor,false, 'fresh remote departure must hide the cursor wh
 p.applyRemoteCursorPosition({...outside,x:200,sequence:10},2010);
 assert.equal(p.showCursor,true);
 assert.deepEqual(p.position,[200,200]);
+assert.deepEqual(p.virtualMousePosition,[200,200], 'fresh remote cursor must recalibrate the virtual mouse');
 p=page();
 p.applyRemoteCursorPosition({...outside,x:100},1010);
 p.applyRemoteCursorPosition({...outside,x:100},2000);

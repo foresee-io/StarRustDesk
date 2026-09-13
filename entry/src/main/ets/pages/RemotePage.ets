@@ -1,7 +1,7 @@
 ﻿import { router } from '@kit.ArkUI';
 import { RustDeskTheme } from '../theme/RustDeskTheme';
 import { KeyboardAvoidMode, window } from '@kit.ArkUI';
-import { BusinessError, zlib } from '@kit.BasicServicesKit';
+import { BusinessError, deviceInfo, zlib } from '@kit.BasicServicesKit';
 import { translate } from '../utils/I18n';
 import { ConnectionStatus } from '../model/ConnectionModel';
 import { ConnectionService } from '../service/ConnectionService';
@@ -54,6 +54,12 @@ const EDGE_AUTO_PAN_FRAME_MS: number = 16;
 const EDGE_AUTO_PAN_MIN_SPEED: number = 88;
 const EDGE_AUTO_PAN_MAX_SPEED: number = 640;
 const VIEWPORT_PAN_SPEED: number = 1.5;
+const VIRTUAL_MOUSE_WIDTH: number = 112;
+const VIRTUAL_MOUSE_HEIGHT: number = 138;
+const VIRTUAL_MOUSE_POINTER_HOT_X: number = 1;
+const VIRTUAL_MOUSE_POINTER_HOT_Y: number = 1;
+const VIRTUAL_MOUSE_BUTTON_DRAG_THRESHOLD: number = 8;
+const VIRTUAL_MOUSE_WHEEL_BUTTON_STEP: number = 3;
 const NATIVE_MOUSE_ACTION_PRESS: number = 1;
 const NATIVE_MOUSE_ACTION_RELEASE: number = 2;
 const NATIVE_MOUSE_ACTION_MOVE: number = 3;
@@ -78,6 +84,13 @@ const MODIFIER_MASK_ALT: number = 4;
 const MODIFIER_MASK_META: number = 8;
 const KEYBOARD_CAPTURE_SENTINEL: string =
   '1111111111111111111111111111111111111111111111111111111111111111';
+const CONTROL_TOOLBAR_DEFAULT_ORDER: string[] = [
+  'displays', 'input', 'virtualMouse', 'edgePan', 'keyboard', 'mobileActions', 'gestureHelp',
+  'pan', 'upload', 'download', 'clipboard', 'zoomIn', 'zoomOut', 'fullscreen', 'disconnect'
+];
+const KEYBOARD_TOOLBAR_DEFAULT_ORDER: string[] = [
+  'ctrl', 'alt', 'shift', 'meta', 'function', 'more', 'release'
+];
 const LOG_DOMAIN: number = 0x0000;
 
 @Component
@@ -132,6 +145,16 @@ struct RemotePage {
   @State remoteToolbarCollapsed: boolean = false;
   @State remoteToolbarOffsetX: number = 0;
   @State remoteToolbarOffsetY: number = 0;
+  @State showVirtualMouse: boolean = false;
+  @State virtualMouseX: number = 0;
+  @State virtualMouseY: number = 0;
+  @State virtualMouseLeftDown: boolean = false;
+  @State virtualMouseRightDown: boolean = false;
+  @State virtualMouseMiddleDown: boolean = false;
+  @State showToolbarOrderEditor: boolean = false;
+  @State toolbarOrderEditorKind: string = 'control';
+  @State controlToolbarOrder: string[] = CONTROL_TOOLBAR_DEFAULT_ORDER.slice();
+  @State keyboardToolbarOrder: string[] = KEYBOARD_TOOLBAR_DEFAULT_ORDER.slice();
   @State showKeyboardFunctionKeys: boolean = false;
   @State showKeyboardMoreKeys: boolean = false;
   @State virtualCtrlSelected: boolean = false;
@@ -207,6 +230,23 @@ struct RemotePage {
   private toolbarTimer: number = -1;
   private remoteToolbarDragStartX: number = 0;
   private remoteToolbarDragStartY: number = 0;
+  private virtualMouseDragStartX: number = 0;
+  private virtualMouseDragStartY: number = 0;
+  private virtualMouseLastPanX: number = 0;
+  private virtualMouseLastPanY: number = 0;
+  private virtualMouseWheelLastY: number = 0;
+  private virtualMouseDragActive: boolean = false;
+  private virtualMouseInitialized: boolean = false;
+  private virtualMouseButtonTouchActive: boolean = false;
+  private virtualMouseButtonTouchName: string = '';
+  private virtualMouseButtonTouchStartX: number = 0;
+  private virtualMouseButtonTouchStartY: number = 0;
+  private virtualMouseWheelTouchActive: boolean = false;
+  private virtualMouseWheelTouchMoved: boolean = false;
+  private virtualMouseWheelTouchStartY: number = 0;
+  private virtualMouseLastTouchResolvedAt: number = 0;
+  private lastHandheldLandscape: boolean = false;
+  private handheldLayoutInitialized: boolean = false;
   private statusTimer: number = -1;
   private frameTimer: number = -1;
   private framePollGeneration: number = 0;
@@ -369,6 +409,8 @@ struct RemotePage {
     this.loadInputMode();
     this.loadLocalCursorPreference();
     this.loadEdgeAutoPanPreference();
+    this.loadVirtualMousePreference();
+    this.loadToolbarOrderPreferences();
     this.remoteAudioEnabled = RustDeskNapi.getOption('remote-audio-enabled') !== '0';
     RustDeskNapi.setRemoteAudioEnabled(this.remoteAudioEnabled);
     this.showGestureHelp = RustDeskNapi.getOption('mobile-gesture-help-shown') !== '1';
@@ -392,6 +434,7 @@ struct RemotePage {
     this.stopNativeMousePolling();
     this.cancelPointerHoverExit();
     this.stopEdgeAutoPan();
+    this.releaseVirtualMouseButtons();
     this.releaseHeldMouseButtons('page_disappear');
     ConnectionService.releaseModifiers();
     if (this.surfaceRebindTimer !== -1) {
@@ -417,6 +460,10 @@ struct RemotePage {
   }
 
   onBackPress(): boolean {
+    if (this.showToolbarOrderEditor) {
+      this.showToolbarOrderEditor = false;
+      return true;
+    }
     if (this.showKeyboardPanel) {
       this.closeRemoteKeyboard();
       return true;
@@ -697,6 +744,8 @@ struct RemotePage {
     this.preferAuthoritativeCursor = false;
     this.showLeftButtonHoldIndicator = false;
     this.touchpadDragCandidate = false;
+    this.virtualMouseDragActive = false;
+    this.virtualMouseInitialized = false;
     this.decoderHealthInitialized = false;
     this.lastDecoderInputFrames = 0;
     this.lastDecodedFrames = 0;
@@ -905,6 +954,9 @@ struct RemotePage {
     this.lastAbsX = cursor.x;
     this.lastAbsY = cursor.y;
     this.pointerInitialized = true;
+    if (!this.virtualMouseDragActive) {
+      this.alignVirtualMouseToRemotePosition(cursor.x, cursor.y);
+    }
   }
 
   startNativeMousePolling(): void {
@@ -1200,7 +1252,11 @@ struct RemotePage {
       if (this.showMobileActions && this.connectionStatus === ConnectionStatus.CONNECTED && this.isPeerAndroid) {
         this.buildMobileActionsOverlay();
       }
-      if (this.connectionStatus === ConnectionStatus.CONNECTED && !this.isFullScreen && !this.isLargeLayout()) {
+      if (this.showToolbarOrderEditor && this.connectionStatus === ConnectionStatus.CONNECTED) {
+        this.buildToolbarOrderEditorOverlay();
+      }
+      if (this.connectionStatus === ConnectionStatus.CONNECTED &&
+        (this.isHandheldDevice() || (!this.isFullScreen && !this.isLargeLayout()))) {
         this.buildFloatingToolbar();
       }
     }
@@ -1214,6 +1270,7 @@ struct RemotePage {
     .onAreaChange((oldValue: Area, newValue: Area) => {
       this.pageWidth = newValue.width as number;
       this.pageHeight = newValue.height as number;
+      this.handleHandheldLayoutChange();
       this.mobileActionsOffsetX = this.clampMobileActionsOffsetX(this.mobileActionsOffsetX);
       this.mobileActionsOffsetY = this.clampMobileActionsOffsetY(this.mobileActionsOffsetY);
       this.keyboardToolsOffsetX = this.clampKeyboardToolsOffsetX(this.keyboardToolsOffsetX);
@@ -1366,6 +1423,7 @@ struct RemotePage {
         .width('100%')
         .height('100%')
 
+        if (!this.isHandheldDevice()) {
         Row({ space: 8 }) {
           if (this.isPeerAndroid) {
             Button('手机操作')
@@ -1444,12 +1502,13 @@ struct RemotePage {
         .onHover((isHovering: boolean) => {
           this.handleNonRemoteHover(isHovering);
         })
+        }
 
       }
       .width('100%')
       .height('100%')
       .backgroundColor('#090D14');
-    } else if (this.isLargeLayout()) {
+    } else if (this.isLargeLayout() && !this.isHandheldDevice()) {
       Row() {
         Column() {
           this.buildRemoteViewportWithQualityMonitor();
@@ -1774,6 +1833,9 @@ struct RemotePage {
   buildRemoteViewportWithQualityMonitor() {
     Stack({ alignContent: Alignment.TopEnd }) {
       this.buildRemoteViewport();
+      if (this.showVirtualMouse && this.isHandheldDevice()) {
+        this.buildVirtualMouseOverlay();
+      }
       if (this.showQualityMonitor) {
         this.buildStatsPanel();
       } else {
@@ -1911,6 +1973,7 @@ struct RemotePage {
         Math.abs(this.componentHeight - previousHeight) > 0.5) {
         this.stopEdgeAutoPan();
         this.clampViewportOffset();
+        this.syncVirtualMouseToCurrentPointer();
       }
       this.scheduleSurfaceRebindIfSizeChanged();
     })
@@ -1956,7 +2019,7 @@ struct RemotePage {
 
   @Builder
   buildFloatingCollapseButton(keyboard: boolean) {
-    Button('‹')
+    Button(this.isHandheldLandscape() ? '⌃' : '‹')
       .width(34)
       .height(38)
       .padding(0)
@@ -1970,6 +2033,255 @@ struct RemotePage {
       .onClick(() => {
         this.setFloatingPanelCollapsed(keyboard, true);
       })
+  }
+
+  @Builder
+  buildFloatingDragHandle(keyboard: boolean) {
+    Button('⋮')
+      .width(this.isHandheldLandscape() ? 42 : (keyboard ? 24 : 20))
+      .height(38)
+      .padding(0)
+      .fontSize(18)
+      .fontColor(this.secondaryTextColor())
+      .backgroundColor(Color.Transparent)
+      .focusable(false)
+      .gesture(
+        PanGesture({ fingers: 1, direction: PanDirection.All, distance: 4 })
+          .onActionStart(() => {
+            if (keyboard) this.beginKeyboardToolsDrag(); else this.beginRemoteToolbarDrag();
+          })
+          .onActionUpdate((event: GestureEvent) => {
+            if (keyboard) {
+              this.updateKeyboardToolsDrag(event.offsetX, event.offsetY);
+            } else {
+              this.updateRemoteToolbarDrag(event.offsetX, event.offsetY);
+            }
+          })
+      )
+  }
+
+  @Builder
+  buildControlToolbarItems(vertical: boolean) {
+    ForEach(this.controlToolbarOrder, (item: string) => {
+      this.buildControlToolbarItem(item, vertical)
+    }, (item: string) =>
+      `control-${item}-${this.currentDisplay}-${this.displayCount}-${this.showVirtualMouse ? 1 : 0}`)
+  }
+
+  @Builder
+  buildControlToolbarItem(item: string, vertical: boolean) {
+    if (item === 'displays' && this.displayCount > 1) {
+      ForEach(this.makeDisplayIndexes(), (display: number) => {
+        Button(`屏${display + 1}`)
+          .width(vertical ? 80 : 44)
+          .height(40)
+          .padding({ left: 2, right: 2 })
+          .fontSize(12)
+          .fontWeight(display === this.currentDisplay ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
+          .fontColor(display === this.currentDisplay ?
+            this.controlSelectedTextColor() : this.primaryTextColor())
+          .backgroundColor(display === this.currentDisplay ?
+            this.controlSelectedBackgroundColor() : this.mutedSurfaceColor())
+          .border({ width: 1, color: display === this.currentDisplay ?
+            this.controlSelectedBorderColor() : this.themeBorderColor() })
+          .borderRadius(8)
+          .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
+            this.openToolbarOrderEditor('control', 'displays');
+          }))
+          .onClick(() => { this.switchDisplay(display); })
+      }, (display: number) => `${display}-${this.currentDisplay}`)
+    } else if (item === 'input') {
+      this.buildInputModeButton(vertical ? 80 : 56, vertical, item)
+    } else if (item === 'virtualMouse' && this.isHandheldDevice()) {
+      this.buildToolbarButton(this.showVirtualMouse ? '关闭虚拟鼠标' : '虚拟鼠标', vertical ? 80 : 82,
+        this.showVirtualMouse, false, true, () => {
+          this.setVirtualMouseEnabled(!this.showVirtualMouse);
+        }, item)
+    } else if (item === 'edgePan' && this.canPanViewport()) {
+      this.buildEdgeAutoPanButton(vertical ? 80 : 78, item)
+    } else if (item === 'keyboard') {
+      this.buildToolbarButton('键盘', vertical ? 80 : 56, this.showKeyboardPanel, false, true, () => {
+        this.toggleRemoteKeyboard();
+      }, item)
+    } else if (item === 'mobileActions' && this.isPeerAndroid) {
+      this.buildToolbarButton('手机操作', vertical ? 80 : 76, this.showMobileActions, false, true, () => {
+        this.showMobileActions = true;
+      }, item)
+    } else if (item === 'gestureHelp') {
+      this.buildToolbarButton(vertical ? '手势说明' : '手势', vertical ? 80 : 54, false, false, true, () => {
+        this.showGestureHelp = true;
+      }, item)
+    } else if (item === 'pan' && this.canPanViewport()) {
+      this.buildToolbarButton(this.isPanMode ? '结束移动' : '移动画面', vertical ? 80 : 78,
+        this.isPanMode, false, true, () => { this.setPanMode(!this.isPanMode); }, item)
+    } else if (item === 'upload') {
+      this.buildToolbarButton('发送文件', vertical ? 80 : 82, false, false, !this.transferActive, () => {
+        this.pickFileForUpload();
+      }, item)
+    } else if (item === 'download') {
+      this.buildToolbarButton('取回文件', vertical ? 80 : 82, false, false, !this.transferActive, () => {
+        this.openRemoteDownloadBrowser();
+      }, item)
+    } else if (item === 'clipboard') {
+      this.buildToolbarButton(this.clipboardSyncEnabled ? '剪贴板开' : '剪贴板关', vertical ? 80 : 82,
+        this.clipboardSyncEnabled, false, true, () => { this.toggleClipboardSync(); }, item)
+    } else if (item === 'zoomIn') {
+      this.buildToolbarButton('+', vertical ? 80 : 40, false, false, true, () => {
+        this.adjustZoom(0.25);
+      }, item)
+    } else if (item === 'zoomOut') {
+      this.buildToolbarButton('-', vertical ? 80 : 40, false, false, true, () => {
+        this.adjustZoom(-0.25);
+      }, item)
+    } else if (item === 'fullscreen') {
+      this.buildToolbarButton(this.isFullScreen ? '退出全屏' : '全屏', vertical ? 80 : 68,
+        this.isFullScreen, false, true, () => {
+        if (this.isFullScreen) this.exitFullScreen(); else this.enterFullScreen();
+      }, item)
+    } else if (item === 'disconnect') {
+      this.buildToolbarButton('断开', vertical ? 80 : 64, false, true, true, () => {
+        this.disconnectSession();
+      }, item)
+    }
+  }
+
+  openToolbarOrderEditor(kind: string, _item: string): void {
+    this.toolbarOrderEditorKind = kind;
+    this.showToolbarOrderEditor = true;
+  }
+
+  toolbarOrderLabel(item: string): string {
+    switch (item) {
+      case 'displays': return '屏幕切换';
+      case 'input': return '鼠标 / 触摸模式';
+      case 'virtualMouse': return '虚拟鼠标';
+      case 'edgePan': return '边缘跟随';
+      case 'keyboard': return '键盘';
+      case 'mobileActions': return '手机操作';
+      case 'gestureHelp': return '手势说明';
+      case 'pan': return '移动画面';
+      case 'upload': return '发送文件';
+      case 'download': return '取回文件';
+      case 'clipboard': return '剪贴板';
+      case 'zoomIn': return '放大';
+      case 'zoomOut': return '缩小';
+      case 'fullscreen': return '全屏';
+      case 'disconnect': return '断开';
+      case 'ctrl': return 'Ctrl';
+      case 'alt': return 'Alt';
+      case 'shift': return 'Shift';
+      case 'meta': return 'Win / Cmd';
+      case 'function': return 'Fn 功能键';
+      case 'more': return '更多按键';
+      case 'release': return '释放修饰键';
+      default: return item;
+    }
+  }
+
+  moveToolbarOrderItem(kind: string, index: number, delta: number): void {
+    const source: string[] = kind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder;
+    const target: number = index + delta;
+    if (index < 0 || index >= source.length || target < 0 || target >= source.length) return;
+    const updated: string[] = source.slice();
+    const item: string = updated[index];
+    updated.splice(index, 1);
+    updated.splice(target, 0, item);
+    if (kind === 'keyboard') this.keyboardToolbarOrder = updated; else this.controlToolbarOrder = updated;
+    this.saveToolbarOrder(kind);
+  }
+
+  resetToolbarOrder(kind: string): void {
+    if (kind === 'keyboard') {
+      this.keyboardToolbarOrder = KEYBOARD_TOOLBAR_DEFAULT_ORDER.slice();
+    } else {
+      this.controlToolbarOrder = CONTROL_TOOLBAR_DEFAULT_ORDER.slice();
+    }
+    this.saveToolbarOrder(kind);
+  }
+
+  @Builder
+  buildToolbarOrderEditorOverlay() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column({ space: 12 }) {
+        Row() {
+          Column({ space: 2 }) {
+            Text(this.toolbarOrderEditorKind === 'keyboard' ? '调整“键”按钮顺序' : '调整“控”按钮顺序')
+              .fontSize(20)
+              .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
+              .fontColor(this.primaryTextColor())
+            Text('长按功能按钮可再次打开；使用箭头调整显示顺序')
+              .fontSize(11)
+              .fontColor(this.secondaryTextColor())
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+          Button('完成')
+            .height(34)
+            .fontSize(13)
+            .fontColor(Color.White)
+            .backgroundColor(RustDeskTheme.ACCENT)
+            .borderRadius(8)
+            .onClick(() => { this.showToolbarOrderEditor = false; })
+        }
+        .width('100%')
+
+        Scroll() {
+          Column({ space: 6 }) {
+            ForEach(this.toolbarOrderEditorKind === 'keyboard' ?
+              this.keyboardToolbarOrder : this.controlToolbarOrder, (item: string, index: number) => {
+              Row({ space: 8 }) {
+                Text(`${index + 1}`)
+                  .width(28)
+                  .fontSize(12)
+                  .fontColor(this.secondaryTextColor())
+                  .textAlign(TextAlign.Center)
+                Text(this.toolbarOrderLabel(item))
+                  .layoutWeight(1)
+                  .fontSize(14)
+                  .fontColor(this.primaryTextColor())
+                Button('↑')
+                  .width(38).height(34).padding(0).fontSize(16)
+                  .enabled(index > 0)
+                  .onClick(() => { this.moveToolbarOrderItem(this.toolbarOrderEditorKind, index, -1); })
+                Button('↓')
+                  .width(38).height(34).padding(0).fontSize(16)
+                  .enabled(index < (this.toolbarOrderEditorKind === 'keyboard' ?
+                    this.keyboardToolbarOrder.length : this.controlToolbarOrder.length) - 1)
+                  .onClick(() => { this.moveToolbarOrderItem(this.toolbarOrderEditorKind, index, 1); })
+              }
+              .width('100%')
+              .height(42)
+              .padding({ left: 6, right: 6 })
+              .backgroundColor(this.mutedSurfaceColor())
+              .borderRadius(8)
+            }, (item: string) => `order-${this.toolbarOrderEditorKind}-${item}`)
+          }
+          .width('100%')
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Auto)
+
+        Button('恢复默认排序')
+          .width('100%')
+          .height(38)
+          .fontSize(13)
+          .fontColor(RustDeskTheme.ACCENT)
+          .backgroundColor(this.isDarkMode ? RustDeskTheme.ACCENT_SOFT_DARK : RustDeskTheme.ACCENT_SOFT)
+          .borderRadius(8)
+          .onClick(() => { this.resetToolbarOrder(this.toolbarOrderEditorKind); })
+      }
+      .width(this.isHandheldLandscape() ? 420 : '88%')
+      .height(this.isHandheldLandscape() ? '86%' : '72%')
+      .padding(16)
+      .backgroundColor(this.panelColor())
+      .border({ width: 1, color: this.themeBorderColor() })
+      .borderRadius(16)
+      .shadow({ radius: 24, color: '#66000000', offsetX: 0, offsetY: 8 })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#66000000')
+    .zIndex(95)
   }
 
   @Builder
@@ -2005,116 +2317,58 @@ struct RemotePage {
         this.handleNonRemoteHover(isHovering);
       })
     } else {
-      Row({ space: 4 }) {
-        Button('⋮')
-          .width(20)
-          .height(40)
-          .padding(0)
-          .fontSize(18)
-          .fontColor(this.secondaryTextColor())
-          .backgroundColor(Color.Transparent)
-          .focusable(false)
-          .gesture(
-            PanGesture({ fingers: 1, direction: PanDirection.All, distance: 4 })
-              .onActionStart(() => {
-                this.beginRemoteToolbarDrag();
-              })
-              .onActionUpdate((event: GestureEvent) => {
-                this.updateRemoteToolbarDrag(event.offsetX, event.offsetY);
-              })
-          )
-
-        Scroll() {
-          Row({ space: 6 }) {
-            if (this.displayCount > 1) {
-              ForEach(this.makeDisplayIndexes(), (display: number) => {
-                Button(`屏${display + 1}`)
-                  .width(44)
-                  .height(40)
-                  .padding({ left: 2, right: 2 })
-                  .fontSize(12)
-                  .fontWeight(display === this.currentDisplay ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
-                  .fontColor(display === this.currentDisplay ?
-                    this.controlSelectedTextColor() : this.primaryTextColor())
-                  .backgroundColor(display === this.currentDisplay ?
-                    this.controlSelectedBackgroundColor() : this.mutedSurfaceColor())
-                  .border({
-                    width: 1,
-                    color: display === this.currentDisplay ?
-                      this.controlSelectedBorderColor() : this.themeBorderColor(),
-                  })
-                  .borderRadius(8)
-                  .onClick(() => {
-                    this.switchDisplay(display);
-                  })
-              }, (display: number) => `${display}-${this.currentDisplay}`)
-            }
-            this.buildInputModeButton(56, false)
-            if (this.canPanViewport()) {
-              this.buildEdgeAutoPanButton(78)
-            }
-            this.buildToolbarButton('键盘', 56, this.showKeyboardPanel, false, true, () => {
-              this.toggleRemoteKeyboard();
-            })
-            if (this.isPeerAndroid) {
-              this.buildToolbarButton('手机操作', 76, this.showMobileActions, false, true, () => {
-                this.showMobileActions = true;
-              })
-            }
-            this.buildToolbarButton('手势', 54, false, false, true, () => {
-              this.showGestureHelp = true;
-            })
-            if (this.canPanViewport()) {
-              if (this.isPanMode) {
-                this.buildToolbarButton('结束移动', 78, true, false, true, () => {
-                  this.setPanMode(false);
-                })
-              } else {
-                this.buildToolbarButton('移动画面', 78, false, false, true, () => {
-                  this.setPanMode(true);
-                })
-              }
-            }
-            this.buildToolbarButton('发送文件', 82, false, false, !this.transferActive, () => {
-              this.pickFileForUpload();
-            })
-            this.buildToolbarButton('取回文件', 82, false, false, !this.transferActive, () => {
-              this.openRemoteDownloadBrowser();
-            })
-            this.buildToolbarButton(this.clipboardSyncEnabled ? '剪贴板开' : '剪贴板关', 82,
-              this.clipboardSyncEnabled, false, true, () => {
-              this.toggleClipboardSync();
-            })
-            this.buildToolbarButton('+', 40, false, false, true, () => {
-              this.adjustZoom(0.25);
-            })
-            this.buildToolbarButton('-', 40, false, false, true, () => {
-              this.adjustZoom(-0.25);
-            })
-            this.buildToolbarButton('全屏', 58, false, false, true, () => {
-              this.enterFullScreen();
-            })
-            this.buildToolbarButton('断开', 64, false, true, true, () => {
-              this.disconnectSession();
-            })
+      if (this.isHandheldLandscape()) {
+        Column({ space: 5 }) {
+          Row({ space: 4 }) {
+            this.buildFloatingDragHandle(false)
+            Blank()
+            this.buildFloatingCollapseButton(false)
           }
-          .height(40)
-          .alignItems(VerticalAlign.Center)
+          .width('100%')
+          .height(38)
+          Scroll() {
+            Column({ space: 6 }) {
+              this.buildControlToolbarItems(true)
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Center)
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .scrollable(ScrollDirection.Vertical)
+          .scrollBar(BarState.Off)
         }
-        .layoutWeight(1)
-        .height(40)
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-
-        this.buildFloatingCollapseButton(false)
+        .width(this.getRemoteToolbarWidth())
+        .height(this.getRemoteToolbarHeight())
+        .padding(7)
+        .transition(this.floatingPanelTransition())
+        .onHover((isHovering: boolean) => {
+          this.handleNonRemoteHover(isHovering);
+        })
+      } else {
+        Row({ space: 4 }) {
+          this.buildFloatingDragHandle(false)
+          Scroll() {
+            Row({ space: 6 }) {
+              this.buildControlToolbarItems(false)
+            }
+            .height(40)
+            .alignItems(VerticalAlign.Center)
+          }
+          .layoutWeight(1)
+          .height(40)
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          this.buildFloatingCollapseButton(false)
+        }
+        .width(this.getRemoteToolbarWidth())
+        .height(this.getRemoteToolbarHeight())
+        .padding(7)
+        .transition(this.floatingPanelTransition())
+        .onHover((isHovering: boolean) => {
+          this.handleNonRemoteHover(isHovering);
+        })
       }
-      .width(this.getRemoteToolbarWidth())
-      .height(this.getRemoteToolbarHeight())
-      .padding(7)
-      .transition(this.floatingPanelTransition())
-      .onHover((isHovering: boolean) => {
-        this.handleNonRemoteHover(isHovering);
-      })
     }
     }
     .width(this.getRemoteToolbarCurrentWidth())
@@ -2223,7 +2477,7 @@ struct RemotePage {
 
   @Builder
   buildToolbarButton(label: string, buttonWidth: number, selected: boolean, danger: boolean,
-    enabled: boolean, onClick: () => void) {
+    enabled: boolean, onClick: () => void, orderKey: string = '') {
     Button(label)
       .width(buttonWidth)
       .height(40)
@@ -2241,13 +2495,16 @@ struct RemotePage {
       })
       .borderRadius(8)
       .enabled(enabled)
+      .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
+        if (orderKey.length > 0) this.openToolbarOrderEditor('control', orderKey);
+      }))
       .onClick(() => {
         onClick();
       })
   }
 
   @Builder
-  buildEdgeAutoPanButton(buttonWidth: number) {
+  buildEdgeAutoPanButton(buttonWidth: number, orderKey: string = '') {
     Button(this.edgeAutoPanEnabled ? '边缘跟随开' : '边缘跟随')
       .width(buttonWidth)
       .height(40)
@@ -2263,6 +2520,9 @@ struct RemotePage {
       .borderRadius(8)
       .enabled(this.inputMode === INPUT_MODE_MOUSE)
       .opacity(this.inputMode === INPUT_MODE_MOUSE ? 1 : 0.55)
+      .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
+        if (orderKey.length > 0) this.openToolbarOrderEditor('control', orderKey);
+      }))
       .onClick(() => {
         this.setEdgeAutoPanEnabled(!this.edgeAutoPanEnabled);
       })
@@ -2291,7 +2551,7 @@ struct RemotePage {
   }
 
   @Builder
-  buildInputModeButton(buttonWidth: number, vertical: boolean) {
+  buildInputModeButton(buttonWidth: number, vertical: boolean, orderKey: string = '') {
     Button() {
       if (vertical) {
         Column({ space: 1 }) {
@@ -2318,9 +2578,404 @@ struct RemotePage {
     .backgroundColor(this.controlSelectedBackgroundColor())
     .border({ width: 1, color: this.controlSelectedBorderColor() })
     .borderRadius(8)
+    .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
+      if (orderKey.length > 0) this.openToolbarOrderEditor('control', orderKey);
+    }))
     .onClick(() => {
       this.toggleInputMode();
     })
+  }
+
+  initializeVirtualMousePosition(force: boolean = false): void {
+    if (this.virtualMouseInitialized && !force) return;
+    const width: number = this.componentWidth > 0 ? this.componentWidth : 360;
+    const height: number = this.componentHeight > 0 ? this.componentHeight : 640;
+    this.virtualMouseX = this.clampVirtualMouseX((width - VIRTUAL_MOUSE_WIDTH) / 2);
+    this.virtualMouseY = this.clampVirtualMouseY((height - VIRTUAL_MOUSE_HEIGHT) / 2);
+    this.virtualMouseInitialized = true;
+    this.syncVirtualMouseToCurrentPointer();
+  }
+
+  clampVirtualMouseX(value: number): number {
+    const width: number = this.componentWidth > 0 ? this.componentWidth : 360;
+    const centerX: number = width / 2;
+    const displayLeft: number = centerX + (this.getDisplayLeft() - centerX) * this.zoomScale + this.offsetX;
+    const displayRight: number = centerX +
+      (this.getDisplayLeft() + this.getDisplayWidth() - centerX) * this.zoomScale + this.offsetX;
+    const minPointerX: number = Math.max(0, Math.min(width - 1, displayLeft));
+    const maxPointerX: number = Math.max(minPointerX, Math.min(width - 1, displayRight - 1));
+    return Math.max(minPointerX - VIRTUAL_MOUSE_POINTER_HOT_X,
+      Math.min(maxPointerX - VIRTUAL_MOUSE_POINTER_HOT_X, value));
+  }
+
+  clampVirtualMouseY(value: number): number {
+    const height: number = this.componentHeight > 0 ? this.componentHeight : 640;
+    const centerY: number = height / 2;
+    const displayTop: number = centerY + (this.getDisplayTop() - centerY) * this.zoomScale + this.offsetY;
+    const displayBottom: number = centerY +
+      (this.getDisplayTop() + this.getDisplayHeight() - centerY) * this.zoomScale + this.offsetY;
+    const minPointerY: number = Math.max(0, Math.min(height - 1, displayTop));
+    const maxPointerY: number = Math.max(minPointerY, Math.min(height - 1, displayBottom - 1));
+    return Math.max(minPointerY - VIRTUAL_MOUSE_POINTER_HOT_Y,
+      Math.min(maxPointerY - VIRTUAL_MOUSE_POINTER_HOT_Y, value));
+  }
+
+  alignVirtualMouseToRemotePosition(remoteX: number, remoteY: number): void {
+    if (!this.showVirtualMouse || !this.isHandheldDevice() || this.componentWidth <= 0 ||
+      this.componentHeight <= 0 || this.remoteWidth <= 0 || this.remoteHeight <= 0) {
+      return;
+    }
+    const visualPoint: RemotePoint = this.remotePointToVisual(remoteX, remoteY);
+    this.virtualMouseX = this.clampVirtualMouseX(visualPoint.x - VIRTUAL_MOUSE_POINTER_HOT_X);
+    this.virtualMouseY = this.clampVirtualMouseY(visualPoint.y - VIRTUAL_MOUSE_POINTER_HOT_Y);
+    this.virtualMouseInitialized = true;
+  }
+
+  syncVirtualMouseToCurrentPointer(): void {
+    if (!this.showVirtualMouse || this.virtualMouseDragActive || !this.pointerInitialized) return;
+    if (this.hasAuthoritativeRemoteCursor) {
+      this.alignVirtualMouseToRemotePosition(this.remoteCursorAbsX, this.remoteCursorAbsY);
+    } else {
+      this.alignVirtualMouseToRemotePosition(this.lastAbsX, this.lastAbsY);
+    }
+  }
+
+  updatePointerFromVirtualMouse(): RemotePoint {
+    this.markLocalPointerInput();
+    const remotePoint: RemotePoint = this.visualPointToRemote(
+      this.virtualMouseX + VIRTUAL_MOUSE_POINTER_HOT_X,
+      this.virtualMouseY + VIRTUAL_MOUSE_POINTER_HOT_Y);
+    this.lastAbsX = remotePoint.x;
+    this.lastAbsY = remotePoint.y;
+    this.pointerInitialized = true;
+    if (!this.preferAuthoritativeCursor) {
+      this.remoteCursorAbsX = remotePoint.x;
+      this.remoteCursorAbsY = remotePoint.y;
+    }
+    this.updateCursorOverlayFromPosition(remotePoint.x, remotePoint.y);
+    return remotePoint;
+  }
+
+  beginVirtualMouseMove(): void {
+    this.ensurePointerInitialized();
+    this.initializeVirtualMousePosition();
+    this.syncVirtualMouseToCurrentPointer();
+    this.virtualMouseDragStartX = this.clampVirtualMouseX(this.virtualMouseX);
+    this.virtualMouseDragStartY = this.clampVirtualMouseY(this.virtualMouseY);
+    this.virtualMouseLastPanX = 0;
+    this.virtualMouseLastPanY = 0;
+    this.virtualMouseDragActive = true;
+    this.beginLocalPointerGesture();
+  }
+
+  updateVirtualMouseMove(offsetX: number, offsetY: number): void {
+    const deltaX: number = offsetX - this.virtualMouseLastPanX;
+    const deltaY: number = offsetY - this.virtualMouseLastPanY;
+    this.virtualMouseLastPanX = offsetX;
+    this.virtualMouseLastPanY = offsetY;
+    this.virtualMouseX = this.clampVirtualMouseX(this.virtualMouseDragStartX + offsetX);
+    this.virtualMouseY = this.clampVirtualMouseY(this.virtualMouseDragStartY + offsetY);
+    if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) return;
+    const remotePoint: RemotePoint = this.updatePointerFromVirtualMouse();
+    ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 0);
+    this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, true);
+  }
+
+  finishVirtualMouseMove(): void {
+    this.virtualMouseLastPanX = 0;
+    this.virtualMouseLastPanY = 0;
+    this.virtualMouseDragActive = false;
+    this.stopEdgeAutoPan();
+    this.endLocalPointerGesture();
+  }
+
+  clickVirtualMouseButton(button: string): void {
+    this.clearLongPressTimer();
+    this.clearTapTimer();
+    this.requestRemoteInputFocus();
+    this.ensurePointerInitialized();
+    this.initializeVirtualMousePosition();
+    const remotePoint: RemotePoint = this.updatePointerFromVirtualMouse();
+    if (button === 'left') {
+      this.sendLeftClick(remotePoint.x, remotePoint.y);
+    } else if (button === 'right') {
+      this.sendRightDown(remotePoint.x, remotePoint.y);
+      this.sendRightUp(remotePoint.x, remotePoint.y, true);
+    } else if (button === 'middle') {
+      ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 5);
+      ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 6);
+    }
+    RustDeskNapi.appendDiagnosticLog('input',
+      `virtual_mouse_click button=${button} x=${Math.round(remotePoint.x)} y=${Math.round(remotePoint.y)}`);
+  }
+
+  beginVirtualMouseButtonDrag(button: string): void {
+    this.clearLongPressTimer();
+    this.clearTapTimer();
+    this.requestRemoteInputFocus();
+    this.beginVirtualMouseMove();
+    const remotePoint: RemotePoint = this.updatePointerFromVirtualMouse();
+    if (button === 'left') {
+      this.virtualMouseLeftDown = true;
+      this.sendLeftDown(remotePoint.x, remotePoint.y);
+    } else if (button === 'right') {
+      this.virtualMouseRightDown = true;
+      this.sendRightDown(remotePoint.x, remotePoint.y);
+    }
+    RustDeskNapi.appendDiagnosticLog('input',
+      `virtual_mouse_drag_start button=${button} x=${Math.round(remotePoint.x)} y=${Math.round(remotePoint.y)}`);
+  }
+
+  finishVirtualMouseButtonDrag(button: string, cancelled: boolean = false): void {
+    if (button === 'left' && this.virtualMouseLeftDown) {
+      this.virtualMouseLeftDown = false;
+      this.sendLeftUp(this.lastAbsX, this.lastAbsY, true);
+    } else if (button === 'right' && this.virtualMouseRightDown) {
+      this.virtualMouseRightDown = false;
+      this.sendRightUp(this.lastAbsX, this.lastAbsY, true);
+    }
+    this.finishVirtualMouseMove();
+    RustDeskNapi.appendDiagnosticLog('input',
+      `virtual_mouse_drag_end button=${button} cancelled=${cancelled ? 1 : 0}`);
+  }
+
+  resetVirtualMouseButtonTouch(): void {
+    this.virtualMouseButtonTouchActive = false;
+    this.virtualMouseButtonTouchName = '';
+    this.virtualMouseButtonTouchStartX = 0;
+    this.virtualMouseButtonTouchStartY = 0;
+  }
+
+  clickVirtualMouseButtonFallback(button: string): void {
+    if (Date.now() - this.virtualMouseLastTouchResolvedAt < 240) return;
+    this.clickVirtualMouseButton(button);
+  }
+
+  handleVirtualMouseButtonTouch(button: string, event: TouchEvent): void {
+    event.stopPropagation();
+    if (event.type === TouchType.Down && event.touches.length > 0) {
+      this.resetVirtualMouseButtonTouch();
+      this.virtualMouseButtonTouchActive = true;
+      this.virtualMouseButtonTouchName = button;
+      this.virtualMouseButtonTouchStartX = event.touches[0].x;
+      this.virtualMouseButtonTouchStartY = event.touches[0].y;
+      return;
+    }
+    if (!this.virtualMouseButtonTouchActive || this.virtualMouseButtonTouchName !== button) return;
+    if (event.type === TouchType.Move && event.touches.length > 0) {
+      const offsetX: number = event.touches[0].x - this.virtualMouseButtonTouchStartX;
+      const offsetY: number = event.touches[0].y - this.virtualMouseButtonTouchStartY;
+      if (!this.virtualMouseDragActive &&
+        Math.sqrt(offsetX * offsetX + offsetY * offsetY) >= VIRTUAL_MOUSE_BUTTON_DRAG_THRESHOLD) {
+        this.beginVirtualMouseButtonDrag(button);
+      }
+      if (this.virtualMouseDragActive) this.updateVirtualMouseMove(offsetX, offsetY);
+      return;
+    }
+    if (event.type === TouchType.Up) {
+      this.virtualMouseLastTouchResolvedAt = Date.now();
+      if (this.virtualMouseDragActive) {
+        this.finishVirtualMouseButtonDrag(button);
+      } else {
+        this.clickVirtualMouseButton(button);
+      }
+      this.resetVirtualMouseButtonTouch();
+    } else if (event.type === TouchType.Cancel) {
+      this.virtualMouseLastTouchResolvedAt = Date.now();
+      if (this.virtualMouseDragActive) this.finishVirtualMouseButtonDrag(button, true);
+      this.resetVirtualMouseButtonTouch();
+    }
+  }
+
+  resetVirtualMouseWheelTouch(): void {
+    this.virtualMouseWheelTouchActive = false;
+    this.virtualMouseWheelTouchMoved = false;
+    this.virtualMouseWheelTouchStartY = 0;
+    this.virtualMouseWheelLastY = 0;
+  }
+
+  handleVirtualMouseWheelTouch(event: TouchEvent): void {
+    event.stopPropagation();
+    if (event.type === TouchType.Down && event.touches.length > 0) {
+      this.resetVirtualMouseWheelTouch();
+      this.virtualMouseWheelTouchActive = true;
+      this.virtualMouseWheelTouchStartY = event.touches[0].y;
+      this.virtualMouseWheelLastY = event.touches[0].y;
+      return;
+    }
+    if (!this.virtualMouseWheelTouchActive) return;
+    if (event.type === TouchType.Move && event.touches.length > 0) {
+      const currentY: number = event.touches[0].y;
+      const totalOffset: number = currentY - this.virtualMouseWheelTouchStartY;
+      if (Math.abs(totalOffset) >= 6) this.virtualMouseWheelTouchMoved = true;
+      const delta: number = currentY - this.virtualMouseWheelLastY;
+      if (Math.abs(delta) >= 8) {
+        this.sendVirtualMouseWheel(delta > 0 ? 1 : -1);
+        this.virtualMouseWheelLastY = currentY;
+      }
+      return;
+    }
+    if (event.type === TouchType.Up) {
+      this.virtualMouseLastTouchResolvedAt = Date.now();
+      if (!this.virtualMouseWheelTouchMoved) this.clickVirtualMouseButton('middle');
+      this.resetVirtualMouseWheelTouch();
+    } else if (event.type === TouchType.Cancel) {
+      this.virtualMouseLastTouchResolvedAt = Date.now();
+      this.resetVirtualMouseWheelTouch();
+    }
+  }
+
+  releaseVirtualMouseButtons(): void {
+    if (this.virtualMouseLeftDown) {
+      this.virtualMouseLeftDown = false;
+      this.sendLeftUp(this.lastAbsX, this.lastAbsY, true);
+    }
+    if (this.virtualMouseRightDown) {
+      this.virtualMouseRightDown = false;
+      this.sendRightUp(this.lastAbsX, this.lastAbsY);
+    }
+    if (this.virtualMouseMiddleDown) {
+      this.virtualMouseMiddleDown = false;
+      ConnectionService.sendMouseEvent(this.lastAbsX, this.lastAbsY, 6);
+    }
+  }
+
+  sendVirtualMouseWheel(delta: number): void {
+    if (delta === 0) return;
+    this.clearLongPressTimer();
+    this.clearTapTimer();
+    this.requestRemoteInputFocus();
+    ConnectionService.sendMouseWheel(0, delta);
+    RustDeskNapi.appendDiagnosticLog('input', `virtual_mouse_wheel delta=${delta}`);
+  }
+
+  @Builder
+  buildVirtualMousePointer() {
+    Shape() {
+      Path()
+        .commands('M 1 1 L 1 20 L 6 15 L 10 23 L 14 21 L 10 14 L 18 14 Z')
+        .fill('#E6DCEBFF')
+        .stroke('#E6243B57')
+        .strokeWidth(1)
+    }
+    .viewPort({ x: 0, y: 0, width: 24, height: 24 })
+    .width(24)
+    .height(24)
+  }
+
+  @Builder
+  buildVirtualMouseOverlay() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      this.buildVirtualMousePointer()
+
+      Button('×')
+        .width(18)
+        .height(18)
+        .padding(0)
+        .fontSize(13)
+        .fontColor(Color.White)
+        .backgroundColor('#A62B3C52')
+        .border({ width: 0.7, color: '#99DCEBFF' })
+        .borderRadius(9)
+        .position({ x: 94, y: 0 })
+        .onClick(() => { this.setVirtualMouseEnabled(false); })
+
+      Stack({ alignContent: Alignment.TopStart }) {
+        Button('左键', { type: ButtonType.Normal })
+          .width(29)
+          .height(67)
+          .padding(0)
+          .fontSize(9)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.virtualMouseLeftDown ? '#183D69' : '#F2F7FF')
+          .backgroundColor(this.virtualMouseLeftDown ? '#E6DCEBFF' : '#405B7697')
+          .border({ width: 0.6, color: '#80DCEBFF' })
+          .borderRadius({ topLeft: 27, topRight: 8, bottomLeft: 8, bottomRight: 8 })
+          .position({ x: 0, y: 0 })
+          .onTouch((event: TouchEvent) => { this.handleVirtualMouseButtonTouch('left', event); })
+          .onClick(() => { this.clickVirtualMouseButtonFallback('left'); })
+
+        Button('右键', { type: ButtonType.Normal })
+          .width(29)
+          .height(67)
+          .padding(0)
+          .fontSize(9)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.virtualMouseRightDown ? '#183D69' : '#F2F7FF')
+          .backgroundColor(this.virtualMouseRightDown ? '#E6DCEBFF' : '#405B7697')
+          .border({ width: 0.6, color: '#80DCEBFF' })
+          .borderRadius({ topLeft: 8, topRight: 27, bottomLeft: 8, bottomRight: 8 })
+          .position({ x: 51, y: 0 })
+          .onTouch((event: TouchEvent) => { this.handleVirtualMouseButtonTouch('right', event); })
+          .onClick(() => { this.clickVirtualMouseButtonFallback('right'); })
+
+        Column({ space: 1 }) {
+          Button('⌃')
+            .width(22).height(18).padding(0).fontSize(12).fontColor('#CCFFFFFF')
+            .backgroundColor(Color.Transparent)
+            .onClick(() => { this.sendVirtualMouseWheel(-VIRTUAL_MOUSE_WHEEL_BUTTON_STEP); })
+          Button('≡')
+            .width(22).height(28).padding(0).fontSize(12).fontColor('#CCFFFFFF')
+            .backgroundColor(Color.Transparent)
+            .onTouch((event: TouchEvent) => { this.handleVirtualMouseWheelTouch(event); })
+            .onClick(() => { this.clickVirtualMouseButtonFallback('middle'); })
+          Button('⌄')
+            .width(22).height(18).padding(0).fontSize(12).fontColor('#CCFFFFFF')
+            .backgroundColor(Color.Transparent)
+            .onClick(() => { this.sendVirtualMouseWheel(VIRTUAL_MOUSE_WHEEL_BUTTON_STEP); })
+        }
+        .width(22)
+        .height(67)
+        .padding({ top: 1, bottom: 1 })
+        .backgroundColor('#59202E42')
+        .border({ width: 0.6, color: '#66DCEBFF' })
+        .borderRadius(12)
+        .position({ x: 29, y: 0 })
+        .zIndex(2)
+
+        Button({ type: ButtonType.Normal }) {
+          Column({ space: 2 }) {
+            Text('⠿')
+              .fontSize(18)
+              .fontColor('#BFDCEBFF')
+              .hitTestBehavior(HitTestMode.None)
+            Text('移动')
+              .fontSize(9)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#F2F7FF')
+              .hitTestBehavior(HitTestMode.None)
+          }
+          .hitTestBehavior(HitTestMode.None)
+        }
+          .width(80)
+          .height(51)
+          .padding(0)
+          .backgroundColor('#263E5674')
+          .border({ width: 0.6, color: '#80DCEBFF' })
+          .borderRadius({ topLeft: 8, topRight: 8, bottomLeft: 28, bottomRight: 28 })
+          .position({ x: 0, y: 69 })
+          .gesture(PanGesture({ fingers: 1, direction: PanDirection.All, distance: 2 })
+            .onActionStart(() => { this.beginVirtualMouseMove(); })
+            .onActionUpdate((event: GestureEvent) => {
+              this.updateVirtualMouseMove(event.offsetX, event.offsetY);
+            })
+            .onActionEnd(() => { this.finishVirtualMouseMove(); }))
+      }
+      .width(80)
+      .height(120)
+      .backgroundColor('#73213146')
+      .backdropBlur(8)
+      .borderRadius(28)
+      .border({ width: 0.8, color: '#B3DCEBFF' })
+      .clip(true)
+      .shadow({ radius: 5, color: '#33000000', offsetX: 0, offsetY: 2 })
+      .position({ x: 14, y: 18 })
+    }
+    .width(VIRTUAL_MOUSE_WIDTH)
+    .height(VIRTUAL_MOUSE_HEIGHT)
+    .position({ x: this.virtualMouseX, y: this.virtualMouseY })
+    .zIndex(75)
+    .onAppear(() => { this.initializeVirtualMousePosition(); })
   }
 
   @Builder
@@ -2364,6 +3019,30 @@ struct RemotePage {
         .width('100%')
         .padding({ left: 2, right: 2, top: 2, bottom: 2 })
 
+        if (this.isHandheldDevice()) {
+          Row() {
+            Column({ space: 3 }) {
+              Text('显示虚拟鼠标')
+                .fontSize(14)
+                .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+                .fontColor(this.primaryTextColor())
+                .width('100%')
+              Text('显示与 RustDesk 官方一致的左右键、滚轮和拖动区；默认关闭')
+                .fontSize(11)
+                .fontColor(this.secondaryTextColor())
+                .width('100%')
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.showVirtualMouse })
+              .onChange((isOn: boolean) => {
+                this.setVirtualMouseEnabled(isOn);
+              })
+          }
+          .width('100%')
+          .padding({ left: 2, right: 2, top: 2, bottom: 2 })
+        }
+
         Row() {
           Column({ space: 3 }) {
             Text('边缘自动平移')
@@ -2389,7 +3068,7 @@ struct RemotePage {
         .padding({ left: 2, right: 2, top: 2, bottom: 2 })
 
         if (this.inputMode === INPUT_MODE_MOUSE) {
-          Text('适合控制电脑：\n• 单指滑动：移动鼠标\n• 单击：左键\n• 轻点一次，第二次按住并移动：拖拽，松手结束\n• 长按或双指轻点：右键\n• 双指平行滑动：滚动\n• 双指捏合：缩放画面\n• 边缘跟随开启后：画面超出可视区域时，鼠标靠近边缘会自动平移，越靠边越快\n• 放大后点“移动画面”：按钮变为淡蓝色，单指平移视野且远端鼠标保持显示\n• 移动画面模式下，双指滚动和捏合缩放仍可使用\n• 全屏三指上滑：调出系统键盘，输入直达远端')
+          Text('适合控制电脑：\n• 单指滑动：移动鼠标\n• 单击：左键\n• 轻点一次，第二次按住并移动：拖拽，松手结束\n• 长按或双指轻点：右键\n• 双指平行滑动：滚动\n• 双指捏合：缩放画面\n• 虚拟鼠标：左右键、中键和滚轮与实体鼠标一致，按住鼠标拖动区即可移动远端指针\n• 虚拟鼠标开启且画面放大后：单指拖动画面其他区域直接平移视野\n• 边缘跟随开启后：画面超出可视区域时，鼠标靠近边缘会自动平移，越靠边越快\n• 全屏三指上滑：调出系统键盘，输入直达远端')
             .fontSize(14)
             .lineHeight(24)
             .fontColor(this.secondaryTextColor())
@@ -2405,9 +3084,9 @@ struct RemotePage {
         this.buildGestureHelpSection('拖拽与框选',
           '鼠标模式：先将远端指针移到起点，轻点一次，第二次按住并拖动，松手结束。框选文件时请从文件列表或桌面的空白处开始；从文件上开始通常是拖动文件。\n触摸模式：在目标位置按住并移动，松手结束。')
         this.buildGestureHelpSection('组合键与本地键盘',
-          '连接后，上方默认显示折叠的“键”按钮，点击展开，拖动按钮或展开栏左侧的“⋮”可移动位置。\nCtrl、Alt、Shift、Win/Cmd：点一下选中，相当于按住；再点一下释放，不需要手指一直按着。可以同时选中多个。\n例如 Ctrl+C：点亮 Ctrl，再输入 C，最后再次点击 Ctrl 取消选中。Mac 常用 Cmd+C。Ctrl/Shift 也可配合鼠标多选文件，用完记得释放。\nCtrl+Shift+Esc 等完整组合键按钮：点一次发送整组按键，不会自动弹出本地键盘。\n“Fn”和“更多”展开附加按键；“收”只折叠，不释放已选中的修饰键。“释放”一次取消所有已选中的 Ctrl、Alt、Shift、Win/Cmd，不收起快捷栏，也不打开或关闭本地键盘。\n底部“键盘”按钮用于打开或关闭本地输入法，与上方组合键栏独立。')
+          '连接后默认显示折叠的“键”按钮，点击展开；“键”和“控”及其拖动柄均可移动到屏幕任意位置。\n横屏时“键”默认位于左上角，“控”默认位于右上角，两个面板都向下展开。长按任意功能按钮可调整排序。\nCtrl、Alt、Shift、Win/Cmd：点一下选中，相当于按住；再点一下释放，不需要手指一直按着。可以同时选中多个。\n例如 Ctrl+C：点亮 Ctrl，再输入 C，最后再次点击 Ctrl 取消选中。Mac 常用 Cmd+C。Ctrl/Shift 也可配合鼠标多选文件，用完记得释放。\nCtrl+Shift+Esc 等完整组合键按钮：点一次发送整组按键，不会自动弹出本地键盘。\n横屏打开键盘时画面会随可用区域上移和缩放，避免被键盘遮挡。')
         this.buildGestureHelpSection('悬浮功能栏与移动画面',
-          '手机窄屏布局的底部悬浮功能栏可拖动左侧“⋮”调整位置，点击“收”折叠为“控”按钮，点击“控”重新展开。\n画面放大后，点击“移动画面”进入平移模式；点击“结束移动”恢复正常鼠标或触摸操作。平移只移动视野，不点击远端。\n全屏三指上滑用于打开本地键盘，不是滚动手势；滚动请使用双指平行滑动。')
+          '竖屏时“控”保持底部横向工具栏；横屏时默认移动到右上角并向下展开。点击收起后保留“控”按钮。\n未开启虚拟鼠标时，画面放大后可使用“移动画面”模式；开启虚拟鼠标后，直接单指拖动画面空白区域即可平移，鼠标本体专门控制远端指针。\n全屏三指上滑用于打开本地键盘，不是滚动手势；滚动请使用双指平行滑动。')
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
@@ -2613,7 +3292,8 @@ struct RemotePage {
 
   @Builder
   buildKeyboardToolButton(label: string, buttonWidth: number, selected: boolean,
-    danger: boolean, enabled: boolean, onClick: () => void, refocusAfterClick: boolean = true) {
+    danger: boolean, enabled: boolean, onClick: () => void, refocusAfterClick: boolean = true,
+    orderKey: string = '') {
     Button(label)
       .width(buttonWidth)
       .height(38)
@@ -2631,6 +3311,9 @@ struct RemotePage {
       .enabled(enabled)
       .opacity(enabled ? 1 : 0.5)
       .focusable(false)
+      .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
+        if (orderKey.length > 0) this.openToolbarOrderEditor('keyboard', orderKey);
+      }))
       .onClick(() => {
         onClick();
         if (refocusAfterClick) {
@@ -2640,109 +3323,63 @@ struct RemotePage {
   }
 
   @Builder
-  buildKeyboardShortcutOverlay() {
-    Stack({ alignContent: Alignment.TopStart }) {
-    if (this.keyboardToolsCollapsed) {
-      Button() {
-        Row({ space: 3 }) {
-          Text('键')
-          .fontSize(16)
-          .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
-          .fontColor(this.controlSelectedTextColor())
-          if (this.virtualCtrlSelected || this.virtualAltSelected ||
-            this.virtualShiftSelected || this.virtualMetaSelected) {
-            Circle().width(5).height(5).fill(this.controlSelectedTextColor())
-          }
-        }
-      }
-      .width(56)
-      .height(this.getKeyboardToolsCollapsedSize())
-      .padding(0)
-      .backgroundColor(Color.Transparent)
-      .borderRadius(16)
-      .transition(this.floatingPanelTransition())
-      .focusable(false)
-      .gesture(
-        PanGesture({ fingers: 1, direction: PanDirection.All, distance: 4 })
-          .onActionStart(() => {
-            this.beginKeyboardToolsDrag();
-          })
-          .onActionUpdate((event: GestureEvent) => {
-            this.updateKeyboardToolsDrag(event.offsetX, event.offsetY);
-          })
-      )
-      .onClick(() => {
-        this.setFloatingPanelCollapsed(true, false);
-      })
-      .onHover((isHovering: boolean) => {
-        this.handleNonRemoteHover(isHovering);
-      })
-    } else {
-      Column({ space: 6 }) {
-        Row({ space: 4 }) {
-          Button('⋮')
-            .width(24)
-            .height(38)
-            .padding(0)
-            .fontSize(18)
-            .fontColor(this.secondaryTextColor())
-            .backgroundColor(Color.Transparent)
-            .focusable(false)
-            .gesture(
-              PanGesture({ fingers: 1, direction: PanDirection.All, distance: 4 })
-                .onActionStart(() => {
-                  this.beginKeyboardToolsDrag();
-                })
-                .onActionUpdate((event: GestureEvent) => {
-                  this.updateKeyboardToolsDrag(event.offsetX, event.offsetY);
-                })
-            )
-          Scroll() {
-            Row({ space: 6 }) {
-          this.buildKeyboardToolButton('Ctrl', this.keyboardMainButtonWidth(58, 46),
-            this.virtualCtrlSelected, false, true, () => {
-            this.toggleVirtualModifier(VIRTUAL_MODIFIER_CTRL);
-          })
-          this.buildKeyboardToolButton('Alt', this.keyboardMainButtonWidth(54, 44),
-            this.virtualAltSelected, false, true, () => {
-            this.toggleVirtualModifier(VIRTUAL_MODIFIER_ALT);
-          })
-          this.buildKeyboardToolButton('Shift', this.keyboardMainButtonWidth(62, 52),
-            this.virtualShiftSelected, false, true, () => {
-            this.toggleVirtualModifier(VIRTUAL_MODIFIER_SHIFT);
-          })
-          this.buildKeyboardToolButton('Win/Cmd', this.keyboardMainButtonWidth(76, 68),
-            this.virtualMetaSelected, false, true, () => {
-            this.toggleVirtualModifier(VIRTUAL_MODIFIER_META);
-          })
-          this.buildKeyboardToolButton('Fn', this.keyboardMainButtonWidth(48, 42),
-            this.showKeyboardFunctionKeys, false, true, () => {
-            this.showKeyboardFunctionKeys = !this.showKeyboardFunctionKeys;
-            if (this.showKeyboardFunctionKeys) this.showKeyboardMoreKeys = false;
-          })
-          this.buildKeyboardToolButton('更多', this.keyboardMainButtonWidth(54, 46),
-            this.showKeyboardMoreKeys, false, true, () => {
-            this.showKeyboardMoreKeys = !this.showKeyboardMoreKeys;
-            if (this.showKeyboardMoreKeys) this.showKeyboardFunctionKeys = false;
-          })
-            }
-            .height(38)
-            .alignItems(VerticalAlign.Center)
-          }
-          .layoutWeight(1)
-          .height(38)
-          .scrollable(ScrollDirection.Horizontal)
-          .scrollBar(BarState.Off)
-          this.buildFloatingCollapseButton(true)
-          this.buildKeyboardToolButton('释放', 48, false, false, true, () => {
-            this.releaseVirtualModifiers();
-          }, false)
-        }
-        .width('100%')
-        .height(38)
-        .alignItems(VerticalAlign.Center)
+  buildKeyboardToolbarItems(vertical: boolean) {
+    ForEach(this.keyboardToolbarOrder, (item: string) => {
+      this.buildKeyboardToolbarItem(item, vertical)
+    }, (item: string) => `keyboard-${item}`)
+  }
 
-      if (this.showKeyboardFunctionKeys) {
+  @Builder
+  buildKeyboardToolbarItem(item: string, vertical: boolean) {
+    if (item === 'ctrl') {
+      this.buildKeyboardToolButton('Ctrl', vertical ? 96 : this.keyboardMainButtonWidth(58, 46),
+        this.virtualCtrlSelected, false, true, () => {
+          this.toggleVirtualModifier(VIRTUAL_MODIFIER_CTRL);
+        }, true, item)
+    } else if (item === 'alt') {
+      this.buildKeyboardToolButton('Alt', vertical ? 96 : this.keyboardMainButtonWidth(54, 44),
+        this.virtualAltSelected, false, true, () => {
+          this.toggleVirtualModifier(VIRTUAL_MODIFIER_ALT);
+        }, true, item)
+    } else if (item === 'shift') {
+      this.buildKeyboardToolButton('Shift', vertical ? 96 : this.keyboardMainButtonWidth(62, 52),
+        this.virtualShiftSelected, false, true, () => {
+          this.toggleVirtualModifier(VIRTUAL_MODIFIER_SHIFT);
+        }, true, item)
+    } else if (item === 'meta') {
+      this.buildKeyboardToolButton('Win/Cmd', vertical ? 96 : this.keyboardMainButtonWidth(76, 68),
+        this.virtualMetaSelected, false, true, () => {
+          this.toggleVirtualModifier(VIRTUAL_MODIFIER_META);
+        }, true, item)
+    } else if (item === 'function') {
+      this.buildKeyboardToolButton('Fn', vertical ? 96 : this.keyboardMainButtonWidth(48, 42),
+        this.showKeyboardFunctionKeys, false, true, () => {
+          this.showKeyboardFunctionKeys = !this.showKeyboardFunctionKeys;
+          if (this.showKeyboardFunctionKeys) this.showKeyboardMoreKeys = false;
+        }, true, item)
+    } else if (item === 'more') {
+      this.buildKeyboardToolButton('更多', vertical ? 96 : this.keyboardMainButtonWidth(54, 46),
+        this.showKeyboardMoreKeys, false, true, () => {
+          this.showKeyboardMoreKeys = !this.showKeyboardMoreKeys;
+          if (this.showKeyboardMoreKeys) this.showKeyboardFunctionKeys = false;
+        }, true, item)
+    } else if (item === 'release') {
+      this.buildKeyboardToolButton('释放', vertical ? 96 : 48, false, false, true, () => {
+        this.releaseVirtualModifiers();
+      }, false, item)
+    }
+  }
+
+  @Builder
+  buildKeyboardSupplementalItems(vertical: boolean) {
+    if (this.showKeyboardFunctionKeys) {
+      if (vertical) {
+        ForEach(this.makeFunctionKeyCodes(), (code: number) => {
+          this.buildKeyboardToolButton(`F${code - 111}`, 96, false, false, true, () => {
+            this.sendVirtualControlKey(code, `F${code - 111}`);
+          })
+        }, (code: number) => `function-${code}`)
+      } else {
         Scroll() {
           Row({ space: 6 }) {
             ForEach(this.makeFunctionKeyCodes(), (code: number) => {
@@ -2753,70 +3390,147 @@ struct RemotePage {
           }
           .height(38)
         }
-        .width('100%')
-        .height(38)
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
+        .width('100%').height(38).scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
       }
-
-      if (this.showKeyboardMoreKeys) {
+    }
+    if (this.showKeyboardMoreKeys) {
+      if (vertical) {
+        this.buildKeyboardMoreItems(true)
+      } else {
         Scroll() {
-          Row({ space: 6 }) {
-            this.buildKeyboardToolButton('Esc', 50, false, false, true, () => {
-              this.sendVirtualControlKey(27, 'Esc');
-            })
-            this.buildKeyboardToolButton('Tab', 50, false, false, true, () => {
-              this.sendVirtualControlKey(9, 'Tab');
-            })
-            this.buildKeyboardToolButton('Home', 58, false, false, true, () => {
-              this.sendVirtualControlKey(36, 'Home');
-            })
-            this.buildKeyboardToolButton('End', 50, false, false, true, () => {
-              this.sendVirtualControlKey(35, 'End');
-            })
-            this.buildKeyboardToolButton('Ins', 48, false, false, true, () => {
-              this.sendVirtualControlKey(45, 'Insert');
-            })
-            this.buildKeyboardToolButton('Del', 48, false, false, true, () => {
-              this.sendVirtualControlKey(46, 'Delete');
-            })
-            this.buildKeyboardToolButton('PgUp', 58, false, false, true, () => {
-              this.sendVirtualControlKey(33, 'PageUp');
-            })
-            this.buildKeyboardToolButton('PgDn', 58, false, false, true, () => {
-              this.sendVirtualControlKey(34, 'PageDown');
-            })
-            this.buildKeyboardToolButton('Ctrl+Shift+Esc', 112, false, false, true, () => {
-              this.sendPresetShortcut(27, MODIFIER_MASK_CTRL | MODIFIER_MASK_SHIFT, 'Ctrl+Shift+Esc');
-            }, false)
-            this.buildKeyboardToolButton('Ctrl+Shift+Del', 112, false, false, true, () => {
-              this.sendPresetShortcut(46, MODIFIER_MASK_CTRL | MODIFIER_MASK_SHIFT, 'Ctrl+Shift+Del');
-            }, false)
-            this.buildKeyboardToolButton('Alt+F4', 72, false, false, true, () => {
-              this.sendPresetShortcut(115, MODIFIER_MASK_ALT, 'Alt+F4');
-            }, false)
-            if (this.canSendCtrlAltDel) {
-              this.buildKeyboardToolButton('Ctrl+Alt+Del', 104, false, true, true, () => {
-                this.sendCtrlAltDel();
-              }, false)
-            }
-          }
+          Row({ space: 6 }) { this.buildKeyboardMoreItems(false) }
           .height(38)
         }
-        .width('100%')
-        .height(38)
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
+        .width('100%').height(38).scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
       }
     }
-      .width(this.getKeyboardToolsWidth())
-      .height(this.getKeyboardToolsHeight())
-      .padding(8)
-      .transition(this.floatingPanelTransition())
-      .onHover((isHovering: boolean) => {
-        this.handleNonRemoteHover(isHovering);
-      })
+  }
+
+  @Builder
+  buildKeyboardMoreItems(vertical: boolean) {
+    this.buildKeyboardToolButton('Esc', vertical ? 96 : 50, false, false, true, () => {
+      this.sendVirtualControlKey(27, 'Esc');
+    })
+    this.buildKeyboardToolButton('Tab', vertical ? 96 : 50, false, false, true, () => {
+      this.sendVirtualControlKey(9, 'Tab');
+    })
+    this.buildKeyboardToolButton('Home', vertical ? 96 : 58, false, false, true, () => {
+      this.sendVirtualControlKey(36, 'Home');
+    })
+    this.buildKeyboardToolButton('End', vertical ? 96 : 50, false, false, true, () => {
+      this.sendVirtualControlKey(35, 'End');
+    })
+    this.buildKeyboardToolButton('Ins', vertical ? 96 : 48, false, false, true, () => {
+      this.sendVirtualControlKey(45, 'Insert');
+    })
+    this.buildKeyboardToolButton('Del', vertical ? 96 : 48, false, false, true, () => {
+      this.sendVirtualControlKey(46, 'Delete');
+    })
+    this.buildKeyboardToolButton('PgUp', vertical ? 96 : 58, false, false, true, () => {
+      this.sendVirtualControlKey(33, 'PageUp');
+    })
+    this.buildKeyboardToolButton('PgDn', vertical ? 96 : 58, false, false, true, () => {
+      this.sendVirtualControlKey(34, 'PageDown');
+    })
+    this.buildKeyboardToolButton('Ctrl+Shift+Esc', vertical ? 96 : 112, false, false, true, () => {
+      this.sendPresetShortcut(27, MODIFIER_MASK_CTRL | MODIFIER_MASK_SHIFT, 'Ctrl+Shift+Esc');
+    }, false)
+    this.buildKeyboardToolButton('Ctrl+Shift+Del', vertical ? 96 : 112, false, false, true, () => {
+      this.sendPresetShortcut(46, MODIFIER_MASK_CTRL | MODIFIER_MASK_SHIFT, 'Ctrl+Shift+Del');
+    }, false)
+    this.buildKeyboardToolButton('Alt+F4', vertical ? 96 : 72, false, false, true, () => {
+      this.sendPresetShortcut(115, MODIFIER_MASK_ALT, 'Alt+F4');
+    }, false)
+    if (this.canSendCtrlAltDel) {
+      this.buildKeyboardToolButton('Ctrl+Alt+Del', vertical ? 96 : 104, false, true, true, () => {
+        this.sendCtrlAltDel();
+      }, false)
     }
+  }
+
+  @Builder
+  buildKeyboardShortcutOverlay() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      if (this.keyboardToolsCollapsed) {
+        Button() {
+          Row({ space: 3 }) {
+            Text('键')
+              .fontSize(16)
+              .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+              .fontColor(this.controlSelectedTextColor())
+            if (this.virtualCtrlSelected || this.virtualAltSelected ||
+              this.virtualShiftSelected || this.virtualMetaSelected) {
+              Circle().width(5).height(5).fill(this.controlSelectedTextColor())
+            }
+          }
+        }
+        .width(56)
+        .height(this.getKeyboardToolsCollapsedSize())
+        .padding(0)
+        .backgroundColor(Color.Transparent)
+        .borderRadius(16)
+        .transition(this.floatingPanelTransition())
+        .focusable(false)
+        .gesture(PanGesture({ fingers: 1, direction: PanDirection.All, distance: 4 })
+          .onActionStart(() => { this.beginKeyboardToolsDrag(); })
+          .onActionUpdate((event: GestureEvent) => {
+            this.updateKeyboardToolsDrag(event.offsetX, event.offsetY);
+          }))
+        .onClick(() => { this.setFloatingPanelCollapsed(true, false); })
+        .onHover((isHovering: boolean) => { this.handleNonRemoteHover(isHovering); })
+      } else if (this.isHandheldLandscape()) {
+        Column({ space: 5 }) {
+          Row({ space: 4 }) {
+            this.buildFloatingDragHandle(true)
+            Blank()
+            this.buildFloatingCollapseButton(true)
+          }
+          .width('100%')
+          .height(38)
+          Scroll() {
+            Column({ space: 6 }) {
+              this.buildKeyboardToolbarItems(true)
+              this.buildKeyboardSupplementalItems(true)
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Center)
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .scrollable(ScrollDirection.Vertical)
+          .scrollBar(BarState.Off)
+        }
+        .width(this.getKeyboardToolsWidth())
+        .height(this.getKeyboardToolsHeight())
+        .padding(8)
+        .transition(this.floatingPanelTransition())
+      } else {
+        Column({ space: 6 }) {
+          Row({ space: 4 }) {
+            this.buildFloatingDragHandle(true)
+            Scroll() {
+              Row({ space: 6 }) {
+                this.buildKeyboardToolbarItems(false)
+              }
+              .height(38)
+              .alignItems(VerticalAlign.Center)
+            }
+            .layoutWeight(1)
+            .height(38)
+            .scrollable(ScrollDirection.Horizontal)
+            .scrollBar(BarState.Off)
+            this.buildFloatingCollapseButton(true)
+          }
+          .width('100%')
+          .height(38)
+          .alignItems(VerticalAlign.Center)
+          this.buildKeyboardSupplementalItems(false)
+        }
+        .width(this.getKeyboardToolsWidth())
+        .height(this.getKeyboardToolsHeight())
+        .padding(8)
+        .transition(this.floatingPanelTransition())
+      }
     }
     .width(this.getKeyboardToolsCurrentWidth())
     .height(this.getKeyboardToolsCurrentHeight())
@@ -3034,6 +3748,31 @@ struct RemotePage {
     return this.pageWidth >= 840;
   }
 
+  isHandheldDevice(): boolean {
+    return deviceInfo.deviceType === 'phone' || deviceInfo.deviceType === 'tablet';
+  }
+
+  isHandheldLandscape(): boolean {
+    return this.isHandheldDevice() && this.pageWidth > this.pageHeight && this.pageHeight > 0;
+  }
+
+  handleHandheldLayoutChange(): void {
+    if (!this.isHandheldDevice() || this.pageWidth <= 0 || this.pageHeight <= 0) return;
+    const landscape: boolean = this.isHandheldLandscape();
+    if (!this.handheldLayoutInitialized || landscape !== this.lastHandheldLandscape) {
+      this.handheldLayoutInitialized = true;
+      this.lastHandheldLandscape = landscape;
+      this.keyboardToolsOffsetX = 0;
+      this.keyboardToolsOffsetY = 0;
+      this.remoteToolbarOffsetX = 0;
+      this.remoteToolbarOffsetY = 0;
+      this.virtualMouseInitialized = false;
+      if (this.showVirtualMouse) this.initializeVirtualMousePosition(true);
+      RustDeskNapi.appendDiagnosticLog('remote-ui',
+        `handheld_orientation=${landscape ? 'landscape' : 'portrait'} floating_positions_reset=1`);
+    }
+  }
+
   startToolbarTimer(): void {
     if (this.toolbarTimer !== -1) { clearTimeout(this.toolbarTimer); }
     this.toolbarTimer = setTimeout(() => {
@@ -3074,6 +3813,52 @@ struct RemotePage {
 
   loadEdgeAutoPanPreference(): void {
     this.edgeAutoPanEnabled = RustDeskNapi.getOption('edge-auto-pan-enabled') === '1';
+  }
+
+  loadVirtualMousePreference(): void {
+    this.showVirtualMouse = RustDeskNapi.getOption('show-virtual-mouse') === '1';
+  }
+
+  setVirtualMouseEnabled(enabled: boolean): void {
+    this.releaseVirtualMouseButtons();
+    this.showVirtualMouse = enabled;
+    RustDeskNapi.setOption('show-virtual-mouse', enabled ? '1' : '0');
+    if (enabled) {
+      this.ensurePointerInitialized();
+      this.initializeVirtualMousePosition(true);
+      this.syncVirtualMouseToCurrentPointer();
+    } else {
+      this.virtualMouseDragActive = false;
+      this.virtualMouseInitialized = false;
+      this.virtualMouseLastTouchResolvedAt = 0;
+      this.resetVirtualMouseButtonTouch();
+      this.resetVirtualMouseWheelTouch();
+      this.stopEdgeAutoPan();
+    }
+    RustDeskNapi.appendDiagnosticLog('input', `virtual_mouse enabled=${enabled ? 1 : 0}`);
+  }
+
+  loadToolbarOrderPreferences(): void {
+    this.controlToolbarOrder = this.readToolbarOrder(
+      'remote-control-toolbar-order', CONTROL_TOOLBAR_DEFAULT_ORDER);
+    this.keyboardToolbarOrder = this.readToolbarOrder(
+      'remote-keyboard-toolbar-order', KEYBOARD_TOOLBAR_DEFAULT_ORDER);
+  }
+
+  readToolbarOrder(optionKey: string, defaults: string[]): string[] {
+    const saved: string = RustDeskNapi.getOption(optionKey);
+    if (saved.length === 0) return defaults.slice();
+    const parts: string[] = saved.split(',').filter((item: string) => defaults.indexOf(item) >= 0);
+    for (const item of defaults) {
+      if (parts.indexOf(item) < 0) parts.push(item);
+    }
+    return parts.length === defaults.length ? parts : defaults.slice();
+  }
+
+  saveToolbarOrder(kind: string): void {
+    const order: string[] = kind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder;
+    RustDeskNapi.setOption(kind === 'keyboard' ?
+      'remote-keyboard-toolbar-order' : 'remote-control-toolbar-order', order.join(','));
   }
 
   setEdgeAutoPanEnabled(enabled: boolean): void {
@@ -3267,7 +4052,7 @@ struct RemotePage {
     }
 
     if (event.touches.length <= 0) {
-      if (this.isPanMode) {
+      if (this.isPanMode || (this.showVirtualMouse && this.isHandheldDevice() && this.canPanViewport())) {
         this.finishViewportPan();
       } else {
         this.finishSingleTouch(event.type === TouchType.Cancel);
@@ -3294,7 +4079,9 @@ struct RemotePage {
       return;
     }
 
-    if (this.isPanMode) {
+    // RustDesk-style virtual mouse owns pointer movement. Once the canvas is
+    // enlarged, a one-finger drag anywhere outside the mouse pans the canvas.
+    if ((this.showVirtualMouse && this.isHandheldDevice() && this.canPanViewport()) || this.isPanMode) {
       this.handleViewportPan(event);
       return;
     }
@@ -4504,6 +5291,7 @@ struct RemotePage {
       this.viewportPanLastY = touch.y;
       this.offsetX = this.clampHorizontalOffset(this.offsetX + deltaX, this.zoomScale);
       this.offsetY = this.clampVerticalOffset(this.offsetY + deltaY, this.zoomScale);
+      this.syncVirtualMouseToCurrentPointer();
       return;
     }
     if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
@@ -4536,6 +5324,7 @@ struct RemotePage {
     if (!this.canPanViewport()) {
       this.stopEdgeAutoPan();
     }
+    this.syncVirtualMouseToCurrentPointer();
   }
 
   adjustZoom(delta: number): void {
@@ -4556,6 +5345,7 @@ struct RemotePage {
     this.offsetY += (anchorY - centerY) * (this.zoomScale - nextScale);
     this.zoomScale = nextScale;
     this.clampViewportOffset();
+    this.syncVirtualMouseToCurrentPointer();
     if (!this.canPanViewport() && this.isPanMode) {
       this.setPanMode(false);
     }
@@ -4697,11 +5487,15 @@ struct RemotePage {
   }
 
   getRemoteToolbarWidth(): number {
+    if (this.isHandheldLandscape()) return 104;
     const available: number = Math.max(280, (this.pageWidth > 0 ? this.pageWidth : 360) - 16);
     return Math.min(720, available);
   }
 
   getRemoteToolbarHeight(): number {
+    if (this.isHandheldLandscape()) {
+      return Math.max(150, Math.min(520, (this.pageHeight > 0 ? this.pageHeight : 360) - 16));
+    }
     return 54;
   }
 
@@ -4718,11 +5512,16 @@ struct RemotePage {
   }
 
   getRemoteToolbarBaseX(): number {
-    return Math.max(8, ((this.pageWidth > 0 ? this.pageWidth : 360) - this.getRemoteToolbarWidth()) / 2);
+    const width: number = this.pageWidth > 0 ? this.pageWidth : 360;
+    if (this.isHandheldLandscape()) {
+      return Math.max(8, width - this.getRemoteToolbarCurrentWidth() - 8);
+    }
+    return Math.max(8, (width - this.getRemoteToolbarWidth()) / 2);
   }
 
   getRemoteToolbarBaseY(): number {
     const height: number = this.pageHeight > 0 ? this.pageHeight : 640;
+    if (this.isHandheldLandscape()) return 8;
     return Math.max(8, height - this.getRemoteToolbarHeight() - 18);
   }
 
@@ -4730,7 +5529,7 @@ struct RemotePage {
     const width: number = this.pageWidth > 0 ? this.pageWidth : 360;
     const baseX: number = this.getRemoteToolbarBaseX();
     const minOffset: number = 8 - baseX;
-    const maxOffset: number = width - this.getRemoteToolbarWidth() - 8 - baseX;
+    const maxOffset: number = width - this.getRemoteToolbarCurrentWidth() - 8 - baseX;
     return Math.max(minOffset, Math.min(maxOffset, offset));
   }
 
@@ -4738,7 +5537,7 @@ struct RemotePage {
     const height: number = this.pageHeight > 0 ? this.pageHeight : 640;
     const baseY: number = this.getRemoteToolbarBaseY();
     const minOffset: number = 8 - baseY;
-    const maxOffset: number = height - this.getRemoteToolbarHeight() - 8 - baseY;
+    const maxOffset: number = height - this.getRemoteToolbarCurrentHeight() - 8 - baseY;
     return Math.max(minOffset, Math.min(maxOffset, offset));
   }
 
@@ -4761,6 +5560,7 @@ struct RemotePage {
   }
 
   getKeyboardToolsWidth(): number {
+    if (this.isHandheldLandscape()) return 112;
     const available: number = Math.max(272, (this.pageWidth > 0 ? this.pageWidth : 360) - 12);
     return Math.min(this.isLargeLayout() ? 720 : 520, available);
   }
@@ -4770,6 +5570,9 @@ struct RemotePage {
   }
 
   getKeyboardToolsHeight(): number {
+    if (this.isHandheldLandscape()) {
+      return Math.max(150, Math.min(540, (this.pageHeight > 0 ? this.pageHeight : 360) - 16));
+    }
     return this.showKeyboardFunctionKeys || this.showKeyboardMoreKeys ? 98 : 54;
   }
 
@@ -4786,6 +5589,7 @@ struct RemotePage {
   }
 
   getKeyboardToolsBaseX(): number {
+    if (this.isHandheldLandscape()) return 8;
     return Math.max(8, ((this.pageWidth > 0 ? this.pageWidth : 360) - this.getKeyboardToolsWidth()) / 2);
   }
 
@@ -4797,7 +5601,7 @@ struct RemotePage {
     const width: number = this.pageWidth > 0 ? this.pageWidth : 360;
     const baseX: number = this.getKeyboardToolsBaseX();
     const minOffset: number = 8 - baseX;
-    const maxOffset: number = width - this.getKeyboardToolsWidth() - 8 - baseX;
+    const maxOffset: number = width - this.getKeyboardToolsCurrentWidth() - 8 - baseX;
     return Math.max(minOffset, Math.min(maxOffset, offset));
   }
 
@@ -4805,7 +5609,7 @@ struct RemotePage {
     const height: number = this.pageHeight > 0 ? this.pageHeight : 640;
     const baseY: number = this.getKeyboardToolsBaseY();
     const minOffset: number = 8 - baseY;
-    const maxOffset: number = height - this.getKeyboardToolsHeight() - 8 - baseY;
+    const maxOffset: number = height - this.getKeyboardToolsCurrentHeight() - 8 - baseY;
     return Math.max(minOffset, Math.min(maxOffset, offset));
   }
 
@@ -6001,6 +6805,8 @@ struct RemotePage {
     this.cancelActiveTouchGesture();
     this.stopEdgeAutoPan();
     this.currentDisplay = display;
+    this.virtualMouseDragActive = false;
+    this.virtualMouseInitialized = false;
     this.showCursor = false;
     this.remoteCursorEmbedded = false;
     this.embeddedCursorOverlayFallback = false;
