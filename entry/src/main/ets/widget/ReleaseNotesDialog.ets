@@ -2,7 +2,7 @@ import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
 export const RELEASE_NOTES_BUILD: string = '1002001'
-export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
+export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}-toolbar-order-r2`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
@@ -45,6 +45,8 @@ export struct ReleaseNotesDialog {
       Scroll() {
         Column({ space: 16 }) {
           this.buildSection('1.2.0（1002001）· 虚拟鼠标与横屏操控', [
+            '优化“键 / 控”按钮排序：排序列表改为长按后上下拖动，替代上移、下移按钮，松手自动保存，并支持恢复默认顺序。',
+            '“键 → 更多”中的按键和组合键新增独立排序；长按任意按键进入排序列表，重新打开或重启应用后保留顺序，不影响主快捷栏。',
             '手机和平板新增可开关的虚拟鼠标，支持左右键点击、按住拖动、滚轮滚动和中键操作，并记住开关状态。',
             '虚拟鼠标采用透明蓝灰玻璃外观、细描边和淡蓝色按下反馈，清晰区分左右键、滚轮与移动区域。',
             '修复虚拟鼠标与远端光标漂移、缩放和平移后位置不同步的问题，改善多屏切换后的光标对齐。',

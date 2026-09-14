@@ -58,7 +58,7 @@ assert.match(page, /sendPresetShortcut\(46, MODIFIER_MASK_CTRL \| MODIFIER_MASK_
   'Ctrl+Shift+Del preset must use a modifier snapshot');
 for (const label of ['Ctrl+Shift+Esc', 'Ctrl+Shift+Del', 'Alt+F4', 'Ctrl+Alt+Del']) {
   const escaped = label.replace(/[+]/g, '\\+');
-  assert.match(page, new RegExp(`buildKeyboardToolButton\\('${escaped}'[\\s\\S]*?\\}, false\\)`),
+  assert.match(page, new RegExp(`buildKeyboardToolButton\\('${escaped}'[\\s\\S]*?\\}, false, item, 'keyboardMore'\\)`),
     `${label} must not refocus the hidden input and reopen the software keyboard`);
 }
 assert.match(page, /KEYBOARD_CAPTURE_SENTINEL/,

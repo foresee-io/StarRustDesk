@@ -91,6 +91,10 @@ const CONTROL_TOOLBAR_DEFAULT_ORDER: string[] = [
 const KEYBOARD_TOOLBAR_DEFAULT_ORDER: string[] = [
   'ctrl', 'alt', 'shift', 'meta', 'function', 'more', 'release'
 ];
+const KEYBOARD_MORE_DEFAULT_ORDER: string[] = [
+  'Esc', 'Tab', 'Home', 'End', 'Ins', 'Del', 'PgUp', 'PgDn',
+  'Ctrl+Shift+Esc', 'Ctrl+Shift+Del', 'Alt+F4', 'Ctrl+Alt+Del'
+];
 const LOG_DOMAIN: number = 0x0000;
 
 @Component
@@ -155,6 +159,7 @@ struct RemotePage {
   @State toolbarOrderEditorKind: string = 'control';
   @State controlToolbarOrder: string[] = CONTROL_TOOLBAR_DEFAULT_ORDER.slice();
   @State keyboardToolbarOrder: string[] = KEYBOARD_TOOLBAR_DEFAULT_ORDER.slice();
+  @State keyboardMoreOrder: string[] = KEYBOARD_MORE_DEFAULT_ORDER.slice();
   @State showKeyboardFunctionKeys: boolean = false;
   @State showKeyboardMoreKeys: boolean = false;
   @State virtualCtrlSelected: boolean = false;
@@ -2178,20 +2183,25 @@ struct RemotePage {
     }
   }
 
-  moveToolbarOrderItem(kind: string, index: number, delta: number): void {
-    const source: string[] = kind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder;
-    const target: number = index + delta;
-    if (index < 0 || index >= source.length || target < 0 || target >= source.length) return;
+  moveToolbarOrderItem(kind: string, index: number, target: number): void {
+    const source: string[] = kind === 'keyboardMore' ? this.keyboardMoreOrder :
+      (kind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder);
+    if (!Number.isInteger(index) || !Number.isInteger(target) || index === target ||
+      index < 0 || index >= source.length || target < 0 || target >= source.length) return;
     const updated: string[] = source.slice();
     const item: string = updated[index];
     updated.splice(index, 1);
     updated.splice(target, 0, item);
-    if (kind === 'keyboard') this.keyboardToolbarOrder = updated; else this.controlToolbarOrder = updated;
+    if (kind === 'keyboardMore') this.keyboardMoreOrder = updated;
+    else if (kind === 'keyboard') this.keyboardToolbarOrder = updated;
+    else this.controlToolbarOrder = updated;
     this.saveToolbarOrder(kind);
   }
 
   resetToolbarOrder(kind: string): void {
-    if (kind === 'keyboard') {
+    if (kind === 'keyboardMore') {
+      this.keyboardMoreOrder = KEYBOARD_MORE_DEFAULT_ORDER.slice();
+    } else if (kind === 'keyboard') {
       this.keyboardToolbarOrder = KEYBOARD_TOOLBAR_DEFAULT_ORDER.slice();
     } else {
       this.controlToolbarOrder = CONTROL_TOOLBAR_DEFAULT_ORDER.slice();
@@ -2205,11 +2215,12 @@ struct RemotePage {
       Column({ space: 12 }) {
         Row() {
           Column({ space: 2 }) {
-            Text(this.toolbarOrderEditorKind === 'keyboard' ? '调整“键”按钮顺序' : '调整“控”按钮顺序')
+            Text(this.toolbarOrderEditorKind === 'keyboardMore' ? '调整“更多”按键顺序' :
+              (this.toolbarOrderEditorKind === 'keyboard' ? '调整“键”按钮顺序' : '调整“控”按钮顺序'))
               .fontSize(20)
               .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
               .fontColor(this.primaryTextColor())
-            Text('长按功能按钮可再次打开；使用箭头调整显示顺序')
+            Text('长按条目上下拖动，松手自动保存顺序')
               .fontSize(11)
               .fontColor(this.secondaryTextColor())
           }
@@ -2225,10 +2236,11 @@ struct RemotePage {
         }
         .width('100%')
 
-        Scroll() {
-          Column({ space: 6 }) {
-            ForEach(this.toolbarOrderEditorKind === 'keyboard' ?
-              this.keyboardToolbarOrder : this.controlToolbarOrder, (item: string, index: number) => {
+        List({ space: 6 }) {
+            ForEach(this.toolbarOrderEditorKind === 'keyboardMore' ? this.keyboardMoreOrder :
+              (this.toolbarOrderEditorKind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder),
+              (item: string, index: number) => {
+              ListItem() {
               Row({ space: 8 }) {
                 Text(`${index + 1}`)
                   .width(28)
@@ -2239,25 +2251,30 @@ struct RemotePage {
                   .layoutWeight(1)
                   .fontSize(14)
                   .fontColor(this.primaryTextColor())
-                Button('↑')
-                  .width(38).height(34).padding(0).fontSize(16)
-                  .enabled(index > 0)
-                  .onClick(() => { this.moveToolbarOrderItem(this.toolbarOrderEditorKind, index, -1); })
-                Button('↓')
-                  .width(38).height(34).padding(0).fontSize(16)
-                  .enabled(index < (this.toolbarOrderEditorKind === 'keyboard' ?
-                    this.keyboardToolbarOrder.length : this.controlToolbarOrder.length) - 1)
-                  .onClick(() => { this.moveToolbarOrderItem(this.toolbarOrderEditorKind, index, 1); })
+                Column({ space: 4 }) {
+                  Blank().width(16).height(1.5).backgroundColor(this.secondaryTextColor()).borderRadius(1)
+                  Blank().width(16).height(1.5).backgroundColor(this.secondaryTextColor()).borderRadius(1)
+                  Blank().width(16).height(1.5).backgroundColor(this.secondaryTextColor()).borderRadius(1)
+                }
+                .width(36)
+                .height(42)
+                .justifyContent(FlexAlign.Center)
+                .opacity(0.65)
+                .hitTestBehavior(HitTestMode.None)
               }
               .width('100%')
-              .height(42)
-              .padding({ left: 6, right: 6 })
+              .height(48)
+              .padding({ left: 6, right: 8 })
               .backgroundColor(this.mutedSurfaceColor())
-              .borderRadius(8)
+              .borderRadius(12)
+              }
+              .accessibilityText(`${this.toolbarOrderLabel(item)}，长按拖动调整顺序`)
             }, (item: string) => `order-${this.toolbarOrderEditorKind}-${item}`)
-          }
-          .width('100%')
+            .onMove((from: number, to: number) => {
+              this.moveToolbarOrderItem(this.toolbarOrderEditorKind, from, to);
+            })
         }
+        .width('100%')
         .layoutWeight(1)
         .scrollBar(BarState.Auto)
 
@@ -3293,7 +3310,7 @@ struct RemotePage {
   @Builder
   buildKeyboardToolButton(label: string, buttonWidth: number, selected: boolean,
     danger: boolean, enabled: boolean, onClick: () => void, refocusAfterClick: boolean = true,
-    orderKey: string = '') {
+    orderKey: string = '', orderKind: string = 'keyboard') {
     Button(label)
       .width(buttonWidth)
       .height(38)
@@ -3312,7 +3329,7 @@ struct RemotePage {
       .opacity(enabled ? 1 : 0.5)
       .focusable(false)
       .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
-        if (orderKey.length > 0) this.openToolbarOrderEditor('keyboard', orderKey);
+        if (orderKey.length > 0) this.openToolbarOrderEditor(orderKind, orderKey);
       }))
       .onClick(() => {
         onClick();
@@ -3408,43 +3425,63 @@ struct RemotePage {
 
   @Builder
   buildKeyboardMoreItems(vertical: boolean) {
+    ForEach(this.keyboardMoreOrder, (item: string) => {
+      this.buildKeyboardMoreItem(item, vertical)
+    }, (item: string) => `keyboard-more-${item}-${this.canSendCtrlAltDel ? 1 : 0}`)
+  }
+
+  @Builder
+  buildKeyboardMoreItem(item: string, vertical: boolean) {
+    if (item === 'Esc') {
     this.buildKeyboardToolButton('Esc', vertical ? 96 : 50, false, false, true, () => {
       this.sendVirtualControlKey(27, 'Esc');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'Tab') {
     this.buildKeyboardToolButton('Tab', vertical ? 96 : 50, false, false, true, () => {
       this.sendVirtualControlKey(9, 'Tab');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'Home') {
     this.buildKeyboardToolButton('Home', vertical ? 96 : 58, false, false, true, () => {
       this.sendVirtualControlKey(36, 'Home');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'End') {
     this.buildKeyboardToolButton('End', vertical ? 96 : 50, false, false, true, () => {
       this.sendVirtualControlKey(35, 'End');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'Ins') {
     this.buildKeyboardToolButton('Ins', vertical ? 96 : 48, false, false, true, () => {
       this.sendVirtualControlKey(45, 'Insert');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'Del') {
     this.buildKeyboardToolButton('Del', vertical ? 96 : 48, false, false, true, () => {
       this.sendVirtualControlKey(46, 'Delete');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'PgUp') {
     this.buildKeyboardToolButton('PgUp', vertical ? 96 : 58, false, false, true, () => {
       this.sendVirtualControlKey(33, 'PageUp');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'PgDn') {
     this.buildKeyboardToolButton('PgDn', vertical ? 96 : 58, false, false, true, () => {
       this.sendVirtualControlKey(34, 'PageDown');
-    })
+    }, true, item, 'keyboardMore')
+    } else if (item === 'Ctrl+Shift+Esc') {
     this.buildKeyboardToolButton('Ctrl+Shift+Esc', vertical ? 96 : 112, false, false, true, () => {
       this.sendPresetShortcut(27, MODIFIER_MASK_CTRL | MODIFIER_MASK_SHIFT, 'Ctrl+Shift+Esc');
-    }, false)
+    }, false, item, 'keyboardMore')
+    } else if (item === 'Ctrl+Shift+Del') {
     this.buildKeyboardToolButton('Ctrl+Shift+Del', vertical ? 96 : 112, false, false, true, () => {
       this.sendPresetShortcut(46, MODIFIER_MASK_CTRL | MODIFIER_MASK_SHIFT, 'Ctrl+Shift+Del');
-    }, false)
+    }, false, item, 'keyboardMore')
+    } else if (item === 'Alt+F4') {
     this.buildKeyboardToolButton('Alt+F4', vertical ? 96 : 72, false, false, true, () => {
       this.sendPresetShortcut(115, MODIFIER_MASK_ALT, 'Alt+F4');
-    }, false)
+    }, false, item, 'keyboardMore')
+    } else if (item === 'Ctrl+Alt+Del') {
     if (this.canSendCtrlAltDel) {
       this.buildKeyboardToolButton('Ctrl+Alt+Del', vertical ? 96 : 104, false, true, true, () => {
         this.sendCtrlAltDel();
-      }, false)
+      }, false, item, 'keyboardMore')
+    }
     }
   }
 
@@ -3843,6 +3880,8 @@ struct RemotePage {
       'remote-control-toolbar-order', CONTROL_TOOLBAR_DEFAULT_ORDER);
     this.keyboardToolbarOrder = this.readToolbarOrder(
       'remote-keyboard-toolbar-order', KEYBOARD_TOOLBAR_DEFAULT_ORDER);
+    this.keyboardMoreOrder = this.readToolbarOrder(
+      'remote-keyboard-more-order', KEYBOARD_MORE_DEFAULT_ORDER);
   }
 
   readToolbarOrder(optionKey: string, defaults: string[]): string[] {
@@ -3856,9 +3895,11 @@ struct RemotePage {
   }
 
   saveToolbarOrder(kind: string): void {
-    const order: string[] = kind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder;
-    RustDeskNapi.setOption(kind === 'keyboard' ?
-      'remote-keyboard-toolbar-order' : 'remote-control-toolbar-order', order.join(','));
+    const order: string[] = kind === 'keyboardMore' ? this.keyboardMoreOrder :
+      (kind === 'keyboard' ? this.keyboardToolbarOrder : this.controlToolbarOrder);
+    const option: string = kind === 'keyboardMore' ? 'remote-keyboard-more-order' :
+      (kind === 'keyboard' ? 'remote-keyboard-toolbar-order' : 'remote-control-toolbar-order');
+    RustDeskNapi.setOption(option, order.join(','));
   }
 
   setEdgeAutoPanEnabled(enabled: boolean): void {

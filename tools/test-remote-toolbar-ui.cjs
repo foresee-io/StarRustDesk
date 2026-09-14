@@ -88,4 +88,50 @@ expect(remotePage, /Button\('⌄'\)[\s\S]*?\.position\(\{ x: 29, y: 0 \}\)[\s\S]
 expect(remotePage, /setKeyboardAvoidMode\(KeyboardAvoidMode\.RESIZE\)/,
   'the keyboard must resize the remote viewport instead of covering landscape content')
 
+// Exercise the production reorder handler, including moves across multiple rows.
+const assert = require('node:assert/strict')
+const reorderBody = remotePage.slice(
+  remotePage.indexOf('  moveToolbarOrderItem('),
+  remotePage.indexOf('  resetToolbarOrder(')
+).replace(/: string\[\]|: string|: number|: void/g, '')
+const reorder = new Function(`return ({${reorderBody}}).moveToolbarOrderItem`)()
+const saved = []
+const state = {
+  keyboardToolbarOrder: ['ctrl', 'alt', 'shift', 'meta'],
+  controlToolbarOrder: ['displays', 'input', 'keyboard', 'disconnect'],
+  keyboardMoreOrder: ['Esc', 'Tab', 'Home', 'Ctrl+Alt+Del'],
+  saveToolbarOrder(kind) { saved.push(kind) }
+}
+const original = state.keyboardToolbarOrder
+reorder.call(state, 'keyboard', 0, 3)
+assert.deepEqual(state.keyboardToolbarOrder, ['alt', 'shift', 'meta', 'ctrl'])
+assert.deepEqual(original, ['ctrl', 'alt', 'shift', 'meta'])
+reorder.call(state, 'keyboard', 3, 0)
+assert.deepEqual(state.keyboardToolbarOrder, original)
+reorder.call(state, 'control', 3, 1)
+assert.deepEqual(state.controlToolbarOrder, ['displays', 'disconnect', 'input', 'keyboard'])
+reorder.call(state, 'keyboardMore', 3, 0)
+assert.deepEqual(state.keyboardMoreOrder, ['Ctrl+Alt+Del', 'Esc', 'Tab', 'Home'])
+assert.deepEqual(state.keyboardToolbarOrder, original)
+assert.deepEqual(state.controlToolbarOrder, ['displays', 'disconnect', 'input', 'keyboard'])
+assert.equal(saved.at(-1), 'keyboardMore')
+const preferenceMethods = remotePage.slice(
+  remotePage.indexOf('  readToolbarOrder('), remotePage.indexOf('  setEdgeAutoPanEnabled(')
+).replace(/: string\[\]|: string|: number|: void/g, '')
+const options = new Map()
+const preferences = new Function('RustDeskNapi', `return new class {${preferenceMethods}}` )({
+  getOption(key) { return options.get(key) || '' },
+  setOption(key, value) { options.set(key, value) }
+})
+preferences.saveToolbarOrder.call(state, 'keyboardMore')
+assert.equal(options.get('remote-keyboard-more-order'), 'Ctrl+Alt+Del,Esc,Tab,Home')
+assert.equal(options.size, 1, 'More-key ordering must not overwrite either main toolbar preference')
+assert.deepEqual(preferences.readToolbarOrder('remote-keyboard-more-order',
+  ['Esc', 'Tab', 'Home', 'Ctrl+Alt+Del', 'Del']), ['Ctrl+Alt+Del', 'Esc', 'Tab', 'Home', 'Del'])
+for (const [from, to] of [[0, 0], [-1, 2], [0, 4], [0, 1.5], [NaN, 1]]) {
+  reorder.call(state, 'control', from, to)
+}
+assert.deepEqual(saved, ['keyboard', 'keyboard', 'control', 'keyboardMore'])
+assert.deepEqual(state.controlToolbarOrder, ['displays', 'disconnect', 'input', 'keyboard'])
+console.log('PASS native toolbar reorder: cross-row moves, independent lists, immutable updates and persistence')
 console.log('PASS remote toolbar, virtual mouse, landscape placement and ordering controls')
