@@ -86,7 +86,39 @@ expect(remotePage, /VIRTUAL_MOUSE_WHEEL_BUTTON_STEP:\s*number\s*=\s*3[\s\S]*send
 expect(remotePage, /Button\('⌄'\)[\s\S]*?\.position\(\{ x: 29, y: 0 \}\)[\s\S]*?\.zIndex\(2\)/,
   'virtual wheel controls must stay above the overlapping mouse drag body')
 expect(remotePage, /setKeyboardAvoidMode\(KeyboardAvoidMode\.RESIZE\)/,
-  'the keyboard must resize the remote viewport instead of covering landscape content')
+  'the keyboard must resize the available area for floating controls')
+expect(remotePage, /\.height\(this\.getRemoteCanvasHeight\(\)\)[\s\S]*?minHeight: this\.keyboardViewportHeight[\s\S]*?\.align\(Alignment.Center\)/,
+  'the landscape canvas keeps its full height and moves upward inside the clipped available area')
+expect(remotePage, /keyboardViewportHeight = this\.isHandheldLandscape\(\) \? this\.componentHeight : 0/,
+  'opening the keyboard must snapshot the unscaled viewport height, not recompute a smaller fit')
+expect(remotePage, /keyboardToolsCollapsed = !landscape;[\s\S]*?if \(landscape\) this\.remoteToolbarCollapsed = false/,
+  'entering handheld landscape must expand both toolbars')
+
+// Execute production orientation/canvas logic: IME resize is not a rotation.
+const layoutMethods = remotePage.slice(remotePage.indexOf('  isHandheldLandscape():'),
+  remotePage.indexOf('  startToolbarTimer():'))
+  .replace(/: number \| string|: boolean|: number|: void/g, '')
+const layout = new Function('RustDeskNapi', `return new class {${layoutMethods}}`)({ appendDiagnosticLog() {} })
+layout.isHandheldDevice = () => true
+Object.assign(layout, { pageWidth: 800, pageHeight: 400, showKeyboardPanel: false,
+  keyboardLayoutHeight: 0, keyboardViewportHeight: 0, handheldLayoutInitialized: false,
+  keyboardToolsCollapsed: true, remoteToolbarCollapsed: true, showVirtualMouse: false })
+layout.handleHandheldLayoutChange()
+require('node:assert/strict').equal(layout.keyboardToolsCollapsed, false)
+require('node:assert/strict').equal(layout.remoteToolbarCollapsed, false)
+layout.keyboardToolsCollapsed = true // Explicit user collapse survives IME show/hide.
+Object.assign(layout, { showKeyboardPanel: true, keyboardLayoutHeight: 400,
+  keyboardViewportHeight: 350, pageHeight: 170 })
+layout.handleHandheldLayoutChange()
+require('node:assert/strict').equal(layout.keyboardToolsCollapsed, true)
+require('node:assert/strict').equal(layout.getRemoteCanvasHeight(), 350)
+// Same remote size and zoom: the fit stays unchanged, center moves up 115vp.
+require('node:assert/strict').equal(Math.min(800 / 1920, layout.getRemoteCanvasHeight() / 1080), 350 / 1080)
+Object.assign(layout, { pageWidth: 400, pageHeight: 300, keyboardLayoutHeight: 800,
+  keyboardViewportHeight: 0 })
+require('node:assert/strict').equal(layout.isHandheldLandscape(), false)
+require('node:assert/strict').equal(layout.getRemoteCanvasHeight(), '100%')
+console.log('PASS landscape expanded defaults and fixed-scale keyboard canvas')
 
 // Exercise the production reorder handler, including moves across multiple rows.
 const assert = require('node:assert/strict')

@@ -1,7 +1,9 @@
+import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { common } from '@kit.AbilityKit'
 import { promptAction, router } from '@kit.ArkUI'
 import { fileIo, picker } from '@kit.CoreFileKit'
 import { util } from '@kit.ArkTS'
+import { deviceInfo } from '@kit.BasicServicesKit'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 import { translate } from '../utils/I18n'
 import { ConnectionService } from '../service/ConnectionService'
@@ -62,6 +64,7 @@ const PEER_STATE_QUERY_TIMEOUT_MS: number = 12000
 
 @Component
 export struct ConnectionPage {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @State connectionName: string = ''
   @State remoteId: string = ''
   @State focusedConnectionField: string = ''
@@ -81,6 +84,16 @@ export struct ConnectionPage {
   @State performancePreset: string = 'smooth'
   @State hasOpenedRemotePage: boolean = false
   @State pageWidth: number = 0
+  @State pageFullHeight: number = 0
+  @State tabletEditorVisible: boolean = false
+  @State savingConnection: boolean = false
+  @State saveTipVisible: boolean = false
+  @State saveTipOpacity: number = 1
+  @State saveTipOffsetY: number = 0
+  private saveTipTimer: number = -1
+  private saveTipRemoveTimer: number = -1
+  private saveTipGeneration: number = 0
+  private savePageActive: boolean = false
   @State savedConnections: SavedConnectionInfo[] = []
   @State selectedConnectionId: string = ''
   @State selectedGroupId: string = ''
@@ -128,6 +141,7 @@ export struct ConnectionPage {
   private peerStateServer: string = ''
 
   aboutToAppear(): void {
+    this.savePageActive = true
     this.checkServerConfig()
     this.loadConnectionFormState()
     this.loadConnectionGroups()
@@ -138,6 +152,8 @@ export struct ConnectionPage {
   }
 
   aboutToDisappear(): void {
+    this.savePageActive = false
+    this.clearSaveTip()
     if (this.statusTimer !== -1) {
       clearTimeout(this.statusTimer)
       this.statusTimer = -1
@@ -230,7 +246,25 @@ export struct ConnectionPage {
           this.buildUpdateBanner()
         }
         this.buildPageHeader()
-        if (this.pageWidth >= 820) {
+        if (this.isTabletWideLayout()) {
+          Column({ space: 14 }) {
+            this.buildTabletQuickConnect()
+            Scroll() {
+              Column() {
+                this.buildSavedConnections()
+              }
+              .width('100%')
+              .padding({ bottom: 94 })
+            }
+            .width('100%')
+            .layoutWeight(1)
+            .align(Alignment.Top)
+            .scrollBar(BarState.Auto)
+            .edgeEffect(EdgeEffect.Spring)
+          }
+          .width('100%')
+          .layoutWeight(1)
+        } else if (this.pageWidth >= 820 && deviceInfo.deviceType !== 'tablet') {
           Row({ space: 18 }) {
             Scroll() {
               Column() {
@@ -282,6 +316,50 @@ export struct ConnectionPage {
       .padding({ left: this.pageWidth >= 820 ? 32 : RustDeskTheme.PAGE_PADDING, right: this.pageWidth >= 820 ? 32 : RustDeskTheme.PAGE_PADDING })
       .alignItems(HorizontalAlign.Center)
 
+      if (this.isTabletWideLayout() && this.tabletEditorVisible) {
+        Row() {
+          Column()
+            .layoutWeight(1)
+            .height('100%')
+            .backgroundColor('#44000000')
+            .onClick(() => { this.setTabletEditorVisible(false) })
+          Scroll() {
+            Column() {
+              this.buildConnectionForm()
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 20, bottom: 94 })
+          }
+          .width(Math.min(440, this.pageWidth * 0.48))
+          .height('100%')
+          .align(Alignment.Top)
+          .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
+          .scrollBar(BarState.Auto)
+        }
+        .width('100%')
+        .height('100%')
+        .zIndex(8)
+        .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ x: 40 }))
+          .animation({ duration: 240, curve: Curve.EaseInOut }))
+      }
+
+      if (this.saveTipVisible) {
+        Text('已保存')
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.isDarkMode ? '#DCEBFF' : '#215FAE')
+          .padding({ left: 24, right: 24, top: 12, bottom: 12 })
+          .backgroundColor(this.isDarkMode ? '#EE243448' : '#F2E5F0FF')
+          .border({ width: 1, color: this.isDarkMode ? '#557B9BC1' : '#AAC7DFFF' })
+          .borderRadius(22)
+          .shadow({ radius: 12, color: '#18000000', offsetY: 3 })
+          .opacity(this.saveTipOpacity)
+          .translate({ y: this.saveTipOffsetY })
+          .zIndex(30)
+          .hitTestBehavior(HitTestMode.None)
+          .accessibilityText('连接已保存')
+      }
+
       if (this.showGroupNameDialog || this.showGroupPicker || this.showConnectionPasswordDialog ||
         this.showBackupPasswordDialog || this.showImportPreviewDialog) {
         Column()
@@ -309,8 +387,51 @@ export struct ConnectionPage {
     .width('100%')
     .height('100%')
     .onAreaChange((oldValue: Area, newValue: Area) => {
+      // IME resizing must not turn a portrait tablet into the landscape layout.
+      const nextWidth: number = newValue.width as number
+      const nextHeight: number = newValue.height as number
+      this.pageFullHeight = Math.abs(nextWidth - this.pageWidth) > 32 ?
+        nextHeight : Math.max(this.pageFullHeight, nextHeight)
       this.pageWidth = newValue.width as number
     })
+  }
+
+  isTabletWideLayout(): boolean {
+    return deviceInfo.deviceType === 'tablet' && this.pageWidth >= 820 &&
+      this.pageWidth > this.pageFullHeight
+  }
+
+  setTabletEditorVisible(visible: boolean): void {
+    if (visible) this.connectionFormExpanded = true
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut }, () => {
+      this.tabletEditorVisible = visible
+    })
+  }
+
+  @Builder
+  buildTabletQuickConnect() {
+    Row({ space: 20 }) {
+      Text(this.selectedConnectionId.length > 0 ? '编辑连接' : '新建连接')
+        .fontSize(20)
+        .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+        .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+      Column() {
+        this.buildRemoteIdInput()
+      }
+      .layoutWeight(1)
+      Button('更多选项 ›')
+        .height(44)
+        .fontSize(14)
+        .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
+        .backgroundColor(Color.Transparent)
+        .onClick(() => { this.setTabletEditorVisible(true) })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_CARD_DARK : RustDeskTheme.HOME_CARD)
+    .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.HOME_BORDER_DARK : RustDeskTheme.HOME_BORDER })
+    .borderRadius(RustDeskTheme.HOME_CARD_RADIUS)
   }
 
   @Builder
@@ -360,15 +481,21 @@ export struct ConnectionPage {
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Button(this.connectionFormExpanded ? '收起选项⌃' : '更多选项›')
+        Button(this.isTabletWideLayout() ? '关闭 ×' :
+          (this.connectionFormExpanded ? '收起选项⌃' : '更多选项›'))
           .height(34)
           .fontSize(14)
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .backgroundColor(Color.Transparent)
           .padding({ left: 8, right: 4 })
           .onClick(() => {
-            this.setConnectionFormExpanded(!this.connectionFormExpanded)
+            if (this.isTabletWideLayout()) {
+              this.setTabletEditorVisible(false)
+            } else {
+              this.setConnectionFormExpanded(!this.connectionFormExpanded)
+            }
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
       .width('100%')
       .height(38)
@@ -444,6 +571,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.onConnect()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
 
       if (this.connectionStatusValue === ConnectionStatus.CONNECTED) {
@@ -455,6 +583,7 @@ export struct ConnectionPage {
           .onClick(() => {
             ConnectionService.disconnect()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
     }
     .width('100%')
@@ -502,6 +631,7 @@ export struct ConnectionPage {
               this.isIdEmpty = true
             })
             .transition(TransitionEffect.OPACITY)
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Circle))
           }
         }
         .layoutWeight(1)
@@ -521,6 +651,7 @@ export struct ConnectionPage {
         .onClick(() => {
           this.onConnect()
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
       .padding({ left: 14, right: 6 })
       .height(62)
@@ -584,6 +715,7 @@ export struct ConnectionPage {
         .onClick(() => {
           this.openGroupPickerForForm()
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
 
       Button('+ 分组')
         .height(32)
@@ -594,6 +726,7 @@ export struct ConnectionPage {
         .onClick(() => {
           this.openNewGroupDialog(true)
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
     }
     .width('100%')
     .height(52)
@@ -627,6 +760,7 @@ export struct ConnectionPage {
   @Builder
   buildSavedConnections() {
     Column({ space: 8 }) {
+      Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
       Row() {
         Button() {
           Image(this.savedConnectionsExpanded ?
@@ -643,6 +777,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.toggleSavedConnectionsExpanded()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 21, ButtonType.Capsule))
         Text('已保存连接')
           .fontSize(20)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
@@ -658,7 +793,8 @@ export struct ConnectionPage {
           .margin({ left: 8 })
         Blank()
       }
-      .width('100%')
+      .width(this.isTabletWideLayout() ? '35%' : '100%')
+      .flexShrink(0)
       .height(46)
 
       Row() {
@@ -695,6 +831,7 @@ export struct ConnectionPage {
               { value: `${this.savedConnectionSort === 'online' ? '✓ ' : ''}在线优先`,
                 action: () => { this.setSavedConnectionSort('online') } }
             ], { placement: Placement.BottomLeft, enableArrow: true })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
           Button() {
             Text(this.savedConnectionSortAscending ? '▲' : '▼')
               .fontSize(10)
@@ -707,6 +844,7 @@ export struct ConnectionPage {
             .onClick(() => {
               this.toggleSavedConnectionSortDirection()
             })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
           Blank()
         }
         Button('备份')
@@ -741,6 +879,7 @@ export struct ConnectionPage {
             placement: Placement.BottomRight,
             enableArrow: true
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button('+ 分组')
           .width(56)
           .height(30)
@@ -753,6 +892,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.openNewGroupDialog()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button(this.savedConnectionSearchExpanded ? '收起' : '搜索')
           .width(48)
           .height(30)
@@ -772,9 +912,13 @@ export struct ConnectionPage {
               this.savedConnectionSearchExpanded = !this.savedConnectionSearchExpanded
             })
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
+      }
+      .width(this.isTabletWideLayout() ? '65%' : '100%')
+      .flexShrink(0)
+      .margin({ bottom: 2 })
       }
       .width('100%')
-      .margin({ bottom: 2 })
 
       if (this.savedConnectionsExpanded) {
         Column({ space: 8 }) {
@@ -915,6 +1059,7 @@ export struct ConnectionPage {
             .padding(0)
             .bindMenu([{ value: '重命名分组', action: () => { this.openRenameGroupDialog(groupId) } }],
               { placement: Placement.BottomRight, enableArrow: true })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
         }
         Button() {
           Image((groupId.length <= 0 ? this.ungroupedExpanded : expanded) ?
@@ -930,6 +1075,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.toggleConnectionGroup(groupId)
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
       .width('100%')
       .height(38)
@@ -937,7 +1083,7 @@ export struct ConnectionPage {
       .alignItems(VerticalAlign.Center)
 
       if (groupId.length <= 0 ? this.ungroupedExpanded : expanded) {
-        Column() {
+        Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
           ForEach(this.connectionsForGroup(groupId), (item: SavedConnectionInfo) => {
             Row({ space: 8 }) {
             Stack() {
@@ -977,6 +1123,8 @@ export struct ConnectionPage {
                 .fontSize(12)
                 .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
                 .width('100%')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
             }
             .layoutWeight(1)
 
@@ -991,6 +1139,7 @@ export struct ConnectionPage {
               .onClick(() => {
                 this.connectSavedConnection(item)
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
 
             Button('⋯')
               .width(42)
@@ -1023,9 +1172,10 @@ export struct ConnectionPage {
                 placement: Placement.BottomRight,
                 enableArrow: true
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
             }
-            .width('100%')
-            .height(58)
+            .width(this.isTabletWideLayout() ? '49%' : '100%')
+            .height(this.isTabletWideLayout() ? 64 : 58)
             .padding({ left: 8, right: 4 })
             .border({ width: { bottom: 1 }, color: this.isDarkMode ? '#303B4D' : RustDeskTheme.DIVIDER })
           }, (item: SavedConnectionInfo) =>
@@ -1085,6 +1235,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.closeGroupDialogs()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button(this.editingGroupId.length > 0 ? '保存名称' : '创建')
           .layoutWeight(1)
           .height(40)
@@ -1094,6 +1245,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.saveGroupName()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
       }
       .width('100%')
     }
@@ -1123,6 +1275,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.closeGroupDialogs()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
       .width('100%')
 
@@ -1147,6 +1300,7 @@ export struct ConnectionPage {
         .onClick(() => {
           this.openNewGroupDialog(this.groupPickerForForm, this.groupPickerForForm ? '' : this.groupPickerConnectionId)
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
     }
     .width(this.pageWidth >= 820 ? 420 : '88%')
     .padding(20)
@@ -1230,6 +1384,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.closeConnectionPasswordDialog()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button('连接')
           .layoutWeight(1)
           .height(40)
@@ -1239,6 +1394,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.confirmConnectionPassword()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
       }
       .width('100%')
     }
@@ -1318,6 +1474,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.closeBackupDialogs()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button(this.backupBusy ? '处理中…' : (this.backupPasswordMode === 'export' ? '加密并导出' : '解密'))
           .layoutWeight(1)
           .height(40)
@@ -1327,6 +1484,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.confirmBackupPassword()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
       }
       .width('100%')
     }
@@ -1372,6 +1530,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.importReplaceExisting = false
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 5, ButtonType.Capsule))
         Button('覆盖现有')
           .layoutWeight(1)
           .height(38)
@@ -1383,6 +1542,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.importReplaceExisting = true
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 5, ButtonType.Capsule))
       }
       .width('100%')
       .padding(3)
@@ -1411,6 +1571,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.closeBackupDialogs()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button(this.backupBusy ? '导入中…' : '开始导入')
           .layoutWeight(1)
           .height(40)
@@ -1420,6 +1581,7 @@ export struct ConnectionPage {
           .onClick(() => {
             this.importPreparedBackup()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
       }
       .width('100%')
     }
@@ -1456,12 +1618,14 @@ export struct ConnectionPage {
     .onClick(() => {
       this.selectGroupFromPicker(groupId)
     })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
   }
 
   @Builder
   buildConnectionEditActions() {
     Row({ space: 10 }) {
       Button(this.selectedConnectionId.length > 0 ? '保存修改' : '保存连接')
+        .enabled(!this.savingConnection && this.remoteId.trim().length > 0)
         .height(40)
         .layoutWeight(1)
         .fontSize(14)
@@ -1469,8 +1633,9 @@ export struct ConnectionPage {
         .backgroundColor(this.remoteId.trim().length > 0 ? RustDeskTheme.ACCENT : RustDeskTheme.DARK_GRAY)
         .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
         .onClick(() => {
-          this.saveCurrentConnection()
+          this.saveConnectionWithTip()
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
 
       Button('新建')
         .height(40)
@@ -1481,6 +1646,7 @@ export struct ConnectionPage {
         .onClick(() => {
           this.clearConnectionForm()
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
     }
     .width('100%')
   }
@@ -1538,6 +1704,7 @@ export struct ConnectionPage {
       .onClick(() => {
         this.performancePreset = preset
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
   }
 
   private selectedControlText(): ResourceColor {
@@ -2297,6 +2464,7 @@ export struct ConnectionPage {
   editSavedConnection(item: SavedConnectionInfo): void {
     this.applySavedConnection(item)
     this.setConnectionFormExpanded(true)
+    if (this.isTabletWideLayout()) this.setTabletEditorVisible(true)
   }
 
   async loadSavedConnections(): Promise<void> {
@@ -2495,6 +2663,52 @@ export struct ConnectionPage {
   connectSavedConnection(item: SavedConnectionInfo): void {
     this.applySavedConnection(item)
     this.onConnect()
+  }
+
+  clearSaveTip(): void {
+    this.saveTipGeneration++
+    if (this.saveTipTimer !== -1) clearTimeout(this.saveTipTimer)
+    if (this.saveTipRemoveTimer !== -1) clearTimeout(this.saveTipRemoveTimer)
+    this.saveTipTimer = -1
+    this.saveTipRemoveTimer = -1
+    this.saveTipVisible = false
+  }
+
+  showSavedTip(): void {
+    this.clearSaveTip()
+    const generation: number = this.saveTipGeneration
+    this.saveTipOpacity = 1
+    this.saveTipOffsetY = 0
+    this.saveTipVisible = true
+    this.saveTipTimer = setTimeout(() => {
+      if (generation !== this.saveTipGeneration || !this.savePageActive) return
+      this.saveTipTimer = -1
+      this.getUIContext().animateTo({ duration: 420, curve: Curve.EaseOut }, () => {
+        this.saveTipOffsetY = -32
+        this.saveTipOpacity = 0
+      })
+      this.saveTipRemoveTimer = setTimeout(() => {
+        if (generation !== this.saveTipGeneration) return
+        this.saveTipRemoveTimer = -1
+        this.saveTipVisible = false
+      }, 440)
+    }, 1200)
+  }
+
+  async saveConnectionWithTip(): Promise<void> {
+    if (this.savingConnection || this.normalizeRemoteId(this.remoteId).length === 0) return
+    this.savingConnection = true
+    try {
+      await this.saveCurrentConnection()
+      if (this.savePageActive) {
+        if (this.tabletEditorVisible) this.setTabletEditorVisible(false)
+        this.showSavedTip()
+      }
+    } catch (_e) {
+      if (this.savePageActive) promptAction.showToast({ message: '保存失败，请重试' })
+    } finally {
+      this.savingConnection = false
+    }
   }
 
   async saveCurrentConnection(): Promise<void> {

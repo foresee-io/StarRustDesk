@@ -1,6 +1,8 @@
+import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 ﻿import { RustDeskTheme } from '../theme/RustDeskTheme'
 import { translate } from '../utils/I18n'
 import { ServerConfigDialog } from '../widget/ServerConfigDialog'
+import { ApiAccountDialog } from '../widget/ApiAccountDialog'
 import {
   RELEASE_NOTES_SHOWN_OPTION,
   RELEASE_NOTES_SHOWN_ID,
@@ -25,6 +27,7 @@ interface SettingItem {
 
 @Component
 export struct SettingsPage {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @StorageLink('isDarkModeManual') isDarkModeManual: boolean = false
   @State resolution: string = 'Auto'
@@ -41,6 +44,11 @@ export struct SettingsPage {
   @State cloudSyncStatus: string = '未开启'
   private cloudPasswordAction: string = ''
   @State pageWidth: number = 0
+  private apiAccountDialogController: CustomDialogController = new CustomDialogController({
+    builder: ApiAccountDialog(),
+    autoCancel: false,
+    customStyle: true,
+  })
   private serverConfigDialogController: CustomDialogController = new CustomDialogController({
     builder: ServerConfigDialog(),
     autoCancel: true,
@@ -124,6 +132,7 @@ export struct SettingsPage {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildButtonShapeCard()
           this.buildSectionCard(translate('Account'), [
             { label: translate('Device Name'), value: RustDeskNapi.getDeviceName() },
           ])
@@ -131,6 +140,12 @@ export struct SettingsPage {
           this.buildInputCard()
           this.buildAudioCard()
           this.buildServerConfigCard()
+          Button('服务器账号 / API 地址簿')
+            .width('100%').height(48).fontSize(15)
+            .fontColor(this.isDarkMode ? '#C5DFFF' : '#2763AC')
+            .backgroundColor(this.isDarkMode ? '#27384D' : '#E8F1FF')
+            .onClick(() => { this.apiAccountDialogController.open() })
+            .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
           this.buildCloudSyncCard()
           this.buildDiagnosticsCard()
           this.buildThemeToggle()
@@ -495,6 +510,7 @@ export struct SettingsPage {
           .onClick(() => {
             this.syncCloudNow(false, false)
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button('从云端恢复')
           .fontSize(14)
           .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
@@ -505,6 +521,7 @@ export struct SettingsPage {
           .onClick(() => {
             this.confirmCloudRestore()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
       }
       .width('100%')
       .padding({ top: 10, bottom: 6 })
@@ -1017,6 +1034,56 @@ export struct SettingsPage {
   }
 
   @Builder
+  buildButtonShapeCard() {
+    Column({ space: 12 }) {
+      Text('按钮样式')
+        .fontSize(16)
+        .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+        .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+        .width('100%')
+      Text('应用到连接、设置、远控功能栏和弹窗，立即生效并记住选择')
+        .fontSize(12)
+        .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+        .width('100%')
+      Row({ space: 12 }) {
+        Button(this.roundedRectButtons ? '✓ 圆角长方形' : '圆角长方形', { type: ButtonType.Normal })
+          .id('buttonShapeRectangle')
+          .layoutWeight(1)
+          .height(44)
+          .borderRadius(12)
+          .fontSize(14)
+          .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
+          .backgroundColor(this.roundedRectButtons ?
+            (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG) : Color.Transparent)
+          .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.HOME_BORDER_DARK : RustDeskTheme.HOME_BORDER })
+          .onClick(() => { this.setButtonShape(true) })
+          .borderRadius(12)
+        Button(this.roundedRectButtons ? '经典圆润' : '✓ 经典圆润', { type: ButtonType.Capsule })
+          .id('buttonShapeClassic')
+          .layoutWeight(1)
+          .height(44)
+          .fontSize(14)
+          .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
+          .backgroundColor(!this.roundedRectButtons ?
+            (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG) : Color.Transparent)
+          .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.HOME_BORDER_DARK : RustDeskTheme.HOME_BORDER })
+          .onClick(() => { this.setButtonShape(false) })
+      }
+      .width('100%')
+    }
+    .padding(16)
+    .width('100%')
+    .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_CARD_DARK : RustDeskTheme.HOME_CARD)
+    .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.HOME_BORDER_DARK : RustDeskTheme.HOME_BORDER })
+    .borderRadius(RustDeskTheme.HOME_CARD_RADIUS)
+  }
+
+  setButtonShape(rectangular: boolean): void {
+    RustDeskNapi.setOption('button-shape', rectangular ? 'rectangle' : 'classic')
+    this.roundedRectButtons = rectangular
+  }
+
+  @Builder
   buildThemeToggle() {
     Column() {
       Row() {
@@ -1047,6 +1114,7 @@ export struct SettingsPage {
 
 @CustomDialog
 struct SettingsPasswordDialog {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @State password: string = ''
   @State passwordConfirm: string = ''
@@ -1123,6 +1191,7 @@ struct SettingsPasswordDialog {
             this.errorMsg = ''
             this.onCancel()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
 
         Button(translate('Save'))
           .fontColor(Color.White)
@@ -1144,6 +1213,7 @@ struct SettingsPasswordDialog {
             this.errorMsg = ''
             this.onSave(password)
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
       }
       .width('100%')
       .padding({ top: 8 })

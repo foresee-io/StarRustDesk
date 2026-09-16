@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 mod kcp_stream;
+mod communication;
+mod api_account;
 #[cfg(test)]
 mod keyboard_tests;
 #[cfg(test)]
@@ -151,6 +153,7 @@ enum QueuedPeerCommand {
     Message {
         session_id: u64,
         message: PeerMessage,
+        voice_timestamp: i64,
     },
     StartUpload {
         session_id: u64,
@@ -334,6 +337,7 @@ fn reset_display_state() {
 }
 
 fn clear_connection_for_session(session_id: u64) -> bool {
+    if SESSION_ID.load(Ordering::SeqCst) == session_id { communication::reset(); }
     clear_peer_message_sender();
     if let Ok(mut guard) = CONNECTION.try_lock() {
         if SESSION_ID.load(Ordering::SeqCst) == session_id {
@@ -549,6 +553,13 @@ pub extern "C" fn rust_connect(
             }
         };
         emit_event("rendezvous tcp connected");
+        let account_token = api_account::token_for(&active_rendezvous_addr, &key);
+        if !account_token.is_empty() {
+            if secure_rendezvous_connection(&mut rv_conn, &key).await.is_err() {
+                emit_event("account rendezvous encryption failed; token not sent");
+                return -13;
+            }
+        }
         if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() {
             if let Some(config) = config.as_mut() {
                 config.rendezvous_addr = active_rendezvous_addr.clone();
@@ -619,7 +630,7 @@ pub extern "C" fn rust_connect(
             .as_ref()
             .map(|(_, endpoint)| endpoint.clone())
             .unwrap_or_default();
-        let req = punch_hole_request(
+        let mut req = punch_hole_request(
             &peer,
             &key,
             ConnType::DEFAULT_CONN,
@@ -630,6 +641,7 @@ pub extern "C" fn rust_connect(
             webrtc_sdp_offer,
         );
 
+        api_account::attach(&mut req, &account_token);
         let local_addr = rv_conn.local_addr();
         let response = match send_punch_request(&mut rv_conn, &req, public_server).await {
             Ok(Some(msg)) => {
@@ -853,7 +865,7 @@ pub extern "C" fn rust_connect(
                         &active_rendezvous_addr,
                         !signed_id_pk.is_empty(),
                         &key,
-                        "",
+                        &account_token,
                     ).await
                 };
                 match relay_result {
@@ -896,7 +908,7 @@ pub extern "C" fn rust_connect(
                     &active_rendezvous_addr,
                     !signed_id_pk.is_empty(),
                     &key,
-                    "",
+                    &account_token,
                 ).await {
                     Ok(stream) => stream,
                     Err(relay_error) => {
@@ -1643,6 +1655,7 @@ pub extern "C" fn rust_request_remote_directory(path: *const c_char) -> i32 {
         .send(QueuedPeerCommand::Message {
             session_id,
             message: msg,
+            voice_timestamp: 0,
         })
         .map(|_| 0)
         .unwrap_or(-4)
@@ -2046,6 +2059,7 @@ async fn send_file_command(
         QueuedPeerCommand::Message {
             session_id: command_session,
             message,
+            ..
         } => command_session == session_id && stream.send(&message).await.is_ok(),
         QueuedPeerCommand::StartUpload {
             session_id: command_session,
@@ -3576,7 +3590,12 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
     )
     .await
     .map_err(|error| error.to_string())?;
-    let request = punch_hole_request(
+    let account_token = api_account::token_for(&config.rendezvous_addr, &config.key);
+    if !account_token.is_empty() {
+        secure_rendezvous_connection(&mut rendezvous, &config.key).await
+            .map_err(|_| "账号连接认证需要安全的 ID 服务器通道，令牌未发送".to_string())?;
+    }
+    let mut request = punch_hole_request(
         &config.peer,
         &config.key,
         ConnType::FILE_TRANSFER,
@@ -3586,6 +3605,7 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
         Vec::new(),
         String::new(),
     );
+    api_account::attach(&mut request, &account_token);
     rendezvous
         .send(&request)
         .await
@@ -3672,7 +3692,7 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
                 &config.rendezvous_addr,
                 !signed_id_pk.is_empty(),
                 &config.key,
-                "",
+                &account_token,
                 ConnType::FILE_TRANSFER,
             )
             .await
@@ -3686,7 +3706,7 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
             &config.rendezvous_addr,
             !signed_id_pk.is_empty(),
             &config.key,
-            "",
+            &account_token,
             ConnType::FILE_TRANSFER,
         )
         .await
@@ -3821,15 +3841,15 @@ async fn secure_rendezvous_connection(
     };
 
     let Some(Ok(bytes)) = conn.next_timeout(READ_TIMEOUT).await else {
-        // Older self-hosted servers may not advertise transport encryption.
-        // Keep the plain TCP path available in that case, matching upstream.
-        return Ok(());
+        // This helper is used only when carrying an account token. Never
+        // silently disclose it on a downgraded or unverified connection.
+        hbb_common::bail!("account authorization encryption unavailable");
     };
     let Ok(message) = RendezvousMessage::parse_from_bytes(&bytes) else {
-        return Ok(());
+        hbb_common::bail!("invalid account authorization handshake");
     };
     let Some(rendezvous_message::Union::KeyExchange(exchange)) = message.union else {
-        return Ok(());
+        hbb_common::bail!("account authorization key exchange required");
     };
     if exchange.keys.len() != 1 {
         hbb_common::bail!("invalid rendezvous key exchange message");
@@ -4102,7 +4122,8 @@ fn spawn_receive_loop(session_id: u64, mut stream: Stream, kcp_guard: Option<Kcp
                             true
                         } else {
                             match command {
-                                QueuedPeerCommand::Message { message, .. } => {
+                                QueuedPeerCommand::Message { message, voice_timestamp, .. } => {
+                                    if !communication::consume_frame(voice_timestamp) { continue; }
                                     trace_input_message("network_send", &message);
                                     if let Err(e) = stream.send(&message).await {
                                         emit_event(&format!("peer message send failed: {e}"));
@@ -4376,6 +4397,14 @@ async fn handle_peer_bytes(
         Some(message::Union::AudioFrame(frame)) => {
             handle_audio_frame(&frame.data);
             "audio_frame"
+        }
+        Some(message::Union::VoiceCallRequest(request)) => {
+            communication::receive_request(request);
+            "voice_call_request"
+        }
+        Some(message::Union::VoiceCallResponse(response)) => {
+            communication::receive_response(response);
+            "voice_call_response"
         }
         Some(message::Union::FileResponse(response)) => {
             handle_file_response(response, read_jobs, stream).await;
@@ -4737,6 +4766,10 @@ fn set_file_transfer_status_detail(
 
 fn handle_misc_message(misc_msg: Misc) -> &'static str {
     match misc_msg.union {
+        Some(misc::Union::ChatMessage(chat)) => {
+            communication::receive_chat(chat.text);
+            "chat_message"
+        }
         Some(misc::Union::AudioFormat(format)) => {
             handle_audio_format(format);
             "misc_audio_format"
@@ -5340,6 +5373,7 @@ fn mark_connection_lost(session_id: u64, reason: &str) {
         return;
     }
     emit_event(&format!("connection lost: {reason}"));
+    communication::reset();
     SESSION_ID.fetch_add(1, Ordering::SeqCst);
     CONNECTION_ACTIVE.store(false, Ordering::SeqCst);
     set_file_transfer_status("failed", 0, 0, "connection lost");
@@ -5372,6 +5406,7 @@ fn enqueue_peer_message(msg: PeerMessage) -> Result<(), hbb_common::anyhow::Erro
         .send(QueuedPeerCommand::Message {
             session_id,
             message: msg,
+            voice_timestamp: 0,
         })
         .map_err(|_| hbb_common::anyhow::anyhow!("sender closed"))
 }

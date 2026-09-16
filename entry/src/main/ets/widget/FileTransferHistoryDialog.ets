@@ -1,8 +1,10 @@
+import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 import { FileTransferHistoryRecord, FileTransferHistoryService } from '../service/FileTransferHistoryService'
 
 @CustomDialog
 export struct FileTransferHistoryDialog {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @State records: FileTransferHistoryRecord[] = []
   @State filter: string = 'all'
@@ -39,6 +41,7 @@ export struct FileTransferHistoryDialog {
           .onClick(() => {
             this.confirmClear()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 7, ButtonType.Capsule))
       }
       .width('100%')
 
@@ -92,6 +95,7 @@ export struct FileTransferHistoryDialog {
         .onClick(() => {
           if (this.controller !== undefined) this.controller.close()
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 7, ButtonType.Capsule))
     }
     .width('92%')
     .height('78%')
@@ -116,6 +120,7 @@ export struct FileTransferHistoryDialog {
       .onClick(() => {
         this.filter = value
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 7, ButtonType.Capsule))
   }
 
   @Builder
@@ -169,6 +174,7 @@ export struct FileTransferHistoryDialog {
             FileTransferHistoryService.delete(record.id)
             this.reload()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
       }
       .width('100%')
 

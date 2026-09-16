@@ -56,6 +56,11 @@
     ],
     "requestPermissions": [
       {
+        "name": "ohos.permission.MICROPHONE",
+        "reason": "$string:permission_voice_call_reason",
+        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
+      },
+      {
         "name": "ohos.permission.INTERNET"
       },
       {

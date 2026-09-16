@@ -1,3 +1,4 @@
+import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 import { translate } from '../utils/I18n'
 import { RustDeskNapi } from '../service/RustDeskNapi'
@@ -7,6 +8,7 @@ import { promptAction } from '@kit.ArkUI'
 
 @CustomDialog
 export struct ServerConfigDialog {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @State idServer: string = ''
   @State relayServer: string = ''
@@ -44,6 +46,7 @@ export struct ServerConfigDialog {
           .onClick(() => {
             this.importServerConfigFromClipboard()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
 
         Button('导出')
           .height(30)
@@ -55,6 +58,7 @@ export struct ServerConfigDialog {
           .onClick(() => {
             this.exportServerConfigToClipboard()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
       }
       .width('100%')
 
@@ -117,6 +121,7 @@ export struct ServerConfigDialog {
               this.controller.close()
             }
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 6, ButtonType.Capsule))
 
         Button(translate('Test Connection'))
           .fontColor(Color.White)
@@ -127,6 +132,7 @@ export struct ServerConfigDialog {
           .onClick(() => {
             this.testConnection()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 6, ButtonType.Capsule))
 
         Button(translate('OK'))
           .fontColor(Color.White)
@@ -137,6 +143,7 @@ export struct ServerConfigDialog {
           .onClick(() => {
             this.saveConfig()
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 6, ButtonType.Capsule))
       }
       .width('100%')
       .padding({ top: 8 })

@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+int rust_set_api_account_context(const char* json);
 int rust_connect(const char* peer_id, const char* password,
                  const char* rendezvous_server, const char* relay_server,
                  const char* server_key, const char* client_hwid,
@@ -18,6 +19,12 @@ void rust_set_video_codec_support(int h264_supported, int vp9_supported,
 int rust_set_performance_preset(const char* preset);
 int rust_set_remote_cursor_visible(int visible);
 int rust_set_audio_enabled(int enabled);
+int rust_send_chat_message(const char* text);
+char* rust_take_chat_messages(void);
+int rust_request_voice_call(void);
+int rust_voice_call_state(void);
+int rust_end_voice_call(void);
+int rust_send_voice_frame(const uint8_t* data, int length);
 int rust_set_background_video_mode(int enabled);
 int rust_disconnect(void);
 int rust_get_connection_status(void);

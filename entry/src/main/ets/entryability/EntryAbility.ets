@@ -7,6 +7,8 @@ import { RELEASE_NOTES_BUILD, RELEASE_NOTES_VERSION } from '../widget/ReleaseNot
 import { ConnectionStatus } from '../model/ConnectionModel';
 import { RemoteSessionBackgroundTask } from '../service/RemoteSessionBackgroundTask';
 import { CloudSyncService } from '../service/CloudSyncService';
+import { CommunicationService } from '../service/CommunicationService';
+import { AccountSession } from '../service/RustDeskApiService';
 
 const DOMAIN = 0x0000;
 
@@ -24,6 +26,7 @@ export default class EntryAbility extends UIAbility {
     } catch (_e) {
     }
     PersistentStorage.persistProp('isDarkModeManual', false);
+    AppStorage.setOrCreate('roundedRectButtons', RustDeskNapi.getOption('button-shape') !== 'classic');
     PersistentStorage.persistProp('isDarkMode', this.isDarkColorMode(this.context.config.colorMode));
     PersistentStorage.persistProp('mobileActionsOffsetX', 0);
     PersistentStorage.persistProp('mobileActionsOffsetY', 0);
@@ -37,10 +40,13 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('appForegroundEpoch', 0);
     AppStorage.setOrCreate('serverConfigVersion', 0);
     AppStorage.setOrCreate('savedConnectionsCloudRevision', 0);
+    // Validate only the locally remembered account; never log credentials or responses.
+    AccountSession.getApi().restore().catch(() => {});
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
   onDestroy(): void {
+    CommunicationService.dispose();
     RemoteSessionBackgroundTask.shutdown()
     RustDeskNapi.appendDiagnosticLog('app', 'ability_destroy')
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
@@ -86,6 +92,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onBackground(): void {
+    CommunicationService.onBackground();
     RemoteSessionBackgroundTask.syncForConnectionStatus(RustDeskNapi.getConnectionStatus() as ConnectionStatus)
     RemoteSessionBackgroundTask.setAppBackground(true)
     RustDeskNapi.appendDiagnosticLog('app', 'background')

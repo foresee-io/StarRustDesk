@@ -6,6 +6,7 @@
 #include "core/video_render.h"
 #include "core/xcomponent_render.h"
 #include "core/audio_player.h"
+#include "core/communication_napi.h"
 #include <cstring>
 #include <cstdio>
 #include <string>
@@ -1620,6 +1621,21 @@ static napi_value TakeRemoteClipboardText(napi_env env, napi_callback_info info)
 
 // ===== Options (Config Persistence) =====
 
+// Account token is kept only by the Rust session, never by Config::save().
+static napi_value SetApiAccountContext(napi_env env, napi_callback_info info) {
+    size_t argc = 1, length = 0;
+    napi_value arg = nullptr, result;
+    napi_get_cb_info(env, info, &argc, &arg, nullptr, nullptr);
+    int code = -1;
+    if (argc == 1 && napi_get_value_string_utf8(env, arg, nullptr, 0, &length) == napi_ok && length <= 32768) {
+        std::vector<char> json(length + 1, '\0');
+        if (napi_get_value_string_utf8(env, arg, json.data(), json.size(), &length) == napi_ok)
+            code = rust_set_api_account_context(json.data());
+    }
+    napi_create_int32(env, code, &result);
+    return result;
+}
+
 static napi_value SetOption(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr};
@@ -1634,6 +1650,10 @@ static napi_value SetOption(napi_env env, napi_callback_info info) {
     napi_get_value_string_utf8(env, args[1], valueBuffer.data(), valueBuffer.size(), &valueLen);
     std::string key(keyBuffer.data(), keyLen);
     std::string value(valueBuffer.data(), valueLen);
+    if ((key == "custom-rendezvous-server" || key == "key" || key == "api-server") &&
+        Config::instance().get(key) != value) {
+        rust_set_api_account_context("");
+    }
     Config::instance().set(key, value);
     Config::instance().save();
     napi_value ret;
@@ -2134,6 +2154,13 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"getClipboardText", nullptr, GetClipboardText, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setClipboardText", nullptr, SetClipboardText, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendClipboardText", nullptr, SendClipboardText, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendChatMessage", nullptr, SendChatMessage, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"takeChatMessages", nullptr, TakeChatMessages, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"requestVoiceCall", nullptr, RequestVoiceCall, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getVoiceCallState", nullptr, VoiceCallState, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"endVoiceCall", nullptr, EndVoiceCall, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"startVoiceCapture", nullptr, StartVoiceCapture, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"stopVoiceCapture", nullptr, StopVoiceCapture, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"requestRemoteDirectory", nullptr, RequestRemoteDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"takeRemoteDirectoryResult", nullptr, TakeRemoteDirectoryResult, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"startFileUpload", nullptr, StartFileUpload, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -2141,6 +2168,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"getFileTransferStatus", nullptr, GetFileTransferStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"cancelFileTransfer", nullptr, CancelFileTransfer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"takeRemoteClipboardText", nullptr, TakeRemoteClipboardText, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setApiAccountContext", nullptr, SetApiAccountContext, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setOption", nullptr, SetOption, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getOption", nullptr, GetOption, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getAllOptions", nullptr, GetAllOptions, nullptr, nullptr, nullptr, napi_default, nullptr},

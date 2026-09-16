@@ -1,5 +1,8 @@
+import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 ﻿import { router } from '@kit.ArkUI';
 import { RustDeskTheme } from '../theme/RustDeskTheme';
+import { CommunicationService } from '../service/CommunicationService';
+import { CommunicationPanel } from '../widget/CommunicationPanel';
 import { KeyboardAvoidMode, window } from '@kit.ArkUI';
 import { BusinessError, deviceInfo, zlib } from '@kit.BasicServicesKit';
 import { translate } from '../utils/I18n';
@@ -86,7 +89,7 @@ const KEYBOARD_CAPTURE_SENTINEL: string =
   '1111111111111111111111111111111111111111111111111111111111111111';
 const CONTROL_TOOLBAR_DEFAULT_ORDER: string[] = [
   'displays', 'input', 'virtualMouse', 'edgePan', 'keyboard', 'mobileActions', 'gestureHelp',
-  'pan', 'upload', 'download', 'clipboard', 'zoomIn', 'zoomOut', 'fullscreen', 'disconnect'
+  'pan', 'chat', 'upload', 'download', 'clipboard', 'zoomIn', 'zoomOut', 'fullscreen', 'disconnect'
 ];
 const KEYBOARD_TOOLBAR_DEFAULT_ORDER: string[] = [
   'ctrl', 'alt', 'shift', 'meta', 'function', 'more', 'release'
@@ -99,6 +102,7 @@ const LOG_DOMAIN: number = 0x0000;
 
 @Component
 struct ConnectionQualityRow {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @Prop label: string;
   @Prop value: string;
   @Prop valueColor: ResourceColor = Color.White;
@@ -125,12 +129,16 @@ struct ConnectionQualityRow {
 @Entry
 @Component
 struct RemotePage {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false;
   @StorageLink('appForegroundEpoch') @Watch('onAppForegroundEpochChanged') appForegroundEpoch: number = 0;
   @StorageLink('mobileActionsOffsetX') mobileActionsOffsetX: number = 0;
   @StorageLink('mobileActionsOffsetY') mobileActionsOffsetY: number = 0;
   @State connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
   @State showToolbar: boolean = true;
+  @State showCommunicationPanel: boolean = false;
+  @State communicationUnread: number = 0;
+  @State communicationCallActive: boolean = false;
   @State zoomScale: number = 1.0;
   @State offsetX: number = 0;
   @State offsetY: number = 0;
@@ -143,6 +151,9 @@ struct RemotePage {
   @State lastAbsX: number = 0;
   @State lastAbsY: number = 0;
   @State showKeyboardPanel: boolean = false;
+  @State keyboardViewportHeight: number = 0;
+  private keyboardLayoutWidth: number = 0;
+  private keyboardLayoutHeight: number = 0;
   @State keyboardToolsCollapsed: boolean = true;
   @State keyboardToolsOffsetX: number = 0;
   @State keyboardToolsOffsetY: number = 0;
@@ -197,7 +208,14 @@ struct RemotePage {
   @State decoderText: string = '-';
   @State routeText: string = '未知';
   @State peerSecurityState: number = 0;
-  @State showQualityMonitor: boolean = true;
+  @State showQualityMonitor: boolean = false;
+  @State qualityMonitorX: number = -1;
+  @State qualityMonitorY: number = -1;
+  @State qualityViewportWidth: number = 0;
+  @State qualityViewportHeight: number = 0;
+  private qualityDragStartX: number = 0;
+  private qualityDragStartY: number = 0;
+  private qualityLastDragAt: number = 0;
   private videoSessionGeneration: number = -1;
   private directLoginStartedAt: number = 0;
   private videoDecoderRestartRequested: boolean = false;
@@ -428,9 +446,14 @@ struct RemotePage {
     this.startPolling();
     this.startRemoteCursorPolling();
     this.startNativeMousePolling();
+    CommunicationService.start(() => {
+      this.communicationUnread = CommunicationService.unread;
+      this.communicationCallActive = CommunicationService.callState === 1 || CommunicationService.callState === 2;
+    });
   }
 
   aboutToDisappear(): void {
+    CommunicationService.dispose();
     RustDeskNapi.appendDiagnosticLog('remote-page', 'about_to_disappear')
     if (this.toolbarTimer !== -1) { clearTimeout(this.toolbarTimer); }
     if (this.statusTimer !== -1) { clearTimeout(this.statusTimer); }
@@ -465,6 +488,10 @@ struct RemotePage {
   }
 
   onBackPress(): boolean {
+    if (this.showCommunicationPanel) {
+      this.closeCommunication();
+      return true;
+    }
     if (this.showToolbarOrderEditor) {
       this.showToolbarOrderEditor = false;
       return true;
@@ -1001,6 +1028,7 @@ struct RemotePage {
   }
 
   syncHardwareKeyState(): void {
+    if (this.showCommunicationPanel) return;
     if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel) {
       this.hardwareModifierTrackingActive = false;
       this.hardwareCapsLockInitialized = false;
@@ -1047,6 +1075,7 @@ struct RemotePage {
   }
 
   handleNativeMouseInput(event: NativeMouseInputEvent): void {
+    if (this.showCommunicationPanel) return;
     if (event.hover >= 0) {
       this.handleRemoteHover(event.hover === 1);
       return;
@@ -1107,6 +1136,7 @@ struct RemotePage {
   }
 
   handleNativeKeyInput(event: NativeKeyInputEvent): void {
+    if (this.showCommunicationPanel) return;
     if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel) {
       return;
     }
@@ -1264,6 +1294,9 @@ struct RemotePage {
         (this.isHandheldDevice() || (!this.isFullScreen && !this.isLargeLayout()))) {
         this.buildFloatingToolbar();
       }
+      if (this.showCommunicationPanel) {
+        CommunicationPanel({ onClose: () => { this.closeCommunication(); } });
+      }
     }
     .width('100%')
     .height('100%')
@@ -1275,6 +1308,11 @@ struct RemotePage {
     .onAreaChange((oldValue: Area, newValue: Area) => {
       this.pageWidth = newValue.width as number;
       this.pageHeight = newValue.height as number;
+      // A real rotation/window resize invalidates the pre-IME canvas snapshot.
+      if (this.showKeyboardPanel && this.keyboardLayoutWidth > 0 &&
+        Math.abs(this.pageWidth - this.keyboardLayoutWidth) > 32) {
+        this.closeRemoteKeyboard();
+      }
       this.handleHandheldLayoutChange();
       this.mobileActionsOffsetX = this.clampMobileActionsOffsetX(this.mobileActionsOffsetX);
       this.mobileActionsOffsetY = this.clampMobileActionsOffsetY(this.mobileActionsOffsetY);
@@ -1298,7 +1336,8 @@ struct RemotePage {
       Text(translate('Enter a Remote ID to connect'))
         .fontSize(RustDeskTheme.FONT_SIZE_SMALL).fontColor(this.secondaryTextColor());
       Button(translate('Back')).fontColor(Color.White).backgroundColor(RustDeskTheme.ACCENT).borderRadius(6)
-        .onClick(() => { this.disconnectSession(); });
+        .onClick(() => { this.disconnectSession(); })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 6, ButtonType.Capsule));
     }
     .width('100%').height('100%').justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center);
   }
@@ -1375,7 +1414,8 @@ struct RemotePage {
           .borderRadius(8)
           .onClick(() => {
             this.disconnectSession();
-          });
+          })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule));
         Button('验证')
           .layoutWeight(1)
           .height(44)
@@ -1385,7 +1425,8 @@ struct RemotePage {
           .borderRadius(8)
           .onClick(() => {
             this.submitTwoFactor();
-          });
+          })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule));
       }
       .width('100%');
     }
@@ -1442,6 +1483,7 @@ struct RemotePage {
               .onClick(() => {
                 this.showMobileActions = true;
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
           }
           if (this.canPanViewport()) {
             Button(this.edgeAutoPanEnabled ? '边缘跟随开' : '边缘跟随')
@@ -1459,6 +1501,7 @@ struct RemotePage {
               .onClick(() => {
                 this.setEdgeAutoPanEnabled(!this.edgeAutoPanEnabled);
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
             if (this.isPanMode) {
               Button('结束移动')
                 .width(92)
@@ -1472,6 +1515,7 @@ struct RemotePage {
                 .onClick(() => {
                   this.setPanMode(false);
                 })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
             } else {
               Button('移动画面')
                 .width(92)
@@ -1485,6 +1529,7 @@ struct RemotePage {
                 .onClick(() => {
                   this.setPanMode(true);
                 })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
             }
           }
           Button('退出全屏')
@@ -1498,6 +1543,7 @@ struct RemotePage {
             .onClick(() => {
               this.exitFullScreen();
             })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
         }
         .position({
           x: Math.max(12, this.pageWidth - (this.canPanViewport() ?
@@ -1553,6 +1599,7 @@ struct RemotePage {
             .onClick(() => {
               this.fileTransferHistoryDialogController.open();
             })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 7, ButtonType.Capsule))
         }
         .width('100%')
         Row({ space: 8 }) {
@@ -1565,6 +1612,7 @@ struct RemotePage {
             .onClick(() => {
               this.openRemoteDirectory(this.getRemoteParentPath());
             })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
           Text(this.remoteDirectoryPath === '/' ? '此电脑' : this.remoteDirectoryPath)
             .layoutWeight(1)
             .fontSize(15)
@@ -1596,6 +1644,7 @@ struct RemotePage {
               { value: `${this.remoteFileSortField === 'modified' ? '✓ ' : ''}修改时间`,
                 action: () => { this.remoteFileSortField = 'modified'; } }
             ], { placement: Placement.BottomRight, enableArrow: true })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
           Button(this.remoteFileSortDescending ? '降序 ↓' : '升序 ↑')
             .height(32)
             .padding({ left: 8, right: 8 })
@@ -1604,6 +1653,7 @@ struct RemotePage {
             .backgroundColor(this.mutedSurfaceColor())
             .borderRadius(8)
             .onClick(() => { this.remoteFileSortDescending = !this.remoteFileSortDescending; })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
         }
         .width('100%')
 
@@ -1619,6 +1669,7 @@ struct RemotePage {
               .onClick(() => {
                 this.toggleSelectAllRemoteEntries();
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
             Button('取回当前文件夹')
               .height(36)
               .fontSize(13)
@@ -1629,6 +1680,7 @@ struct RemotePage {
               .onClick(() => {
                 this.prepareCurrentRemoteFolderDownload();
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
             Blank()
             Text(`已选 ${this.selectedRemoteDownloads.length} 项`)
               .fontSize(13)
@@ -1741,6 +1793,7 @@ struct RemotePage {
             .onClick(() => {
               this.closeRemoteFileBrowser(true);
             })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
           if (this.remoteFileBrowserMode === 'download') {
             Button(`取回所选 (${this.selectedRemoteDownloads.length})`)
               .layoutWeight(1)
@@ -1751,6 +1804,7 @@ struct RemotePage {
               .onClick(() => {
                 this.prepareRemoteDownload(this.selectedRemoteDownloads);
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
           } else {
             Button('发送到这里')
               .layoutWeight(1)
@@ -1761,6 +1815,7 @@ struct RemotePage {
               .onClick(() => {
                 this.startPendingFileUpload();
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
           }
         }
         .width('100%')
@@ -1805,6 +1860,7 @@ struct RemotePage {
           .onClick(() => {
             this.cancelActiveFileTransfer();
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
       }
       .width('100%')
 
@@ -1837,19 +1893,27 @@ struct RemotePage {
   @Builder
   buildRemoteViewportWithQualityMonitor() {
     Stack({ alignContent: Alignment.TopEnd }) {
-      this.buildRemoteViewport();
-      if (this.showVirtualMouse && this.isHandheldDevice()) {
-        this.buildVirtualMouseOverlay();
+      // Only the containing visible area shrinks for the IME. Keep the canvas
+      // and both cursor layers at their old size, centered in the visible area.
+      Stack({ alignContent: Alignment.TopEnd }) {
+        this.buildRemoteViewport();
+        if (this.showVirtualMouse && this.isHandheldDevice()) {
+          this.buildVirtualMouseOverlay();
+        }
       }
-      if (this.showQualityMonitor) {
-        this.buildStatsPanel();
-      } else {
-        this.buildStatsPanelRestoreButton();
-      }
+      .width('100%')
+      .height(this.getRemoteCanvasHeight())
+      .constraintSize({ minHeight: this.keyboardViewportHeight })
+      .align(Alignment.Center)
+      this.buildDraggableQualityMonitor();
     }
     .width('100%')
     .layoutWeight(1)
     .clip(true)
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      this.qualityViewportWidth = Number(newValue.width);
+      this.qualityViewportHeight = Number(newValue.height);
+    })
   }
 
   @Builder
@@ -1999,9 +2063,11 @@ struct RemotePage {
         .textAlign(TextAlign.Center)
         .padding({ left: 24, right: 24 });
       Button(translate('Retry')).fontColor(Color.White).backgroundColor(RustDeskTheme.ACCENT).borderRadius(8)
-        .onClick(() => { this.disconnectSession(); });
+        .onClick(() => { this.disconnectSession(); })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule));
       Button(translate('Back')).fontColor(this.primaryTextColor()).backgroundColor(this.mutedSurfaceColor()).borderRadius(8)
-        .onClick(() => { this.disconnectSession(); });
+        .onClick(() => { this.disconnectSession(); })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule));
     }
     .width('100%').height('100%').justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center);
   }
@@ -2038,6 +2104,7 @@ struct RemotePage {
       .onClick(() => {
         this.setFloatingPanelCollapsed(keyboard, true);
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   @Builder
@@ -2063,6 +2130,7 @@ struct RemotePage {
             }
           })
       )
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
   }
 
   @Builder
@@ -2094,6 +2162,7 @@ struct RemotePage {
             this.openToolbarOrderEditor('control', 'displays');
           }))
           .onClick(() => { this.switchDisplay(display); })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
       }, (display: number) => `${display}-${this.currentDisplay}`)
     } else if (item === 'input') {
       this.buildInputModeButton(vertical ? 80 : 56, vertical, item)
@@ -2119,6 +2188,9 @@ struct RemotePage {
     } else if (item === 'pan' && this.canPanViewport()) {
       this.buildToolbarButton(this.isPanMode ? '结束移动' : '移动画面', vertical ? 80 : 78,
         this.isPanMode, false, true, () => { this.setPanMode(!this.isPanMode); }, item)
+    } else if (item === 'chat') {
+      this.buildToolbarButton(this.chatToolbarLabel(), vertical ? 80 : 76,
+        this.communicationCallActive, false, true, () => { this.openCommunication(); }, item)
     } else if (item === 'upload') {
       this.buildToolbarButton('发送文件', vertical ? 80 : 82, false, false, !this.transferActive, () => {
         this.pickFileForUpload();
@@ -2155,6 +2227,29 @@ struct RemotePage {
     this.showToolbarOrderEditor = true;
   }
 
+  chatToolbarLabel(): string {
+    if (this.communicationUnread > 0) return `聊天 ${this.communicationUnread}`;
+    return this.communicationCallActive ? '通话中' : '聊天';
+  }
+
+  openCommunication(): void {
+    this.closeRemoteKeyboard();
+    this.releaseHeldMouseButtons('open_chat');
+    this.releaseVirtualMouseButtons();
+    this.stopEdgeAutoPan();
+    ConnectionService.releaseModifiers();
+    this.showCommunicationPanel = true;
+    this.setSystemPointerHidden(false);
+    this.applyKeyboardResizeMode();
+  }
+
+  closeCommunication(): void {
+    RustDeskNapi.takeNativeInputEvents();
+    this.showCommunicationPanel = false;
+    this.restoreKeyboardAvoidMode();
+    this.requestRemoteInputFocus();
+  }
+
   toolbarOrderLabel(item: string): string {
     switch (item) {
       case 'displays': return '屏幕切换';
@@ -2165,6 +2260,7 @@ struct RemotePage {
       case 'mobileActions': return '手机操作';
       case 'gestureHelp': return '手势说明';
       case 'pan': return '移动画面';
+      case 'chat': return '聊天';
       case 'upload': return '发送文件';
       case 'download': return '取回文件';
       case 'clipboard': return '剪贴板';
@@ -2233,6 +2329,7 @@ struct RemotePage {
             .backgroundColor(RustDeskTheme.ACCENT)
             .borderRadius(8)
             .onClick(() => { this.showToolbarOrderEditor = false; })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
         }
         .width('100%')
 
@@ -2286,6 +2383,7 @@ struct RemotePage {
           .backgroundColor(this.isDarkMode ? RustDeskTheme.ACCENT_SOFT_DARK : RustDeskTheme.ACCENT_SOFT)
           .borderRadius(8)
           .onClick(() => { this.resetToolbarOrder(this.toolbarOrderEditorKind); })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
       }
       .width(this.isHandheldLandscape() ? 420 : '88%')
       .height(this.isHandheldLandscape() ? '86%' : '72%')
@@ -2333,6 +2431,7 @@ struct RemotePage {
       .onHover((isHovering: boolean) => {
         this.handleNonRemoteHover(isHovering);
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 16, ButtonType.Capsule))
     } else {
       if (this.isHandheldLandscape()) {
         Column({ space: 5 }) {
@@ -2424,6 +2523,7 @@ struct RemotePage {
               .onClick(() => {
                 this.switchDisplay(display);
               })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
           }, (display: number) => `${display}-${this.currentDisplay}`)
         }
         this.buildInputModeButton(80, true)
@@ -2452,6 +2552,9 @@ struct RemotePage {
             })
           }
         }
+        this.buildToolbarButton(this.chatToolbarLabel(), 80, this.communicationCallActive, false, true, () => {
+          this.openCommunication();
+        });
         this.buildToolbarButton('发送文件', 80, false, false, !this.transferActive, () => {
           this.pickFileForUpload();
         })
@@ -2518,6 +2621,7 @@ struct RemotePage {
       .onClick(() => {
         onClick();
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   @Builder
@@ -2543,6 +2647,7 @@ struct RemotePage {
       .onClick(() => {
         this.setEdgeAutoPanEnabled(!this.edgeAutoPanEnabled);
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   @Builder
@@ -2601,6 +2706,7 @@ struct RemotePage {
     .onClick(() => {
       this.toggleInputMode();
     })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   initializeVirtualMousePosition(force: boolean = false): void {
@@ -3122,6 +3228,7 @@ struct RemotePage {
           .onClick(() => {
             this.dismissGestureHelp();
           })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
       }
       .width(this.isLargeLayout() ? 420 : '88%')
       .height(Math.min(760, Math.max(180, (this.pageHeight > 0 ? this.pageHeight : 640) - 24)))
@@ -3228,6 +3335,7 @@ struct RemotePage {
       .onClick(() => {
         this.sendMobileAction(action, label);
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 9, ButtonType.Capsule))
   }
 
   @Builder
@@ -3255,6 +3363,7 @@ struct RemotePage {
         .onClick(() => {
           this.showMobileActions = false;
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 9, ButtonType.Capsule))
     }
     .width(this.getMobileActionsWidth())
     .height(this.getMobileActionsHeight())
@@ -3305,6 +3414,7 @@ struct RemotePage {
     .onClick(() => {
       this.setInputMode(mode);
     })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   @Builder
@@ -3337,6 +3447,7 @@ struct RemotePage {
           this.refocusRemoteKeyboard();
         }
       })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   @Builder
@@ -3515,6 +3626,7 @@ struct RemotePage {
           }))
         .onClick(() => { this.setFloatingPanelCollapsed(true, false); })
         .onHover((isHovering: boolean) => { this.handleNonRemoteHover(isHovering); })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 16, ButtonType.Capsule))
       } else if (this.isHandheldLandscape()) {
         Column({ space: 5 }) {
           Row({ space: 4 }) {
@@ -3607,6 +3719,73 @@ struct RemotePage {
   }
 
   @Builder
+  buildDraggableQualityMonitor() {
+    Scroll() {
+      if (this.showQualityMonitor) {
+        this.buildStatsPanel();
+      } else {
+        this.buildStatsPanelRestoreButton();
+      }
+    }
+    .width(this.getQualityMonitorWidth())
+    .height(this.getQualityMonitorHeight())
+    .scrollBar(BarState.Off)
+    .scrollable(ScrollDirection.None)
+    .clip(true)
+    .borderRadius(this.showQualityMonitor ? 6 : 15)
+    .position({ x: this.getQualityMonitorX(), y: this.getQualityMonitorY() })
+    .zIndex(40)
+    .gesture(PanGesture({ fingers: 1, direction: PanDirection.All, distance: 6 })
+      .onActionStart(() => {
+        this.qualityDragStartX = this.getQualityMonitorX();
+        this.qualityDragStartY = this.getQualityMonitorY();
+        this.qualityLastDragAt = Date.now();
+      })
+      .onActionUpdate((event: GestureEvent) => {
+        this.updateQualityMonitorDrag(event.offsetX, event.offsetY);
+      })
+      .onActionEnd(() => { this.qualityLastDragAt = Date.now(); })
+      .onActionCancel(() => { this.qualityLastDragAt = Date.now(); }))
+  }
+
+  getQualityMonitorWidth(): number {
+    return Math.min(this.showQualityMonitor ? 194 : 64,
+      Math.max(1, this.qualityViewportWidth - 16));
+  }
+
+  getQualityMonitorHeight(): number {
+    return Math.min(this.showQualityMonitor ? 190 : 30,
+      Math.max(1, this.qualityViewportHeight - 16));
+  }
+
+  getQualityMonitorX(): number {
+    const max: number = Math.max(0, this.qualityViewportWidth - this.getQualityMonitorWidth() - 8);
+    return Math.max(Math.min(8, max), Math.min(max,
+      this.qualityMonitorX < 0 ? max - 2 : this.qualityMonitorX));
+  }
+
+  getQualityMonitorY(): number {
+    const max: number = Math.max(0, this.qualityViewportHeight - this.getQualityMonitorHeight() - 8);
+    return Math.max(Math.min(8, max), Math.min(max,
+      this.qualityMonitorY < 0 ? (this.isFullScreen ? 58 : 10) : this.qualityMonitorY));
+  }
+
+  updateQualityMonitorDrag(x: number, y: number): void {
+    this.qualityMonitorX = Math.max(0, this.qualityDragStartX + x);
+    this.qualityMonitorY = Math.max(0, this.qualityDragStartY + y);
+    this.qualityMonitorX = this.getQualityMonitorX();
+    this.qualityMonitorY = this.getQualityMonitorY();
+    this.qualityLastDragAt = Date.now();
+  }
+
+  setQualityMonitorExpanded(expanded: boolean): void {
+    if (Date.now() - this.qualityLastDragAt < 250) return;
+    this.qualityMonitorX = this.getQualityMonitorX();
+    this.qualityMonitorY = this.getQualityMonitorY();
+    this.showQualityMonitor = expanded;
+  }
+
+  @Builder
   buildStatsPanel() {
     Column({ space: 2 }) {
       Row() {
@@ -3623,7 +3802,7 @@ struct RemotePage {
           .textAlign(TextAlign.Center)
           .borderRadius(11)
           .onClick(() => {
-            this.showQualityMonitor = false;
+            this.setQualityMonitorExpanded(false);
           })
       }
       .width('100%')
@@ -3638,9 +3817,8 @@ struct RemotePage {
       ConnectionQualityRow({ label: '解码', value: this.decoderText })
       ConnectionQualityRow({ label: '安全', value: this.securityText(), valueColor: this.securityTextColor() })
     }
-    .width(194)
+    .width('100%')
     .padding({ left: 8, right: 8, top: 8, bottom: 8 })
-    .margin({ top: this.isFullScreen ? 58 : 10, right: 10 })
     .backgroundColor('#96000000')
     .borderRadius(6)
     .zIndex(40)
@@ -3657,13 +3835,13 @@ struct RemotePage {
         .fontColor('#FFF2F2F2')
     }
     .height(30)
+    .width('100%')
     .padding({ left: 10, right: 10 })
-    .margin({ top: this.isFullScreen ? 58 : 10, right: 10 })
     .backgroundColor('#80000000')
     .borderRadius(15)
     .zIndex(40)
     .onClick(() => {
-      this.showQualityMonitor = true;
+      this.setQualityMonitorExpanded(true);
     })
   }
 
@@ -3766,6 +3944,7 @@ struct RemotePage {
             .onClick(() => {
               this.switchDisplay(display);
             })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 17, ButtonType.Capsule))
         })
       }
       .padding(6)
@@ -3790,7 +3969,13 @@ struct RemotePage {
   }
 
   isHandheldLandscape(): boolean {
-    return this.isHandheldDevice() && this.pageWidth > this.pageHeight && this.pageHeight > 0;
+    const height: number = this.showKeyboardPanel && this.keyboardLayoutHeight > 0 ?
+      this.keyboardLayoutHeight : this.pageHeight;
+    return this.isHandheldDevice() && this.pageWidth > height && height > 0;
+  }
+
+  getRemoteCanvasHeight(): number | string {
+    return this.keyboardViewportHeight > 0 ? this.keyboardViewportHeight : '100%';
   }
 
   handleHandheldLayoutChange(): void {
@@ -3799,6 +3984,8 @@ struct RemotePage {
     if (!this.handheldLayoutInitialized || landscape !== this.lastHandheldLandscape) {
       this.handheldLayoutInitialized = true;
       this.lastHandheldLandscape = landscape;
+      this.keyboardToolsCollapsed = !landscape;
+      if (landscape) this.remoteToolbarCollapsed = false;
       this.keyboardToolsOffsetX = 0;
       this.keyboardToolsOffsetY = 0;
       this.remoteToolbarOffsetX = 0;
@@ -4747,6 +4934,7 @@ struct RemotePage {
   }
 
   handleRemoteKey(event: KeyEvent): boolean {
+    if (this.showCommunicationPanel) return false;
     this.drainNativeInputEvents();
     if (this.connectionStatus !== ConnectionStatus.CONNECTED) {
       return false;
@@ -4842,6 +5030,7 @@ struct RemotePage {
   }
 
   requestRemoteInputFocus(): void {
+    if (this.showCommunicationPanel) return;
     try {
       this.getUIContext()?.getFocusController().requestFocus('remoteNativeInputCapture');
     } catch (_e) {
@@ -5477,6 +5666,11 @@ struct RemotePage {
     if (this.connectionStatus !== ConnectionStatus.CONNECTED) {
       return;
     }
+    if (!this.showKeyboardPanel) {
+      this.keyboardLayoutWidth = this.pageWidth;
+      this.keyboardLayoutHeight = this.pageHeight;
+      this.keyboardViewportHeight = this.isHandheldLandscape() ? this.componentHeight : 0;
+    }
     this.resetKeyboardCaptureBuffer();
     this.applyKeyboardResizeMode();
     this.showKeyboardPanel = true;
@@ -5490,8 +5684,8 @@ struct RemotePage {
 
   closeRemoteKeyboard(): void {
     this.releaseVirtualModifiers();
+    this.keyboardToolsCollapsed = !this.isHandheldLandscape();
     this.showKeyboardPanel = false;
-    this.keyboardToolsCollapsed = true;
     this.showKeyboardFunctionKeys = false;
     this.showKeyboardMoreKeys = false;
     this.resetKeyboardCaptureBuffer();
@@ -5517,6 +5711,9 @@ struct RemotePage {
   }
 
   restoreKeyboardAvoidMode(): void {
+    this.keyboardViewportHeight = 0;
+    this.keyboardLayoutWidth = 0;
+    this.keyboardLayoutHeight = 0;
     if (!this.keyboardAvoidModeChanged) {
       return;
     }

@@ -21,7 +21,7 @@ for (const label of ['Ctrl', 'Alt', 'Shift', 'Win/Cmd', 'Fn', '更多', 'Del',
 assert.match(page, /buildKeyboardShortcutOverlay\(\)/,
   'Keyboard helper overlay must be rendered while the soft keyboard is open');
 assert.match(page, /setKeyboardAvoidMode\(KeyboardAvoidMode\.RESIZE\)/,
-  'The remote page must resize so the shortcut bar stays above the software keyboard');
+  'The available page area must resize so the shortcut bar stays above the software keyboard');
 assert.match(page, /restoreKeyboardAvoidMode\(\)/,
   'The previous keyboard avoid mode must be restored after closing the panel');
 assert.match(page, /keyboardToolsCollapsed/,
@@ -32,15 +32,15 @@ assert.match(page, /if \(this\.connectionStatus === ConnectionStatus\.CONNECTED\
   'Shortcut access must not depend on opening the local software keyboard');
 assert.match(page, /if \(this\.showKeyboardPanel && this\.connectionStatus === ConnectionStatus\.CONNECTED\) \{\s*this\.buildKeyboardCapture\(\);/,
   'The IME capture must remain opt-in instead of opening on connection');
-assert.match(page, /closeRemoteKeyboard\(\): void \{[\s\S]*?this\.keyboardToolsCollapsed = true;/,
-  'Closing the keyboard leaves the collapsed shortcut available');
+assert.match(page, /closeRemoteKeyboard\(\): void \{[\s\S]*?this\.keyboardToolsCollapsed = !this\.isHandheldLandscape\(\);/,
+  'Closing the keyboard keeps the landscape shortcut expanded and portrait shortcut collapsed');
 assert.match(page, /beginKeyboardToolsDrag\(\)/,
   'The shortcut bar must expose a drag start handler');
 assert.match(page, /updateKeyboardToolsDrag\(event\.offsetX, event\.offsetY\)/,
   'The shortcut bar and its compact button must be draggable');
 assert.match(page, /Text\('键'\)/,
   'The collapsed shortcut bar must remain available as a small transparent button');
-assert.match(page, /this\.keyboardToolsCollapsed = true/,
+assert.match(page, /this\.setFloatingPanelCollapsed\(keyboard, true\)/,
   'The expanded shortcut bar must provide a collapse action');
 assert.match(page, /getKeyboardToolsBaseY\(\): number \{\s*return 8;/,
   'The shortcut bar must start at the top of the resized remote area');

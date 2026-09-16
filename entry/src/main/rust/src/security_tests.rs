@@ -9,6 +9,33 @@ async fn stream_pair() -> (Stream, Stream) {
     (Stream::from(client, addr), Stream::from(server, peer))
 }
 
+#[test]
+fn account_rendezvous_requires_verified_encryption_without_downgrade() {
+    runtime().block_on(async {
+        let (rs_pk, rs_sk) = sign::gen_keypair();
+        let key = base64::encode(&rs_pk.0, Variant::Original);
+        let (mut client, mut server) = stream_pair().await;
+        server.send(&RendezvousMessage::new()).await.unwrap();
+        assert!(secure_rendezvous_connection(&mut client, &key).await.is_err());
+        assert!(!client.is_secured());
+        assert!(server.next_timeout(30).await.is_none());
+
+        let (mut client, mut server) = stream_pair().await;
+        let (encryption_pk, _) = box_::gen_keypair();
+        let mut exchange = RendezvousMessage::new();
+        exchange.set_key_exchange(KeyExchange {
+            keys: vec![sign::sign(&encryption_pk.0, &rs_sk).into()],
+            ..Default::default()
+        });
+        server.send(&exchange).await.unwrap();
+        secure_rendezvous_connection(&mut client, &key).await.unwrap();
+        assert!(client.is_secured());
+        let response = server.next_timeout(1000).await.unwrap().unwrap();
+        assert!(matches!(RendezvousMessage::parse_from_bytes(&response).unwrap().union,
+            Some(rendezvous_message::Union::KeyExchange(_))));
+    });
+}
+
 fn signed_identity(id: &str, pk: [u8; 32], signer: &sign::SecretKey) -> Vec<u8> {
     let payload = IdPk {
         id: id.into(),

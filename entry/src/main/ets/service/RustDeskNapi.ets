@@ -432,6 +432,9 @@ export class RustDeskNapi {
   static setSurfaceId(surfaceId: string): number {
     return rustdeskNapi.setSurfaceId(surfaceId)
   }
+  static setApiAccountContext(json: string): number {
+    return rustdeskNapi.setApiAccountContext(json);
+  }
 
   static prepareSurfaceRebind(): number {
     return rustdeskNapi.prepareSurfaceRebind()

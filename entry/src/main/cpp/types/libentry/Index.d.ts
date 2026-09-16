@@ -22,6 +22,14 @@ export interface VideoFrameInfo {
   targetBitrateKb?: number;
 }
 
+export const sendChatMessage: (text: string) => number;
+export const takeChatMessages: () => string;
+export const requestVoiceCall: () => number;
+export const getVoiceCallState: () => number;
+export const endVoiceCall: () => number;
+export const startVoiceCapture: () => number;
+export const stopVoiceCapture: () => number;
+
 export interface RemoteCursorPosition {
   valid: boolean;
   embedded: boolean;
@@ -127,6 +135,7 @@ export const getDeviceName: () => string;
 export const getClipboardText: () => string;
 export const setClipboardText: (text: string) => number;
 export const setOption: (key: string, value: string) => number;
+export const setApiAccountContext: (json: string) => number;
 export const getOption: (key: string) => string;
 export const getAllOptions: () => string;
 export const testIfValidServer: (server: string) => string;

@@ -1,12 +1,14 @@
+import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002001'
-export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}-toolbar-order-r2`
+export const RELEASE_NOTES_BUILD: string = '1002002'
+export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
 export struct ReleaseNotesDialog {
+  @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   controller?: CustomDialogController
   onClose: () => void = () => {}
@@ -44,6 +46,16 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.0（1002002）· 账号地址簿与操作体验', [
+            '新增官方 RustDesk Server Pro 与第三方 rustdesk-api 账号登录入口，支持记住登录、退出及邮箱或身份验证器二次验证。',
+            '支持读取个人、共享及旧版地址簿，勾选设备导入已保存连接；已有设备自动跳过，不覆盖名称、密码和分组。',
+            '新增可选的自建 ID 服务器账号权限认证；登录令牌仅保存在本机安全存储，不进入连接备份或云同步。',
+            '新增与远端的文字聊天，支持发送、接收和未读提示；聊天记录仅保留本次连接。',
+            '优化平板横屏首页：上方快速连接，下方集中显示已保存设备，详细编辑选项使用侧边面板。',
+            '横屏远控默认展开两侧快捷栏；弹出键盘时保持当前画面比例并上移避让，不再整体缩小。',
+            '连接信息默认关闭，按需展开并支持拖动；优化拖动边界和点击判定。',
+            '保存连接后新增“已保存”提示，自动向上淡出；常用按钮统一圆角矩形风格，可在设置中切换。',
+          ])
           this.buildSection('1.2.0（1002001）· 虚拟鼠标与横屏操控', [
             '优化“键 / 控”按钮排序：排序列表改为长按后上下拖动，替代上移、下移按钮，松手自动保存，并支持恢复默认顺序。',
             '“键 → 更多”中的按键和组合键新增独立排序；长按任意按键进入排序列表，重新打开或重启应用后保留顺序，不影响主快捷栏。',
@@ -257,6 +269,7 @@ export struct ReleaseNotesDialog {
             this.controller.close()
           }
         })
+        .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 7, ButtonType.Capsule))
     }
     .width('90%')
     .height('78%')

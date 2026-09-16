@@ -32,7 +32,7 @@ assert.match(page, /@State connectionFormExpanded: boolean = false/,
   'advanced connection fields should start collapsed');
 assert(form.indexOf('this.buildRemoteIdInput()') < form.indexOf('if (this.connectionFormExpanded)'),
   'remote ID/IP must remain visible while advanced options are collapsed');
-assert.match(form, /Button\(this\.connectionFormExpanded \? '收起选项⌃' : '更多选项›'\)/,
+assert.match(form, /this\.connectionFormExpanded \? '收起选项⌃' : '更多选项›'/,
   'compact form needs a clear advanced-options action');
 assert.match(form, /TransitionEffect\.OPACITY[\s\S]*TransitionEffect\.translate\(\{ y: -8 \}\)[\s\S]*duration: 220/,
   'advanced connection fields should animate while expanding and collapsing');
@@ -70,7 +70,7 @@ assert.match(homePage, /this\.isDarkMode \? '#2823466F' : '#18DCEBFF'/,
   'sliding home tab highlight should retain the translucent selected color');
 assert.doesNotMatch(homePage, /\.padding\(\{ bottom: 78 \}\)/,
   'home pages should render behind the floating navigation surface');
-assert.equal((page.match(/\.padding\(\{ bottom: 94 \}\)/g) || []).length, 3,
+assert.equal((page.match(/\.padding\(\{ bottom: 94 \}\)/g) || []).length, 4,
   'connection scroll areas should preserve a tappable bottom safe space');
 assert.match(settingsPage, /bottom: 94/,
   'settings scroll content should preserve a tappable bottom safe space');

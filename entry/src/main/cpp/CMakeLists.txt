@@ -39,6 +39,7 @@ add_library(entry SHARED napi_init.cpp
                        core/config.cpp
                        core/diagnostic_log.cpp
                        core/audio_player.cpp
+                       core/voice_capture.cpp
                        core/video_render.cpp
                        core/video_decoder_selector.cpp
                        core/xcomponent_render.cpp

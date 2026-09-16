@@ -228,10 +228,34 @@ test('FPS counts presented frames while speed counts received bytes',()=>{
 });
 const remotePageSource=fs.readFileSync(path.resolve(__dirname,'..','entry/src/main/ets/pages/RemotePage.ets'),'utf8');
 test('connection quality panel can be hidden and restored',()=>{
-  assert.match(remotePageSource, /@State showQualityMonitor: boolean = true/);
-  assert.match(remotePageSource, /this\.showQualityMonitor = false/);
+  assert.match(remotePageSource, /@State showQualityMonitor: boolean = false/);
+  assert.match(remotePageSource, /this\.setQualityMonitorExpanded\(false\)/);
   assert.match(remotePageSource, /buildStatsPanelRestoreButton\(\)/);
-  assert.match(remotePageSource, /this\.showQualityMonitor = true/);
+  assert.match(remotePageSource, /this\.setQualityMonitorExpanded\(true\)/);
+});
+test('quality monitor drag preserves anchor, clamps bounds and suppresses drag clicks',()=>{
+  const methods = remotePageSource.slice(remotePageSource.indexOf('  getQualityMonitorWidth():'),
+    remotePageSource.indexOf('  @Builder\n  buildStatsPanel()')).replace(/: number|: boolean|: void/g,'');
+  const clock = { now:()=>1000 };
+  const panel = new Function('Date',`return new class {${methods}}`)(clock);
+  Object.assign(panel,{qualityViewportWidth:800,qualityViewportHeight:400,showQualityMonitor:false,
+    qualityMonitorX:-1,qualityMonitorY:-1,qualityLastDragAt:0,isFullScreen:false});
+  assert.equal(panel.getQualityMonitorWidth(),64);
+  panel.qualityDragStartX=100; panel.qualityDragStartY=80;
+  panel.updateQualityMonitorDrag(50,20);
+  assert.equal(panel.getQualityMonitorX(),150); assert.equal(panel.getQualityMonitorY(),100);
+  panel.setQualityMonitorExpanded(true);
+  assert.equal(panel.showQualityMonitor,false,'drag release must not trigger expansion');
+  clock.now=()=>1300;
+  panel.setQualityMonitorExpanded(true);
+  assert.equal(panel.showQualityMonitor,true);
+  assert.equal(panel.getQualityMonitorX(),150); assert.equal(panel.getQualityMonitorY(),100);
+  panel.updateQualityMonitorDrag(2000,2000);
+  assert.equal(panel.getQualityMonitorX(),598); assert.equal(panel.getQualityMonitorY(),202);
+  panel.qualityViewportWidth=320; panel.qualityViewportHeight=240;
+  assert.equal(panel.getQualityMonitorX(),118); assert.equal(panel.getQualityMonitorY(),42);
+  panel.updateQualityMonitorDrag(-2000,-2000);
+  assert.equal(panel.getQualityMonitorX(),8); assert.equal(panel.getQualityMonitorY(),8);
 });
 const device = {sdkApiVersion:22};
 const bg = {BackgroundTaskMode:{MODE_MULTI_DEVICE_CONNECTION:6,MODE_AV_PLAYBACK_AND_RECORD:12,
