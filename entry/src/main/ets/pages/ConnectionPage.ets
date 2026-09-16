@@ -9,6 +9,7 @@ import { translate } from '../utils/I18n'
 import { ConnectionService } from '../service/ConnectionService'
 import { RemoteSessionBackgroundTask } from '../service/RemoteSessionBackgroundTask'
 import { ConnectionStatus } from '../model/ConnectionModel'
+import { PerformanceSettings } from '../model/PerformanceSettings'
 import { PeerOnlineResult, PeerOnlineState, RustDeskNapi } from '../service/RustDeskNapi'
 import { CredentialStore } from '../service/CredentialStore'
 import { CloudSyncService } from '../service/CloudSyncService'
@@ -1685,6 +1686,39 @@ export struct ConnectionPage {
       .padding(3)
       .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
       .borderRadius(12)
+      Row({ space: 3 }) {
+        this.buildPresetButton('高清优先', 'best')
+        this.buildPresetButton('自定义', 'custom')
+      }
+      .width('100%')
+      .padding(3)
+      .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
+      .borderRadius(12)
+
+      if (PerformanceSettings.isCustom(this.performancePreset)) {
+        Text(`码率比例：${PerformanceSettings.bitrate(this.performancePreset)}%`)
+          .fontSize(13)
+          .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
+          .width('100%')
+        Slider({ value: PerformanceSettings.bitrate(this.performancePreset), min: 10, max: 2000, step: 10 })
+          .width('100%')
+          .onChange((value: number) => {
+            this.performancePreset = PerformanceSettings.custom(value, PerformanceSettings.fps(this.performancePreset))
+          })
+        Text(`目标帧率：${PerformanceSettings.fps(this.performancePreset)} FPS`)
+          .fontSize(13)
+          .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
+          .width('100%')
+        Slider({ value: PerformanceSettings.fps(this.performancePreset), min: 5, max: 120, step: 1 })
+          .width('100%')
+          .onChange((value: number) => {
+            this.performancePreset = PerformanceSettings.custom(PerformanceSettings.bitrate(this.performancePreset), value)
+          })
+        Text('高码率会增加流量、耗电和延迟风险，百分比不等于固定 Mbps。公共中继下超过 100% 将按官方规则回退至 50%，帧率最高 30 FPS；自建服务器或直连可用更高设置。保存后下次连接生效。')
+          .fontSize(12)
+          .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+          .width('100%')
+      }
     }
     .width('100%')
   }
@@ -1695,16 +1729,21 @@ export struct ConnectionPage {
       .height(36)
       .layoutWeight(1)
       .fontSize(12)
-      .fontColor(this.performancePreset === preset ? this.selectedControlText() :
+      .fontColor(this.isPerformancePresetSelected(preset) ? this.selectedControlText() :
         (this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY))
-      .backgroundColor(this.performancePreset === preset ? this.selectedControlBackground() : Color.Transparent)
-      .border({ width: 1, color: this.performancePreset === preset ?
+      .backgroundColor(this.isPerformancePresetSelected(preset) ? this.selectedControlBackground() : Color.Transparent)
+      .border({ width: 1, color: this.isPerformancePresetSelected(preset) ?
         (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BORDER_DARK : RustDeskTheme.CONTROL_SELECTED_BORDER) : Color.Transparent })
       .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
       .onClick(() => {
-        this.performancePreset = preset
+        this.performancePreset = preset === 'custom' ? PerformanceSettings.custom(
+          PerformanceSettings.bitrate(this.performancePreset), PerformanceSettings.fps(this.performancePreset)) : preset
       })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
+  }
+
+  private isPerformancePresetSelected(preset: string): boolean {
+    return preset === 'custom' ? PerformanceSettings.isCustom(this.performancePreset) : this.performancePreset === preset
   }
 
   private selectedControlText(): ResourceColor {
@@ -2409,7 +2448,7 @@ export struct ConnectionPage {
   }
 
   normalizePerformancePreset(value: string): string {
-    return value === 'stable' || value === 'high_fps' || value === 'silky' || value === 'smooth' ? value : 'smooth'
+    return PerformanceSettings.normalize(value)
   }
 
   buildBackupPayload(includesPasswords: boolean): ConnectionBackupPayload {
@@ -2492,7 +2531,7 @@ export struct ConnectionPage {
             name: row['name'] ?? '',
             remoteId: remoteId,
             password: savedPassword,
-            performancePreset: row['performancePreset'] ?? 'smooth',
+            performancePreset: PerformanceSettings.normalize(row['performancePreset'] ?? 'smooth'),
             groupId: this.validGroupId(row['groupId'] ?? '')
           })
         }
@@ -2655,7 +2694,7 @@ export struct ConnectionPage {
     this.connectionName = item.name
     this.remoteId = this.normalizeRemoteId(item.remoteId)
     this.password = item.password
-    this.performancePreset = item.performancePreset.length > 0 ? item.performancePreset : 'smooth'
+    this.performancePreset = PerformanceSettings.normalize(item.performancePreset)
     this.selectedGroupId = this.validGroupId(item.groupId)
     this.isIdEmpty = this.remoteId.length === 0
   }

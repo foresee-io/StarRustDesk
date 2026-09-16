@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 mod kcp_stream;
 mod communication;
 mod api_account;
+mod performance;
+use performance::PerformanceConfig;
 #[cfg(test)]
 mod keyboard_tests;
 #[cfg(test)]
@@ -28,7 +30,7 @@ use hbb_common::message_proto::{
     message, misc, supported_decoding, video_frame, AudioFormat, Auth2FA, CaptureDisplays,
     Clipboard, ClipboardFormat, CodecAbility, ControlKey, CursorData, EncodedVideoFrames,
     FileAction, FileTransfer, FileTransferCancel, FileTransferSendConfirmRequest, Hash, IdPk,
-    ImageQuality, KeyEvent, KeyboardMode, LoginRequest, Message as PeerMessage, Misc, MouseEvent,
+    KeyEvent, KeyboardMode, LoginRequest, Message as PeerMessage, Misc, MouseEvent,
     OSLogin, OptionMessage, PublicKey, ReadDir, SupportedDecoding, SwitchDisplay, TestDelay,
     VideoFrame,
 };
@@ -107,6 +109,7 @@ static LAST_FPS_HINT_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_VIDEO_RECEIVED_MS: AtomicU64 = AtomicU64::new(0);
 static CONNECTION_ACTIVE: AtomicBool = AtomicBool::new(false);
 static CONNECTION_ROUTE: AtomicI32 = AtomicI32::new(0);
+static USING_PUBLIC_SERVER: AtomicBool = AtomicBool::new(true);
 static CONNECTION_TRANSPORT: AtomicI32 = AtomicI32::new(0);
 static CONNECTION_DELAY_MS: AtomicI32 = AtomicI32::new(0);
 static CONNECTION_TARGET_BITRATE_KB: AtomicI32 = AtomicI32::new(0);
@@ -142,12 +145,6 @@ const PEER_ROUTE_HISTORY_OPTION: &str = "peer-route-history-v1";
 const PEER_ROUTE_HISTORY_TTL_MS: u64 = 30 * 60 * 1_000;
 const PEER_ROUTE_HISTORY_MAX_ENTRIES: usize = 128;
 const PEER_ROUTE_HISTORY_MAX_FAILURES: u8 = 3;
-
-#[derive(Clone, Copy)]
-struct PerformanceConfig {
-    fps: i32,
-    quality: ImageQuality,
-}
 
 enum QueuedPeerCommand {
     Message {
@@ -277,10 +274,7 @@ struct FileDownloadRequest {
     is_directory: bool,
 }
 
-static PERFORMANCE_CONFIG: Mutex<PerformanceConfig> = Mutex::new(PerformanceConfig {
-    fps: 45,
-    quality: ImageQuality::Low,
-});
+static PERFORMANCE_CONFIG: Mutex<PerformanceConfig> = Mutex::new(PerformanceConfig::DEFAULT);
 
 #[derive(Clone)]
 struct RemoteCursorImage {
@@ -503,6 +497,7 @@ pub extern "C" fn rust_connect(
     clear_clipboard_state();
 
     let public_server = rv.trim().is_empty();
+    USING_PUBLIC_SERVER.store(public_server, Ordering::SeqCst);
     let rendezvous_candidates = if direct_addr.is_some() {
         Vec::new()
     } else {
@@ -975,28 +970,7 @@ pub extern "C" fn rust_connect(
 #[no_mangle]
 pub extern "C" fn rust_set_performance_preset(preset: *const c_char) -> i32 {
     let preset = cstr_to_string(preset).unwrap_or_else(|| "smooth".to_string());
-    let config = match preset.as_str() {
-        "stable" => PerformanceConfig {
-            fps: 30,
-            quality: ImageQuality::Balanced,
-        },
-        "high_fps" => PerformanceConfig {
-            fps: 60,
-            quality: ImageQuality::Balanced,
-        },
-        "smooth" => PerformanceConfig {
-            fps: 45,
-            quality: ImageQuality::Low,
-        },
-        "silky" => PerformanceConfig {
-            fps: 60,
-            quality: ImageQuality::Low,
-        },
-        _ => PerformanceConfig {
-            fps: 45,
-            quality: ImageQuality::Low,
-        },
-    };
+    let config = PerformanceConfig::from_preset(&preset);
     if let Ok(mut guard) = PERFORMANCE_CONFIG.lock() {
         *guard = config;
     }
@@ -1078,6 +1052,7 @@ pub extern "C" fn rust_set_background_video_mode(enabled: i32) -> i32 {
     let mut misc = Misc::new();
     misc.set_option(OptionMessage {
         image_quality: performance.quality.into(),
+        custom_image_quality: performance.wire_quality(),
         custom_fps: performance.fps,
         supported_decoding: MessageField::some(supported_decoding_options(false)),
         disable_audio: if REMOTE_AUDIO_ENABLED.load(Ordering::SeqCst) {
@@ -2389,6 +2364,7 @@ pub extern "C" fn rust_fallback_video_to_vp9() -> i32 {
     let mut option_misc = Misc::new();
     option_misc.set_option(OptionMessage {
         image_quality: performance.quality.into(),
+        custom_image_quality: performance.wire_quality(),
         custom_fps: performance.fps,
         supported_decoding: MessageField::some(supported_decoding_options(true)),
         disable_audio: if REMOTE_AUDIO_ENABLED.load(Ordering::SeqCst) {
@@ -4959,6 +4935,7 @@ async fn send_login(hash: Hash) {
         option: MessageField::some(OptionMessage {
             supported_decoding: MessageField::some(supported_decoding_options(false)),
             image_quality: performance.quality.into(),
+            custom_image_quality: performance.wire_quality(),
             custom_fps: performance.fps,
             disable_audio: if REMOTE_AUDIO_ENABLED.load(Ordering::SeqCst) {
                 hbb_common::message_proto::option_message::BoolOption::No
@@ -4995,6 +4972,7 @@ async fn send_performance_options(refresh_video: bool) {
     let mut misc = Misc::new();
     misc.set_option(OptionMessage {
         image_quality: performance.quality.into(),
+        custom_image_quality: performance.wire_quality(),
         custom_fps: performance.fps,
         supported_decoding: MessageField::some(supported_decoding_options(false)),
         disable_audio: if REMOTE_AUDIO_ENABLED.load(Ordering::SeqCst) {
@@ -5015,9 +4993,10 @@ async fn send_performance_options(refresh_video: bool) {
     msg.set_misc(misc);
     match send_peer_message_async(msg).await {
         Ok(_) => emit_event(&format!(
-            "performance options sent fps={} quality={} codec={} h264={} vp9={} vp8={} av1={} h265={}",
+            "performance options sent fps={} quality={} custom_bitrate_percent={} codec={} h264={} vp9={} vp8={} av1={} h265={}",
             performance.fps,
             performance.quality.value(),
+            performance.custom_quality,
             preferred_codec_name(false),
             H264_DECODER_SUPPORTED.load(Ordering::SeqCst),
             VP9_DECODER_SUPPORTED.load(Ordering::SeqCst),
@@ -5115,18 +5094,11 @@ fn performance_config() -> PerformanceConfig {
     let configured = PERFORMANCE_CONFIG
         .lock()
         .map(|guard| *guard)
-        .unwrap_or(PerformanceConfig {
-            fps: 45,
-            quality: ImageQuality::Low,
-        });
-    if BACKGROUND_VIDEO_MODE.load(Ordering::SeqCst) {
-        PerformanceConfig {
-            fps: 2,
-            quality: ImageQuality::Low,
-        }
-    } else {
-        configured
-    }
+        .unwrap_or(PerformanceConfig::DEFAULT);
+    configured.effective(
+        BACKGROUND_VIDEO_MODE.load(Ordering::SeqCst),
+        USING_PUBLIC_SERVER.load(Ordering::SeqCst) && CONNECTION_ROUTE.load(Ordering::SeqCst) != 1,
+    )
 }
 
 async fn send_test_delay_response(delay: TestDelay, stream: &mut Stream) {

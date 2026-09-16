@@ -2,8 +2,8 @@ import { common } from '@kit.AbilityKit';
 import { CommunicationService, SessionChatMessage } from '../service/CommunicationService';
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier';
 
-// Temporarily hide voice controls without removing the underlying call support.
-const VOICE_CALL_UI_ENABLED: boolean = false;
+// Controls visibility of the call actions without changing the call lifecycle.
+const VOICE_CALL_UI_ENABLED: boolean = true;
 
 @Component
 export struct CommunicationPanel {

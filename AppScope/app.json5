@@ -2,7 +2,7 @@
   "app": {
     "bundleName": "com.yinhe.starrustdesk",
     "vendor": "example",
-    "versionCode": 1002002,
+    "versionCode": 1002003,
     "versionName": "1.2.0",
     "buildVersion": "1",
     "cloudFileSyncEnabled": true,

@@ -2260,7 +2260,7 @@ struct RemotePage {
       case 'mobileActions': return '手机操作';
       case 'gestureHelp': return '手势说明';
       case 'pan': return '移动画面';
-      case 'chat': return '聊天';
+      case 'chat': return '聊天与语音';
       case 'upload': return '发送文件';
       case 'download': return '取回文件';
       case 'clipboard': return '剪贴板';

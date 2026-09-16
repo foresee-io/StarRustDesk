@@ -2,7 +2,7 @@ import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002002'
+export const RELEASE_NOTES_BUILD: string = '1002003'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -46,6 +46,15 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.0（1002003）· 语音呼叫与高清画质', [
+            '新增“高清优先”和“自定义”画质模式，支持码率比例 10%～2000% 与目标帧率 5～120 FPS，参数可随连接保存、备份与同步。',
+            '画质入口位于新建或编辑连接的“更多选项 → 连接模式”，保存后下次连接生效；码率百分比不代表固定 Mbps。',
+            '公共中继下自定义码率超过 100% 时回退至 50%，目标帧率最高 30 FPS；自建服务器或直连可使用更高设置，保留原有默认模式。',
+            '后台保持低帧率，返回前台恢复所选画质；登录、画质重发和解码回退时保留自定义参数。',
+            '恢复聊天面板中的“发起语音”入口及通话状态提示，支持取消呼叫、静音和挂断。',
+            '语音仅在获得麦克风授权且远端接听后开始采集，进入后台或断开连接时结束通话。',
+            '保留文字聊天、账号地址簿及上一版本的界面优化；语音通话需远端客户端支持。',
+          ])
           this.buildSection('1.2.0（1002002）· 账号地址簿与操作体验', [
             '新增官方 RustDesk Server Pro 与第三方 rustdesk-api 账号登录入口，支持记住登录、退出及邮箱或身份验证器二次验证。',
             '支持读取个人、共享及旧版地址簿，勾选设备导入已保存连接；已有设备自动跳过，不覆盖名称、密码和分组。',
