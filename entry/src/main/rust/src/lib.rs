@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 mod kcp_stream;
 mod communication;
 mod api_account;
+mod refusal_diagnostics;
 mod performance;
 mod input_compat;
 use performance::PerformanceConfig;
@@ -429,7 +430,7 @@ pub extern "C" fn rust_set_video_codec_support(
 
 #[no_mangle]
 pub extern "C" fn rust_get_build_id() -> *const c_char {
-    b"official-quality-monitor-20260911-r3\0".as_ptr() as *const c_char
+    b"auth-diagnostics-20260917-r1\0".as_ptr() as *const c_char
 }
 
 #[no_mangle]
@@ -477,7 +478,11 @@ pub extern "C" fn rust_connect(
     let rv = cstr_to_string(rendezvous_server).unwrap_or_default();
     let relay_override = cstr_to_string(relay_server).unwrap_or_default();
     let key = cstr_to_string(server_key).unwrap_or_default();
+    let key_source = if !key.is_empty() { "configured" }
+        else if rv.trim().is_empty() { "builtin_public" } else { "empty" };
     let key = default_server_key(&rv, &key);
+    emit_event(&format!("connection auth config server_mode={} key_source={} effective_key_set={}",
+        if rv.trim().is_empty() { "default" } else { "custom" }, key_source, !key.is_empty()));
     let client_hwid = cstr_to_string(client_hwid).unwrap_or_default().into_bytes();
     let client_id = cstr_to_string(client_id).unwrap_or_else(|| "harmony-client".to_string());
 
@@ -562,6 +567,7 @@ pub extern "C" fn rust_connect(
                 emit_event("account rendezvous encryption failed; token not sent");
                 return -13;
             }
+            emit_event("account rendezvous encryption ready");
         }
         if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() {
             if let Some(config) = config.as_mut() {
@@ -683,8 +689,7 @@ pub extern "C" fn rust_connect(
                     classify_rendezvous_refusal(&ph.other_failure)
                 ));
                 if !ph.other_failure.is_empty() {
-                    emit_event(&format!("rendezvous rejected source=punch category={}",
-                        classify_rendezvous_refusal(&ph.other_failure)));
+                    log_rendezvous_refusal("punch", &ph.other_failure);
                     return -13;
                 }
                 signed_id_pk = ph.pk.to_vec();
@@ -744,8 +749,7 @@ pub extern "C" fn rust_connect(
                     classify_rendezvous_refusal(&rr.refuse_reason)
                 ));
                 if !rr.refuse_reason.is_empty() {
-                    emit_event(&format!("rendezvous rejected source=relay category={}",
-                        classify_rendezvous_refusal(&rr.refuse_reason)));
+                    log_rendezvous_refusal("relay", &rr.refuse_reason);
                     return -13;
                 }
                 signed_id_pk = rr.pk().to_vec();
@@ -3203,8 +3207,8 @@ async fn send_punch_request(
             return Err(());
         }
         emit_event(&format!(
-            "punch request sent attempt={attempt}/{}",
-            PUNCH_REPLY_TIMEOUTS.len()
+            "punch request sent attempt={attempt}/{} token_attached={}",
+            PUNCH_REPLY_TIMEOUTS.len(), !request.punch_hole_request().token.is_empty()
         ));
         if let Some(response) =
             next_rendezvous_with_updates(conn, reply_timeout, allow_config_updates).await
@@ -3284,6 +3288,11 @@ fn apply_rendezvous_config_update(update: &hbb_common::rendezvous_proto::ConfigU
         update.serial,
         update.rendezvous_servers.len()
     ));
+}
+
+fn log_rendezvous_refusal(source: &str, reason: &str) {
+    emit_event(&format!("rendezvous rejected source={} category={} detail={} reason_bytes={} raw_redacted=true",
+        source, classify_rendezvous_refusal(reason), refusal_diagnostics::detail(reason), reason.len()));
 }
 
 fn classify_rendezvous_refusal(reason: &str) -> &'static str {
@@ -3628,6 +3637,7 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
     if !account_token.is_empty() {
         secure_rendezvous_connection(&mut rendezvous, &config.key).await
             .map_err(|_| "账号连接认证需要安全的 ID 服务器通道，令牌未发送".to_string())?;
+        emit_event("file account rendezvous encryption ready");
     }
     let mut request = punch_hole_request(
         &config.peer,
@@ -3644,6 +3654,7 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
         .send(&request)
         .await
         .map_err(|error| error.to_string())?;
+    emit_event(&format!("file punch request sent token_attached={}", !account_token.is_empty()));
     let local_addr = rendezvous.local_addr();
     let response = next_rendezvous(&mut rendezvous, RENDEZVOUS_REPLY_TIMEOUT)
         .await
@@ -3654,7 +3665,8 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
     let mut is_local = false;
     if let Some(rendezvous_message::Union::RelayResponse(response)) = response.union {
         if !response.refuse_reason.is_empty() {
-            return Err(response.refuse_reason);
+            log_rendezvous_refusal("file_relay", &response.refuse_reason);
+            return Err(format!("文件连接被服务器拒绝：{}", refusal_diagnostics::detail(&response.refuse_reason)));
         }
         signed_id_pk = response.pk().to_vec();
         if relay.is_empty() {
@@ -3688,7 +3700,8 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
             Some(rendezvous_message::Union::PunchHoleResponse(response)) => {
                 is_local = response.is_local();
                 if !response.other_failure.is_empty() {
-                    return Err(response.other_failure);
+                    log_rendezvous_refusal("file_punch", &response.other_failure);
+                    return Err(format!("文件连接被服务器拒绝：{}", refusal_diagnostics::detail(&response.other_failure)));
                 }
                 signed_id_pk = response.pk.to_vec();
                 if !response.socket_addr.is_empty() {
@@ -3831,6 +3844,7 @@ async fn request_relay_with_type(
             ..Default::default()
         });
         rv_conn.send(&req).await?;
+        emit_event(&format!("relay request sent attempt={attempt}/3 token_attached={}", !token.is_empty()));
 
         match next_rendezvous(&mut rv_conn, RENDEZVOUS_REPLY_TIMEOUT).await {
             Some(msg) => match msg.union {
@@ -3842,7 +3856,8 @@ async fn request_relay_with_type(
                         .await;
                 }
                 Some(rendezvous_message::Union::RelayResponse(resp)) => {
-                    hbb_common::bail!("relay refused: {}", resp.refuse_reason)
+                    log_rendezvous_refusal("relay_request", &resp.refuse_reason);
+                    hbb_common::bail!("relay refused: {}", refusal_diagnostics::detail(&resp.refuse_reason))
                 }
                 other => {
                     last_error = format!(

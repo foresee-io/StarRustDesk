@@ -34,8 +34,26 @@ pub extern "C" fn rust_set_api_account_context(json: *const c_char) -> i32 {
 }
 
 pub(super) fn token_for(server: &str, key: &str) -> String {
-    ACCOUNT.lock().ok().and_then(|account| account.as_ref()
-        .filter(|a| a.matches(server, key)).map(|a| a.token.clone())).unwrap_or_default()
+    // Diagnose the same snapshot used for selection, never the token itself.
+    let (token, diagnostic) = match ACCOUNT.lock() {
+        Ok(account) => select_token(account.as_ref(), server, key),
+        Err(_) => (String::new(), "context=unavailable token_selected=false".to_string()),
+    };
+    emit_event(&format!("account auth selection {diagnostic}"));
+    token
+}
+
+fn select_token(account: Option<&AccountContext>, server: &str, key: &str) -> (String, String) {
+    let Some(account) = account else {
+        return (String::new(), "context=absent token_selected=false".to_string());
+    };
+    let server_match = !server.trim().is_empty() && !account.rendezvous.trim().is_empty()
+        && default_rendezvous_addr(server) == default_rendezvous_addr(&account.rendezvous);
+    let key_match = !account.key.is_empty() && account.key == key;
+    let selected = account.matches(server, key) && !account.token.is_empty();
+    (if selected { account.token.clone() } else { String::new() }, format!(
+        "context=present server_match={server_match} key_match={key_match} token_present={} token_selected={selected}",
+        !account.token.is_empty()))
 }
 
 pub(super) fn attach(request: &mut RendezvousMessage, token: &str) {
@@ -47,6 +65,26 @@ pub(super) fn attach(request: &mut RendezvousMessage, token: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn selection_diagnostics_are_consistent_and_secret_free() {
+        let account = AccountContext { token: "private-token".into(), rendezvous: "private.test".into(), key: "private-key".into() };
+        for (server, key, selected) in [
+            ("private.test:21116", "private-key", true),
+            ("other.test", "private-key", false),
+            ("private.test", "wrong-key", false),
+            ("", "private-key", false),
+        ] {
+            let (token, diagnostic) = select_token(Some(&account), server, key);
+            assert_eq!(!token.is_empty(), selected);
+            assert!(diagnostic.contains(&format!("token_selected={selected}")));
+            for secret in ["private-token", "private.test", "private-key", "other.test", "wrong-key"] {
+                assert!(!diagnostic.contains(secret));
+            }
+        }
+        assert!(select_token(Some(&account), "other.test", "private-key").1.contains("server_match=false key_match=true"));
+        assert!(select_token(Some(&account), "private.test", "wrong-key").1.contains("server_match=true key_match=false"));
+        assert_eq!(select_token(None, "private.test", "private-key").1, "context=absent token_selected=false");
+    }
     #[test]
     fn account_binding_never_follows_network_or_key_changes() {
         let account = AccountContext { token: "test-token".into(), rendezvous: "id.example.test".into(), key: "key-a".into() };
