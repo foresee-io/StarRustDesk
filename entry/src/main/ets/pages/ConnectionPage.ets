@@ -247,9 +247,9 @@ export struct ConnectionPage {
           this.buildUpdateBanner()
         }
         this.buildPageHeader()
-        if (this.isTabletWideLayout()) {
+        if (this.isWideDeviceLayout()) {
           Column({ space: 14 }) {
-            this.buildTabletQuickConnect()
+            this.buildWideQuickConnect()
             Scroll() {
               Column() {
                 this.buildSavedConnections()
@@ -317,7 +317,7 @@ export struct ConnectionPage {
       .padding({ left: this.pageWidth >= 820 ? 32 : RustDeskTheme.PAGE_PADDING, right: this.pageWidth >= 820 ? 32 : RustDeskTheme.PAGE_PADDING })
       .alignItems(HorizontalAlign.Center)
 
-      if (this.isTabletWideLayout() && this.tabletEditorVisible) {
+      if (this.isWideDeviceLayout() && this.tabletEditorVisible) {
         Row() {
           Column()
             .layoutWeight(1)
@@ -397,9 +397,16 @@ export struct ConnectionPage {
     })
   }
 
-  isTabletWideLayout(): boolean {
-    return deviceInfo.deviceType === 'tablet' && this.pageWidth >= 820 &&
-      this.pageWidth > this.pageFullHeight
+  isWideDeviceLayout(): boolean {
+    if (this.pageWidth < 820) return false
+    return deviceInfo.deviceType === '2in1' || deviceInfo.deviceType === 'pc' ||
+      deviceInfo.deviceType === 'desktop' ||
+      (deviceInfo.deviceType === 'tablet' && this.pageWidth > this.pageFullHeight)
+  }
+
+  savedDeviceCardWidth(): string {
+    if (!this.isWideDeviceLayout()) return '100%'
+    return this.pageWidth >= 1440 ? '32%' : '49%'
   }
 
   setTabletEditorVisible(visible: boolean): void {
@@ -410,7 +417,7 @@ export struct ConnectionPage {
   }
 
   @Builder
-  buildTabletQuickConnect() {
+  buildWideQuickConnect() {
     Row({ space: 20 }) {
       Text(this.selectedConnectionId.length > 0 ? '编辑连接' : '新建连接')
         .fontSize(20)
@@ -482,7 +489,7 @@ export struct ConnectionPage {
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Button(this.isTabletWideLayout() ? '关闭 ×' :
+        Button(this.isWideDeviceLayout() ? '关闭 ×' :
           (this.connectionFormExpanded ? '收起选项⌃' : '更多选项›'))
           .height(34)
           .fontSize(14)
@@ -490,7 +497,7 @@ export struct ConnectionPage {
           .backgroundColor(Color.Transparent)
           .padding({ left: 8, right: 4 })
           .onClick(() => {
-            if (this.isTabletWideLayout()) {
+            if (this.isWideDeviceLayout()) {
               this.setTabletEditorVisible(false)
             } else {
               this.setConnectionFormExpanded(!this.connectionFormExpanded)
@@ -794,7 +801,7 @@ export struct ConnectionPage {
           .margin({ left: 8 })
         Blank()
       }
-      .width(this.isTabletWideLayout() ? '35%' : '100%')
+      .width(this.isWideDeviceLayout() ? '35%' : '100%')
       .flexShrink(0)
       .height(46)
 
@@ -915,7 +922,7 @@ export struct ConnectionPage {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
       }
-      .width(this.isTabletWideLayout() ? '65%' : '100%')
+      .width(this.isWideDeviceLayout() ? '65%' : '100%')
       .flexShrink(0)
       .margin({ bottom: 2 })
       }
@@ -1175,8 +1182,8 @@ export struct ConnectionPage {
               })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
             }
-            .width(this.isTabletWideLayout() ? '49%' : '100%')
-            .height(this.isTabletWideLayout() ? 64 : 58)
+            .width(this.savedDeviceCardWidth())
+            .height(this.isWideDeviceLayout() ? 64 : 58)
             .padding({ left: 8, right: 4 })
             .border({ width: { bottom: 1 }, color: this.isDarkMode ? '#303B4D' : RustDeskTheme.DIVIDER })
           }, (item: SavedConnectionInfo) =>
@@ -2503,7 +2510,7 @@ export struct ConnectionPage {
   editSavedConnection(item: SavedConnectionInfo): void {
     this.applySavedConnection(item)
     this.setConnectionFormExpanded(true)
-    if (this.isTabletWideLayout()) this.setTabletEditorVisible(true)
+    if (this.isWideDeviceLayout()) this.setTabletEditorVisible(true)
   }
 
   async loadSavedConnections(): Promise<void> {

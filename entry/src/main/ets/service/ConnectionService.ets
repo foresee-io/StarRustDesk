@@ -6,6 +6,37 @@ import { connection } from '@kit.NetworkKit'
 import { BusinessError } from '@kit.BasicServicesKit'
 
 export class ConnectionService {
+  private static keyboardMode: number = 0
+  private static relativeMouse: boolean = false
+  private static relativeRemainderX: number = 0
+  private static relativeRemainderY: number = 0
+
+  static configureInputModes(keyboardMode: number, relativeMouse: boolean): void {
+    ConnectionService.releaseModifiers()
+    ConnectionService.keyboardMode = keyboardMode
+    ConnectionService.relativeMouse = relativeMouse && (RustDeskNapi.getInputCapabilities() & 2) !== 0
+    RustDeskNapi.setInputModes(keyboardMode, ConnectionService.relativeMouse)
+    // Official activation marker is a zero-delta move; it does not reposition the pointer.
+    if (ConnectionService.relativeMouse) RustDeskNapi.sendMouseRelative(0, 0, 0)
+    ConnectionService.relativeRemainderX = 0
+    ConnectionService.relativeRemainderY = 0
+  }
+
+  private static useExplicitKeyboardPath(): boolean {
+    return ConnectionService.keyboardMode !== 0 || (RustDeskNapi.getInputCapabilities() & 1) !== 0
+  }
+
+  static sendRelativeMouseDelta(dx: number, dy: number): void {
+    if (!ConnectionService.relativeMouse || !Number.isFinite(dx) || !Number.isFinite(dy)) return
+    ConnectionService.relativeRemainderX += dx
+    ConnectionService.relativeRemainderY += dy
+    const x: number = Math.trunc(ConnectionService.relativeRemainderX)
+    const y: number = Math.trunc(ConnectionService.relativeRemainderY)
+    if (x === 0 && y === 0) return
+    ConnectionService.relativeRemainderX -= x
+    ConnectionService.relativeRemainderY -= y
+    RustDeskNapi.sendMouseRelative(x, y, ConnectionService.heldModifierMask)
+  }
   private static readonly MODIFIER_CONTROL: number = 1
   private static readonly MODIFIER_SHIFT: number = 2
   private static readonly MODIFIER_ALT: number = 4
@@ -38,6 +69,8 @@ export class ConnectionService {
   private static insecureRetryUsed: boolean = false
 
   static connect(remoteId: string, password: string, performancePreset: string = 'smooth'): ConnectionStatus {
+    ConnectionService.relativeMouse = false
+    ConnectionService.keyboardMode = 0
     ConnectionService.resetTransientInputState()
     ConnectionService.recordNetworkSnapshot()
     let peerId: string = remoteId.replace(/[\s\u200B-\u200D\uFEFF]+/g, '')
@@ -80,6 +113,7 @@ export class ConnectionService {
   }
 
   static disconnect(): void {
+    ConnectionService.relativeMouse = false
     ConnectionService.retryPeer = ''
     ConnectionService.retryPassword = ''
     ConnectionService.relayRetryUsed = true
@@ -250,6 +284,11 @@ export class ConnectionService {
 
   static sendPhysicalKeyEvent(hidCode: number, action: number, eventModifierMask?: number): void {
     let modifierMask: number = ConnectionService.getEffectiveKeyModifierMask(eventModifierMask)
+    if (ConnectionService.useExplicitKeyboardPath()) {
+      ConnectionService.trackHeldKey(ConnectionService.heldHidCodes, hidCode, action)
+      RustDeskNapi.sendPhysicalKeyEvent(hidCode, action, modifierMask)
+      return
+    }
     const trackedSymbolIndex: number = ConnectionService.legacyShiftSymbolHidCodes.indexOf(hidCode)
     const shiftedSymbol: string = ConnectionService.getShiftedNumberSymbol(hidCode)
     const hasShift: boolean = (modifierMask & ConnectionService.MODIFIER_SHIFT) !== 0
@@ -279,6 +318,10 @@ export class ConnectionService {
 
   static sendLetterKeyEvent(letter: string, hidCode: number, action: number,
     eventModifierMask?: number): void {
+    if (ConnectionService.useExplicitKeyboardPath()) {
+      ConnectionService.sendPhysicalKeyEvent(hidCode, action, eventModifierMask)
+      return
+    }
     if (letter.length !== 1) {
       return
     }
@@ -403,6 +446,12 @@ export class ConnectionService {
   }
 
   static sendMouseEvent(x: number, y: number, action: number): void {
+    // Relative movement is forwarded at its source, before viewport clamping/throttling.
+    // Button packets must not reposition the remote cursor.
+    if (ConnectionService.relativeMouse) {
+      if (action !== 0) RustDeskNapi.sendMouseEvent(0, 0, action, ConnectionService.heldModifierMask)
+      return
+    }
     RustDeskNapi.sendMouseEvent(x, y, action, ConnectionService.heldModifierMask)
   }
 

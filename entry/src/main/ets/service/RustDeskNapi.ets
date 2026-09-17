@@ -127,6 +127,18 @@ export interface PeerOnlineResult {
 }
 
 export class RustDeskNapi {
+  static getInputCapabilities(): number {
+    return (rustdeskNapi as ESObject).getInputCapabilities()
+  }
+
+  static setInputModes(mode: number, relative: boolean): number {
+    return (rustdeskNapi as ESObject).setInputModes(mode, relative ? 1 : 0)
+  }
+
+  static sendMouseRelative(dx: number, dy: number, modifierMask: number): number {
+    return (rustdeskNapi as ESObject).sendMouseRelative(dx, dy, modifierMask)
+  }
+
   static initializeDiagnosticLog(filesDirectory: string): number {
     return (rustdeskNapi as ESObject).initializeDiagnosticLog(filesDirectory)
   }

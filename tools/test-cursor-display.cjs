@@ -37,3 +37,9 @@ assert.equal(p.position,undefined,'a suppressed in-bounds echo must not replay l
 p.applyRemoteCursorPosition({...outside,x:300,sequence:9},2010);
 assert.deepEqual(p.position,[300,200]);
 console.log('PASS old off-screen samples, local prediction, remote departure and fresh recovery');
+p=page();
+p.relativeMouseEnabled=true;
+p.localPointerGestureActive=true;
+p.applyRemoteCursorPosition({...outside,x:350,sequence:20},1010);
+assert.deepEqual(p.position,[350,200], 'Relative mode must accept real cursor feedback during local movement');
+console.log('PASS relative mode does not suppress authoritative cursor feedback');

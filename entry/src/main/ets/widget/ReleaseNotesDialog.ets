@@ -2,7 +2,7 @@ import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002003'
+export const RELEASE_NOTES_BUILD: string = '1002004'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -46,6 +46,12 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.0（1002004）· PC 布局与键鼠兼容', [
+            '优化鸿蒙 PC 连接首页：顶部快捷连接、下方自适应双列/三列设备列表，详细选项在右侧展开，窄窗口恢复单列。',
+            '新增按设备保存的自动、1:1 映射和传统键盘模式，识别 One-KVM 后优先使用传统模式，避免扫描码解释不一致导致串键。',
+            '新增相对鼠标协议，支持触屏、虚拟鼠标和实体鼠标的移动增量；模式切换先释放按键，出入画面及切屏时重置取样，减少跳位。',
+            '新增远端光标来源选项，识别 One-KVM 的画面内嵌光标，避免双光标叠加；普通远端保留真实光标反馈。'
+          ])
           this.buildSection('1.2.0（1002003）· 语音呼叫与高清画质', [
             '新增“高清优先”和“自定义”画质模式，支持码率比例 10%～2000% 与目标帧率 5～120 FPS，参数可随连接保存、备份与同步。',
             '画质入口位于新建或编辑连接的“更多选项 → 连接模式”，保存后下次连接生效；码率百分比不代表固定 Mbps。',

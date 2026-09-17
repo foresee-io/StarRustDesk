@@ -1,4 +1,5 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
+import { inputCompatibilityKey, selectedKeyboardMode, selectedCursorMode, shouldSuppressCursor } from '../model/InputCompatibility';
 ﻿import { router } from '@kit.ArkUI';
 import { RustDeskTheme } from '../theme/RustDeskTheme';
 import { CommunicationService } from '../service/CommunicationService';
@@ -179,6 +180,15 @@ struct RemotePage {
   @State virtualMetaSelected: boolean = false;
   @State canSendCtrlAltDel: boolean = false;
   @State inputMode: string = INPUT_MODE_MOUSE;
+  @State keyboardCompatibilityMode: number = 0;
+  @State relativeMouseEnabled: boolean = false;
+  @State relativeMouseSupported: boolean = false;
+  @State oneKvmPeer: boolean = false;
+  @State cursorCompatibilityMode: string = 'auto';
+  private inputCompatibilityLoaded: boolean = false;
+  private relativePointerSampleValid: boolean = false;
+  private relativePointerX: number = 0;
+  private relativePointerY: number = 0;
   @State showGestureHelp: boolean = false;
   @State showMobileActions: boolean = false;
   @State isPeerAndroid: boolean = false;
@@ -439,6 +449,7 @@ struct RemotePage {
     this.showGestureHelp = RustDeskNapi.getOption('mobile-gesture-help-shown') !== '1';
     let status: number = RustDeskNapi.getConnectionStatus();
     this.connectionStatus = status as ConnectionStatus;
+    if (status === ConnectionStatus.CONNECTED) this.loadInputCompatibility();
     this.connectingStartedAt = status === ConnectionStatus.CONNECTING ? Date.now() : 0;
     if (status === ConnectionStatus.WAITING_2FA) {
       this.enableTrustedDevices = RustDeskNapi.getEnableTrustedDevices();
@@ -566,6 +577,12 @@ struct RemotePage {
         }
       }
       this.connectionStatus = status as ConnectionStatus;
+      if (status === ConnectionStatus.CONNECTED && !this.inputCompatibilityLoaded) {
+        this.loadInputCompatibility();
+      } else if (status !== ConnectionStatus.CONNECTED) {
+        this.inputCompatibilityLoaded = false;
+        this.relativePointerSampleValid = false;
+      }
       RemoteSessionBackgroundTask.syncForConnectionStatus(this.connectionStatus);
       RemoteSessionBackgroundTask.setAudioPlaybackActive(
         status === ConnectionStatus.CONNECTED && this.remoteAudioEnabled && RustDeskNapi.isRemoteAudioActive(),
@@ -641,6 +658,7 @@ struct RemotePage {
   }
 
   onAreaChangeCallback(oldValue: Area, newValue: Area): void {
+    this.relativePointerSampleValid = false;
     this.componentWidth = newValue.width as number;
     this.componentHeight = newValue.height as number;
     if (this.lastSurfaceWidth <= 0 || this.lastSurfaceHeight <= 0) {
@@ -712,6 +730,7 @@ struct RemotePage {
   }
 
   onAppForegroundEpochChanged(): void {
+    this.relativePointerSampleValid = false;
     ConnectionService.recordNetworkSnapshot();
     const status: ConnectionStatus = RustDeskNapi.getConnectionStatus() as ConnectionStatus;
     this.connectionStatus = status;
@@ -741,6 +760,7 @@ struct RemotePage {
   }
 
   resetViewportTransform(): void {
+    this.relativePointerSampleValid = false;
     this.stopEdgeAutoPan();
     this.zoomScale = 1.0;
     this.offsetX = 0;
@@ -922,6 +942,7 @@ struct RemotePage {
       if (this.connectionStatus === ConnectionStatus.CONNECTED) {
         try {
           let cursor: RemoteCursorPosition = RustDeskNapi.getRemoteCursorPosition();
+          if (this.cursorCompatibilityMode === 'separate') cursor.embedded = false;
           this.remoteCursorEmbedded = cursor.embedded;
           const now: number = Date.now();
           if (cursor.embedded && !this.embeddedCursorOverlayFallback && this.lastLocalPointerInputAt > 0 &&
@@ -956,8 +977,8 @@ struct RemotePage {
     // Consume every sample once, including rejected coordinates. Replaying an
     // old off-screen sample would hide each newly predicted physical move.
     this.lastRemoteCursorSequence = cursor.sequence;
-    const recentLocalInput: boolean = this.localPointerGestureActive ||
-      (this.lastLocalPointerInputAt > 0 && now - this.lastLocalPointerInputAt < LOCAL_CURSOR_ECHO_GUARD_MS);
+    const recentLocalInput: boolean = !this.relativeMouseEnabled && (this.localPointerGestureActive ||
+      (this.lastLocalPointerInputAt > 0 && now - this.lastLocalPointerInputAt < LOCAL_CURSOR_ECHO_GUARD_MS));
     const inside: boolean = cursor.x >= 0 && cursor.y >= 0 &&
       cursor.x < this.remoteWidth && cursor.y < this.remoteHeight;
     if (!inside) {
@@ -1306,6 +1327,7 @@ struct RemotePage {
       return this.handleRemoteKey(event);
     })
     .onAreaChange((oldValue: Area, newValue: Area) => {
+      this.relativePointerSampleValid = false;
       this.pageWidth = newValue.width as number;
       this.pageHeight = newValue.height as number;
       // A real rotation/window resize invalidates the pre-IME canvas snapshot.
@@ -2005,7 +2027,8 @@ struct RemotePage {
         .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       }
 
-      if (this.showCursor && (!this.remoteCursorEmbedded || this.embeddedCursorOverlayFallback || this.isPanMode) &&
+      if (!this.suppressCompatibilityCursor() && (!this.relativeMouseEnabled || this.hasAuthoritativeRemoteCursor) &&
+        this.showCursor && (!this.remoteCursorEmbedded || this.embeddedCursorOverlayFallback || this.isPanMode) &&
         this.inputMode === INPUT_MODE_MOUSE) {
         this.buildCursorOverlay();
       }
@@ -2799,7 +2822,8 @@ struct RemotePage {
     this.virtualMouseX = this.clampVirtualMouseX(this.virtualMouseDragStartX + offsetX);
     this.virtualMouseY = this.clampVirtualMouseY(this.virtualMouseDragStartY + offsetY);
     if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) return;
-    const remotePoint: RemotePoint = this.updatePointerFromVirtualMouse();
+    const remotePoint: RemotePoint = this.relativeMouseEnabled ?
+      this.updatePointerFromDelta(deltaX, deltaY) : this.updatePointerFromVirtualMouse();
     ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 0);
     this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, true);
   }
@@ -3126,7 +3150,7 @@ struct RemotePage {
               .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
               .fontColor(this.primaryTextColor())
               .width('100%')
-            Text(this.inputMode === INPUT_MODE_MOUSE ? '仅控制本机物理鼠标指针，远端真实光标始终显示' : '仅在鼠标模式下生效')
+            Text(this.suppressCompatibilityCursor() ? '当前使用画面中的远端光标，不叠加本地指针' : '仅控制本机物理鼠标指针，不影响远端画面')
               .fontSize(11)
               .fontColor(this.secondaryTextColor())
               .width('100%')
@@ -3134,13 +3158,15 @@ struct RemotePage {
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
           Toggle({ type: ToggleType.Switch, isOn: this.showLocalCursor })
-            .enabled(this.inputMode === INPUT_MODE_MOUSE)
+            .enabled(this.inputMode === INPUT_MODE_MOUSE && !this.suppressCompatibilityCursor())
             .onChange((isOn: boolean) => {
               this.setLocalCursorPreference(isOn);
             })
         }
         .width('100%')
         .padding({ left: 2, right: 2, top: 2, bottom: 2 })
+
+        this.buildInputCompatibilityOptions()
 
         if (this.isHandheldDevice()) {
           Row() {
@@ -4039,6 +4065,89 @@ struct RemotePage {
     this.edgeAutoPanEnabled = RustDeskNapi.getOption('edge-auto-pan-enabled') === '1';
   }
 
+  compatibilityOptionKey(name: string): string {
+    return inputCompatibilityKey(RustDeskNapi.getOption('custom-rendezvous-server'), this.connectedPeerId, name);
+  }
+
+  loadInputCompatibility(): void {
+    const capabilities: number = RustDeskNapi.getInputCapabilities();
+    this.oneKvmPeer = (capabilities & 1) !== 0;
+    this.relativeMouseSupported = (capabilities & 2) !== 0;
+    this.keyboardCompatibilityMode = selectedKeyboardMode(RustDeskNapi.getOption(this.compatibilityOptionKey('keyboard')));
+    this.cursorCompatibilityMode = selectedCursorMode(RustDeskNapi.getOption(this.compatibilityOptionKey('cursor')));
+    const savedMouse: string = RustDeskNapi.getOption(this.compatibilityOptionKey('relative'));
+    this.relativeMouseEnabled = this.relativeMouseSupported &&
+      (savedMouse === '1' || (savedMouse === '' && this.oneKvmPeer));
+    if (this.relativeMouseEnabled) this.inputMode = INPUT_MODE_MOUSE;
+    this.applyInputCompatibility();
+    this.inputCompatibilityLoaded = true;
+  }
+
+  applyInputCompatibility(): void {
+    this.releaseHeldMouseButtons('input_mode_change');
+    this.stopEdgeAutoPan();
+    this.relativePointerSampleValid = false;
+    ConnectionService.configureInputModes(this.keyboardCompatibilityMode, this.relativeMouseEnabled);
+    this.updateSystemPointerVisibility();
+    RustDeskNapi.appendDiagnosticLog('input', `compatibility keyboard=${this.keyboardCompatibilityMode} ` +
+      `one_kvm=${this.oneKvmPeer} relative=${this.relativeMouseEnabled} cursor=${this.cursorCompatibilityMode}`);
+  }
+
+  suppressCompatibilityCursor(): boolean {
+    return shouldSuppressCursor(this.cursorCompatibilityMode, this.oneKvmPeer);
+  }
+
+  setRelativeMouse(enabled: boolean): void {
+    this.releaseHeldMouseButtons('relative_mode_change');
+    this.relativeMouseEnabled = enabled && this.relativeMouseSupported;
+    if (this.relativeMouseEnabled) this.setInputMode(INPUT_MODE_MOUSE);
+    RustDeskNapi.setOption(this.compatibilityOptionKey('relative'), this.relativeMouseEnabled ? '1' : '0');
+    this.applyInputCompatibility();
+  }
+
+  @Builder
+  buildInputCompatibilityOptions() {
+    Text(this.oneKvmPeer ? 'One-KVM 键鼠兼容' : '键鼠兼容（仅当前设备）')
+      .fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.primaryTextColor()).width('100%')
+    Row() {
+      Text('键盘模式').fontSize(14).fontColor(this.primaryTextColor()).layoutWeight(1)
+      Select([{ value: '自动' }, { value: '1:1 映射' }, { value: '传统' }])
+        .selected(this.keyboardCompatibilityMode)
+        .value(this.keyboardCompatibilityMode === 1 ? '1:1 映射' : (this.keyboardCompatibilityMode === 2 ? '传统' : '自动'))
+        .onSelect((index: number) => {
+          ConnectionService.releaseModifiers();
+          this.keyboardCompatibilityMode = index;
+          RustDeskNapi.setOption(this.compatibilityOptionKey('keyboard'), index.toString());
+          this.applyInputCompatibility();
+        })
+    }.width('100%')
+    Text('自动：One-KVM 使用传统键盘，其他设备保持原有输入方式；输入法文字仍由本地输入法提交。')
+      .fontSize(11).fontColor(this.secondaryTextColor()).width('100%')
+    Row() {
+      Text('相对鼠标').fontSize(14).fontColor(this.primaryTextColor()).layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: this.relativeMouseEnabled })
+        .enabled(this.relativeMouseSupported)
+        .onChange((value: boolean) => { this.setRelativeMouse(value); })
+    }.width('100%')
+    Text(this.relativeMouseSupported ?
+      '发送真实移动增量，仅显示远端光标。触屏可反复滑动；实体鼠标可移出画面操作本地按钮，重新进入不会跳位。关闭此开关恢复绝对模式。' :
+      '当前远端未声明支持相对鼠标；需要兼容的 Windows/One-KVM 端及 RustDesk 1.4.5 或以上协议。')
+      .fontSize(11).fontColor(this.secondaryTextColor()).width('100%')
+    Row() {
+      Text('远端光标来源').fontSize(14).fontColor(this.primaryTextColor()).layoutWeight(1)
+      Select([{ value: '自动' }, { value: '画面内嵌' }, { value: '独立光标' }])
+        .selected(this.cursorCompatibilityMode === 'embedded' ? 1 : (this.cursorCompatibilityMode === 'separate' ? 2 : 0))
+        .value(this.cursorCompatibilityMode === 'embedded' ? '画面内嵌' : (this.cursorCompatibilityMode === 'separate' ? '独立光标' : '自动'))
+        .onSelect((index: number) => {
+          this.cursorCompatibilityMode = index === 1 ? 'embedded' : (index === 2 ? 'separate' : 'auto');
+          RustDeskNapi.setOption(this.compatibilityOptionKey('cursor'), this.cursorCompatibilityMode);
+          this.updateSystemPointerVisibility();
+        })
+    }.width('100%')
+    Text('自动识别 One-KVM 的画面内嵌光标；若出现双鼠标可选择“画面内嵌”，停止额外绘制。相对模式始终隐藏本地指针。')
+      .fontSize(11).fontColor(this.secondaryTextColor()).width('100%')
+  }
+
   loadVirtualMousePreference(): void {
     this.showVirtualMouse = RustDeskNapi.getOption('show-virtual-mouse') === '1';
   }
@@ -4110,7 +4219,7 @@ struct RemotePage {
 
   updateSystemPointerVisibility(): void {
     const shouldHide: boolean = this.connectionStatus === ConnectionStatus.CONNECTED &&
-      this.inputMode === INPUT_MODE_MOUSE && !this.showLocalCursor && this.pointerOverRemoteViewport;
+      this.inputMode === INPUT_MODE_MOUSE && (!this.showLocalCursor || this.relativeMouseEnabled || this.suppressCompatibilityCursor()) && this.pointerOverRemoteViewport;
     this.setSystemPointerHidden(shouldHide);
   }
 
@@ -4131,6 +4240,7 @@ struct RemotePage {
   }
 
   handleRemoteHover(isHovering: boolean): void {
+    if (!isHovering) this.relativePointerSampleValid = false;
     if (isHovering) {
       this.cancelPointerHoverExit();
       this.pointerOverRemoteViewport = true;
@@ -4156,6 +4266,7 @@ struct RemotePage {
   }
 
   handleNonRemoteHover(isHovering: boolean): void {
+    if (isHovering) this.relativePointerSampleValid = false;
     if (!isHovering) {
       return;
     }
@@ -4182,6 +4293,7 @@ struct RemotePage {
       return;
     }
     this.cancelActiveTouchGesture();
+    if (mode === INPUT_MODE_TOUCH && this.relativeMouseEnabled) this.setRelativeMouse(false);
     this.stopEdgeAutoPan();
     this.inputMode = mode;
     RustDeskNapi.setOption(this.inputModeOptionKey(), mode);
@@ -4199,6 +4311,7 @@ struct RemotePage {
   }
 
   cancelActiveTouchGesture(): void {
+    this.relativePointerSampleValid = false;
     this.stopEdgeAutoPan();
     this.edgePanTouchActive = false;
     this.clearLongPressTimer();
@@ -4840,6 +4953,17 @@ struct RemotePage {
   }
 
   updatePointerFromLocal(localX: number, localY: number): RemotePoint {
+    if (this.relativeMouseEnabled) {
+      if (this.relativePointerSampleValid) {
+        ConnectionService.sendRelativeMouseDelta(
+          (localX - this.relativePointerX) * this.remoteWidth / Math.max(1, this.getDisplayWidth()),
+          (localY - this.relativePointerY) * this.remoteHeight / Math.max(1, this.getDisplayHeight()));
+      }
+      this.relativePointerX = localX;
+      this.relativePointerY = localY;
+      this.relativePointerSampleValid = true;
+      return { x: this.lastAbsX, y: this.lastAbsY };
+    }
     this.markLocalPointerInput();
     let displayWidth: number = this.getDisplayWidth();
     let displayHeight: number = this.getDisplayHeight();
@@ -4879,6 +5003,11 @@ struct RemotePage {
     let displayHeight: number = Math.max(1, this.getDisplayHeight());
     let remoteDeltaX: number = deltaX * this.remoteWidth / displayWidth * TOUCHPAD_POINTER_SPEED;
     let remoteDeltaY: number = deltaY * this.remoteHeight / displayHeight * TOUCHPAD_POINTER_SPEED;
+    if (this.relativeMouseEnabled) {
+      // Do not clamp to our predicted cursor or throttle away movement: KVM does not echo position.
+      ConnectionService.sendRelativeMouseDelta(remoteDeltaX, remoteDeltaY);
+      return { x: this.lastAbsX, y: this.lastAbsY };
+    }
     this.lastAbsX = Math.max(0, Math.min(this.remoteWidth - 1, this.lastAbsX + remoteDeltaX));
     this.lastAbsY = Math.max(0, Math.min(this.remoteHeight - 1, this.lastAbsY + remoteDeltaY));
     if (!this.preferAuthoritativeCursor) {
@@ -5287,6 +5416,7 @@ struct RemotePage {
   }
 
   updateEdgeAutoPan(remoteX: number, remoteY: number, fromTouch: boolean): void {
+    if (this.relativeMouseEnabled) { this.stopEdgeAutoPan(); return; }
     if (!this.edgeAutoPanEnabled || this.inputMode !== INPUT_MODE_MOUSE || !this.canPanViewport() ||
       this.isPanMode || this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel ||
       this.componentWidth <= 0 || this.componentHeight <= 0) {
@@ -7037,6 +7167,7 @@ struct RemotePage {
   }
 
   switchDisplay(display: number): void {
+    this.relativePointerSampleValid = false;
     if (display < 0 || display >= this.displayCount || display === this.currentDisplay) {
       return;
     }

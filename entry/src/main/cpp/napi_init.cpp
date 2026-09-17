@@ -987,6 +987,43 @@ static napi_value SendPhysicalKeyEvent(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+static napi_value GetInputCapabilities(napi_env env, napi_callback_info info) {
+    napi_value ret;
+    napi_create_int32(env, rust_get_input_capabilities(), &ret);
+    return ret;
+}
+
+static napi_value SetInputModes(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int32_t mode = -1, relative = 0;
+    if (argc == 2) {
+        napi_get_value_int32(env, args[0], &mode);
+        napi_get_value_int32(env, args[1], &relative);
+    }
+    napi_value ret;
+    napi_create_int32(env, rust_set_input_modes(mode, relative), &ret);
+    return ret;
+}
+
+static napi_value SendMouseRelative(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    double dx = 0, dy = 0;
+    int32_t modifiers = 0;
+    int result = -1;
+    if (argc == 3 && napi_get_value_double(env, args[0], &dx) == napi_ok &&
+        napi_get_value_double(env, args[1], &dy) == napi_ok &&
+        napi_get_value_int32(env, args[2], &modifiers) == napi_ok) {
+        result = rust_send_mouse_relative(dx, dy, modifiers);
+    }
+    napi_value ret;
+    napi_create_int32(env, result, &ret);
+    return ret;
+}
+
 static napi_value SendText(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {nullptr};
@@ -2125,6 +2162,9 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"sendCtrlAltDel", nullptr, SendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"canSendCtrlAltDel", nullptr, CanSendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPhysicalKeyEvent", nullptr, SendPhysicalKeyEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getInputCapabilities", nullptr, GetInputCapabilities, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setInputModes", nullptr, SetInputModes, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendMouseRelative", nullptr, SendMouseRelative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendText", nullptr, SendText, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"send2FA", nullptr, Send2FA, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getEnableTrustedDevices", nullptr, GetEnableTrustedDevices, nullptr, nullptr, nullptr, napi_default, nullptr},

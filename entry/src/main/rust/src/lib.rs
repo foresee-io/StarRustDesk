@@ -3,6 +3,7 @@ mod kcp_stream;
 mod communication;
 mod api_account;
 mod performance;
+mod input_compat;
 use performance::PerformanceConfig;
 #[cfg(test)]
 mod keyboard_tests;
@@ -81,6 +82,10 @@ static LAST_DROPPED_DISPLAY_FRAME_LOG_MS: AtomicU64 = AtomicU64::new(0);
 static PEER_IS_ANDROID: AtomicBool = AtomicBool::new(false);
 static PEER_SAS_ENABLED: AtomicBool = AtomicBool::new(false);
 static CURRENT_PEER_PLATFORM: Mutex<String> = Mutex::new(String::new());
+static PEER_IS_ONE_KVM: AtomicBool = AtomicBool::new(false);
+// 0 = automatic, 1 = Map 1:1, 2 = Legacy. Configured before accepting local input.
+static INPUT_KEYBOARD_MODE: AtomicI32 = AtomicI32::new(0);
+static INPUT_RELATIVE_MOUSE: AtomicBool = AtomicBool::new(false);
 static CURRENT_PEER_VERSION: Mutex<String> = Mutex::new(String::new());
 static REMOTE_CURSOR_X: AtomicI32 = AtomicI32::new(0);
 static REMOTE_CURSOR_Y: AtomicI32 = AtomicI32::new(0);
@@ -301,6 +306,9 @@ fn new_protocol_session_id() -> u64 {
 }
 
 fn reset_display_state() {
+    PEER_IS_ONE_KVM.store(false, Ordering::SeqCst);
+    INPUT_KEYBOARD_MODE.store(0, Ordering::SeqCst);
+    INPUT_RELATIVE_MOUSE.store(false, Ordering::SeqCst);
     if let Ok(mut guard) = DISPLAY_COUNT.try_lock() {
         *guard = 1;
     }
@@ -1156,14 +1164,48 @@ pub extern "C" fn rust_send_mouse_event(x: f64, y: f64, action: i32, modifier_ma
         6 => (4 << 3) | 2, // middle up
         _ => 0,
     };
-    let (offset_x, offset_y) = current_display_origin();
+    let relative = INPUT_RELATIVE_MOUSE.load(Ordering::SeqCst);
+    if relative && action == 0 { return 0; }
+    let (offset_x, offset_y) = if relative { (0, 0) } else { current_display_origin() };
     let mut msg = PeerMessage::new();
     msg.set_mouse_event(MouseEvent {
         mask,
-        x: x as i32 + offset_x,
-        y: y as i32 + offset_y,
+        x: if relative { 0 } else { x as i32 + offset_x },
+        y: if relative { 0 } else { y as i32 + offset_y },
         modifiers: modifier_mask_to_controls(modifier_mask),
         ..Default::default()
+    });
+    queue_peer_message(msg)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_get_input_capabilities() -> i32 {
+    let kvm = PEER_IS_ONE_KVM.load(Ordering::SeqCst);
+    let platform = CURRENT_PEER_PLATFORM.lock().map(|p| p.clone()).unwrap_or_default();
+    let version = CURRENT_PEER_VERSION.lock().map(|p| p.clone()).unwrap_or_default();
+    let relative = platform.eq_ignore_ascii_case("windows") && !version.trim().is_empty()
+        && version_at_least(&version, [1, 4, 5]);
+    (kvm as i32) | ((relative as i32) << 1)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_set_input_modes(mode: i32, relative: i32) -> i32 {
+    if !(0..=2).contains(&mode) { return -1; }
+    INPUT_KEYBOARD_MODE.store(mode, Ordering::SeqCst);
+    INPUT_RELATIVE_MOUSE.store(relative != 0 && rust_get_input_capabilities() & 2 != 0, Ordering::SeqCst);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn rust_send_mouse_relative(dx: f64, dy: f64, modifier_mask: i32) -> i32 {
+    if !INPUT_RELATIVE_MOUSE.load(Ordering::SeqCst) || rust_get_input_capabilities() & 2 == 0
+        || !dx.is_finite() || !dy.is_finite() { return -3; }
+    let mut msg = PeerMessage::new();
+    // RustDesk MOVE_RELATIVE=5. No display origin or absolute-coordinate conversion.
+    msg.set_mouse_event(MouseEvent {
+        mask: 5, x: dx.round().clamp(-32767.0, 32767.0) as i32,
+        y: dy.round().clamp(-32767.0, 32767.0) as i32,
+        modifiers: modifier_mask_to_controls(modifier_mask), ..Default::default()
     });
     queue_peer_message(msg)
 }
@@ -1196,6 +1238,13 @@ pub extern "C" fn rust_send_key_event(key_code: i32, action: i32, modifier_mask:
         Some(ctrl) => event.set_control_key(ctrl),
         None => event.union = Some(key_event::Union::Chr(key_code.max(0) as u32)),
     }
+    if INPUT_KEYBOARD_MODE.load(Ordering::SeqCst) == 1 {
+        let platform = CURRENT_PEER_PLATFORM.lock().map(|p| p.clone()).unwrap_or_default();
+        if let Some(code) = input_compat::mapped_modifier(key_code, &platform) {
+            event.mode = KeyboardMode::Map.into();
+            event.union = Some(key_event::Union::Chr(code));
+        }
+    }
     let mut msg = PeerMessage::new();
     msg.set_key_event(event);
     queue_peer_message(msg)
@@ -1207,6 +1256,15 @@ pub extern "C" fn rust_send_physical_key_event(
     action: i32,
     modifier_mask: i32,
 ) -> i32 {
+    let mode = INPUT_KEYBOARD_MODE.load(Ordering::SeqCst);
+    if mode == 2 || (mode == 0 && PEER_IS_ONE_KVM.load(Ordering::SeqCst)) {
+        let Some(event) = input_compat::legacy_physical_key(usb_hid_code as u32, action, modifier_mask) else {
+            return -3;
+        };
+        let mut msg = PeerMessage::new();
+        msg.set_key_event(event);
+        return queue_peer_message(msg);
+    }
     let peer_platform = CURRENT_PEER_PLATFORM
         .lock()
         .map(|guard| guard.clone())
@@ -4300,6 +4358,8 @@ async fn handle_peer_bytes(
                     }
                 }
                 Some(login_response::Union::PeerInfo(info)) => {
+                    PEER_IS_ONE_KVM.store(input_compat::is_one_kvm(&info.username,
+                        &info.displays.iter().map(|d| d.name.clone()).collect::<Vec<_>>()), Ordering::SeqCst);
                     let is_android = info.platform.eq_ignore_ascii_case("android");
                     PEER_IS_ANDROID.store(is_android, Ordering::SeqCst);
                     PEER_SAS_ENABLED.store(info.sas_enabled, Ordering::SeqCst);

@@ -10,7 +10,7 @@ const method = n => { const a=source.indexOf('\n  '+n+'('); assert(a>=0,n); retu
 let passed=0;
 const test=(name,fn)=>{fn();passed++;console.log('PASS '+name);};
 const calls=[];
-const napi={appendDiagnosticLog(){},sendKeyEvent:(...args)=>{calls.push(['key',...args]);return 0;},
+const napi={getInputCapabilities:()=>0,appendDiagnosticLog(){},sendKeyEvent:(...args)=>{calls.push(['key',...args]);return 0;},
   sendPhysicalKeyEvent:(...args)=>calls.push(['scan',...args]),sendMouseEvent:(...args)=>calls.push(['mouse',...args])};
 const serviceSource=read('entry/src/main/ets/service/ConnectionService.ets').replace(/^import .*$/gm,'').replace('export class','class');
 const context=vm.createContext({RustDeskNapi:napi,hilog:{info(){}},Date});
