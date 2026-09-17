@@ -70,6 +70,8 @@ export struct ConnectionPage {
   @State remoteId: string = ''
   @State focusedConnectionField: string = ''
   @State password: string = ''
+  // Only newly typed text may enter the password TextInput. Saved secrets stay out of it.
+  @State passwordEditMode: string = 'keep'
   @State isIdEmpty: boolean = true
   @State isConnecting: boolean = false
   @StorageLink('isDarkMode') isDarkMode: boolean = false
@@ -747,8 +749,49 @@ export struct ConnectionPage {
 
   @Builder
   buildPasswordInput() {
-    TextInput({ placeholder: translate('Password'), text: this.password })
+    Column({ space: 8 }) {
+      if (this.passwordEditMode === 'keep' && this.hasSavedConnectionPassword()) {
+        Row({ space: 8 }) {
+          Text('密码已保存')
+            .fontSize(16)
+            .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
+            .layoutWeight(1)
+          Button('更换')
+            .fontSize(14)
+            .height(36)
+            .backgroundColor(this.selectedControlBackground())
+            .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
+            .onClick(() => { this.startPasswordReplacement() })
+          Button('清除')
+            .fontSize(14)
+            .height(36)
+            .backgroundColor(Color.Transparent)
+            .fontColor(RustDeskTheme.ERROR)
+            .onClick(() => { this.clearSavedPassword() })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 8, top: 6, bottom: 6 })
+        .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
+        .border({ width: 1, color: this.connectionInputBorder('password') })
+        .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
+      } else if (this.passwordEditMode === 'clear') {
+        Row({ space: 8 }) {
+          Text('密码待清除，保存后生效')
+            .fontSize(14)
+            .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+            .layoutWeight(1)
+          Button('撤销')
+            .fontSize(14)
+            .height(36)
+            .backgroundColor(this.selectedControlBackground())
+            .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
+            .onClick(() => { this.cancelPasswordChange() })
+        }
+        .width('100%')
+      } else {
+        TextInput({ placeholder: this.hasSavedConnectionPassword() ? '输入新密码' : translate('Password'), text: this.password })
       .type(InputType.Password)
+      .showPasswordIcon(true)
       .fontSize(RustDeskTheme.FONT_SIZE_BODY)
       .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
       .placeholderColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
@@ -762,7 +805,19 @@ export struct ConnectionPage {
       .onBlur(() => { this.focusedConnectionField = '' })
       .onChange((value: string) => {
         this.password = value
+        this.passwordEditMode = 'replace'
       })
+        if (this.passwordEditMode === 'replace' && this.hasSavedConnectionPassword()) {
+          Button('取消更换，保留已保存密码')
+            .fontSize(13)
+            .height(32)
+            .backgroundColor(Color.Transparent)
+            .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+            .onClick(() => { this.cancelPasswordChange() })
+        }
+      }
+    }
+    .width('100%')
   }
 
   @Builder
@@ -1786,7 +1841,7 @@ export struct ConnectionPage {
       this.connectionStatusColor = RustDeskTheme.ERROR
       return
     }
-    let password: string = this.password.trim()
+    let password: string = this.connectionPasswordForUse()
     if (password.length <= 0) {
       this.openConnectionPasswordDialog()
       return
@@ -2164,6 +2219,7 @@ export struct ConnectionPage {
     }
     let remember: boolean = this.rememberConnectionPassword
     this.password = password
+    this.passwordEditMode = 'replace'
     this.closeConnectionPasswordDialog()
     if (remember) {
       await this.saveCurrentConnection()
@@ -2700,7 +2756,8 @@ export struct ConnectionPage {
     this.selectedConnectionId = item.id
     this.connectionName = item.name
     this.remoteId = this.normalizeRemoteId(item.remoteId)
-    this.password = item.password
+    this.password = ''
+    this.passwordEditMode = 'keep'
     this.performancePreset = PerformanceSettings.normalize(item.performancePreset)
     this.selectedGroupId = this.validGroupId(item.groupId)
     this.isIdEmpty = this.remoteId.length === 0
@@ -2709,6 +2766,39 @@ export struct ConnectionPage {
   connectSavedConnection(item: SavedConnectionInfo): void {
     this.applySavedConnection(item)
     this.onConnect()
+  }
+
+  savedConnectionForPassword(): SavedConnectionInfo | undefined {
+    const peerId: string = this.normalizeRemoteId(this.remoteId)
+    return this.savedConnections.find((item: SavedConnectionInfo) =>
+      item.id === this.selectedConnectionId && this.normalizeRemoteId(item.remoteId) === peerId)
+  }
+
+  hasSavedConnectionPassword(): boolean {
+    return (this.savedConnectionForPassword()?.password.length ?? 0) > 0
+  }
+
+  connectionPasswordForUse(): string {
+    if (this.passwordEditMode === 'clear') return ''
+    if (this.password.trim().length > 0) return this.password.trim()
+    if (this.passwordEditMode !== 'keep') return ''
+    // Only the matching saved device may supply an authentication secret.
+    return this.savedConnectionForPassword()?.password.trim() ?? ''
+  }
+
+  startPasswordReplacement(): void {
+    this.password = ''
+    this.passwordEditMode = 'replace'
+  }
+
+  clearSavedPassword(): void {
+    this.password = ''
+    this.passwordEditMode = 'clear'
+  }
+
+  cancelPasswordChange(): void {
+    this.password = ''
+    this.passwordEditMode = 'keep'
   }
 
   clearSaveTip(): void {
@@ -2743,6 +2833,10 @@ export struct ConnectionPage {
 
   async saveConnectionWithTip(): Promise<void> {
     if (this.savingConnection || this.normalizeRemoteId(this.remoteId).length === 0) return
+    if (this.passwordEditMode === 'replace' && this.password.trim().length === 0) {
+      promptAction.showToast({ message: '请输入新密码，或取消更换后选择清除' })
+      return
+    }
     this.savingConnection = true
     try {
       await this.saveCurrentConnection()
@@ -2759,10 +2853,16 @@ export struct ConnectionPage {
 
   async saveCurrentConnection(): Promise<void> {
     let peerId: string = this.normalizeRemoteId(this.remoteId)
-    let password: string = this.password.trim()
+    let password: string = this.connectionPasswordForUse()
     if (peerId.length <= 0) {
       return
     }
+    if (this.passwordEditMode === 'replace' && password.length === 0) {
+      throw new Error('Empty replacement password')
+    }
+    const originalSelection: string = this.selectedConnectionId
+    const originalDraft: string = this.password
+    const originalMode: string = this.passwordEditMode
     let savedName: string = this.connectionName.trim()
     let targetId: string = this.selectedConnectionId.length > 0 ? this.selectedConnectionId : this.makeConnectionId(peerId)
     let next: SavedConnectionInfo = {
@@ -2786,10 +2886,15 @@ export struct ConnectionPage {
     if (!updated) {
       list.unshift(next)
     }
+    await CredentialStore.save(targetId, password)
     this.savedConnections = this.cloneSavedConnections(list)
     this.savedConnectionsVersion++
-    this.selectedConnectionId = targetId
-    await CredentialStore.save(targetId, password)
+    if (this.selectedConnectionId === originalSelection && this.normalizeRemoteId(this.remoteId) === peerId &&
+      this.password === originalDraft && this.passwordEditMode === originalMode) {
+      this.selectedConnectionId = targetId
+      this.password = ''
+      this.passwordEditMode = 'keep'
+    }
     this.persistSavedConnections(list)
     this.nextPeerOnlineRefreshAt = 0
     this.refreshSavedConnectionOnlineStates(true)
@@ -2819,6 +2924,7 @@ export struct ConnectionPage {
     this.connectionName = ''
     this.remoteId = ''
     this.password = ''
+    this.passwordEditMode = 'keep'
     this.performancePreset = 'smooth'
     this.isIdEmpty = true
   }
