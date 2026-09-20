@@ -394,6 +394,7 @@ async fn check_direct_listener(host: &str, file_session: bool) {
     let address = listener.local_addr().unwrap();
     let mut client = if file_session {
         let config = ConnectionConfig {
+            public_server: false,
             peer: address.to_string(),
             password: String::new(),
             // These must never be resolved/contacted for a literal peer.
@@ -522,6 +523,40 @@ fn skipped_rendezvous_messages_do_not_restart_read_deadline() {
         writer.abort();
         let _ = writer.await;
         assert!(result.unwrap().is_none());
+    });
+}
+
+#[test]
+fn rendezvous_eof_is_not_a_timeout_and_never_retries_a_dead_socket() {
+    runtime().block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = connect_tcp(listener.local_addr().unwrap(), 1000).await.unwrap();
+        let (socket, address) = listener.accept().await.unwrap();
+        let responder = tokio::spawn(async move {
+            let mut peer = Stream::from(socket, address);
+            assert!(peer.next().await.is_some());
+            // Close without replying, as in the user's second attempt.
+        });
+        let request = punch_hole_request("test", "", ConnType::DEFAULT_CONN, false,
+            NatType::UNKNOWN_NAT, 0, Vec::new(), String::new());
+        assert!(send_punch_request(&mut client, &request, false).await.is_err());
+        responder.await.unwrap();
+    });
+}
+
+#[test]
+fn unencrypted_server_messages_do_not_authorize_token_or_ice_disclosure() {
+    runtime().block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = connect_tcp(listener.local_addr().unwrap(), 1000).await.unwrap();
+        let (socket, address) = listener.accept().await.unwrap();
+        let mut peer = Stream::from(socket, address);
+        let mut message = RendezvousMessage::new();
+        message.set_configure_update(ConfigUpdate::new());
+        peer.send(&message).await.unwrap();
+        assert!(secure_rendezvous_connection(&mut client, RS_PUB_KEY).await.is_err());
+        assert!(!client.is_secured());
+        assert!(tokio::time::timeout(Duration::from_millis(40), peer.next()).await.is_err());
     });
 }
 

@@ -94,7 +94,7 @@ function create() {
   assert(ui.includes('保存后生效'));
   assert(ui.includes('.showPasswordIcon(true)'));
   assert(!source.includes('this.password = item.password'));
-  assert.match(source, /onConnect\(\): void[\s\S]*?let password: string = this.connectionPasswordForUse\(\)/);
+  assert.match(source, /async onConnect\(\): Promise<void>[\s\S]*?let password: string = this.connectionPasswordForUse\(\)/);
   assert.match(source, /password: includesPasswords \? item.password : ''/);
   assert.match(source, /this.password = password\s*this.passwordEditMode = 'replace'/);
   console.log('PASS saved password privacy: no refill, direct connect, metadata save, replace/cancel/clear, peer isolation, save failure, async form switch and backup preservation');

@@ -199,7 +199,7 @@ void VideoRender::onFrameReceived(const uint8_t* data, int length, int width, in
         receivedByteCount_.fetch_add(length > 0 ? length : 0);
     }
 
-    if (XComponentRender::instance().window() != nullptr) {
+    if (XComponentRender::instance().isReady()) {
         flushPendingFrames();
         renderFrameNow(data, length, width, height, key, pts);
     } else if (hasRustDeskFrameTag(data, length)) {
@@ -350,6 +350,16 @@ void VideoRender::restartDecoder() {
 }
 
 void VideoRender::renderFrameNow(const uint8_t* data, int length, int width, int height, bool key, int64_t pts) {
+    // Software VP9 only needs to enqueue compressed data here. Do not take
+    // the native-window presentation lock on the network receive thread.
+    if (hasRustDeskFrameTag(data, length) && data[4] == 'V' &&
+        g_vp9SystemMode != VideoDecodeMode::Hardware) {
+        activeCodec_.store(2);
+        ensureSoftwareVP9Decoder();
+        activeDecodeMode_.store(static_cast<int>(VideoDecodeMode::Software));
+        SoftwareVP9Decoder::instance().decodeFrame(data + 5, length - 5, key, pts);
+        return;
+    }
     OHNativeWindow* window = XComponentRender::instance().window();
     if (hasRustDeskFrameTag(data, length)) {
         char codec = static_cast<char>(data[4]);
@@ -442,7 +452,7 @@ void VideoRender::queuePendingFrame(const uint8_t* data, int length, int width, 
 }
 
 void VideoRender::flushPendingFrames() {
-    if (XComponentRender::instance().window() == nullptr) {
+    if (!XComponentRender::instance().isReady()) {
         return;
     }
 

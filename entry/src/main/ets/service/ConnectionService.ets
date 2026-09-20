@@ -1,4 +1,5 @@
 import { RustDeskNapi } from './RustDeskNapi'
+import { AccountSession } from './RustDeskApiService'
 import { ConnectionStatus } from '../model/ConnectionModel'
 import { RemoteSessionBackgroundTask } from './RemoteSessionBackgroundTask'
 import { hilog } from '@kit.PerformanceAnalysisKit'
@@ -67,8 +68,27 @@ export class ConnectionService {
   private static rendezvousRetryCount: number = 0
   private static relayFailureRetryCount: number = 0
   private static insecureRetryUsed: boolean = false
+  private static preparationGeneration: number = 0
 
-  static connect(remoteId: string, password: string, performancePreset: string = 'smooth'): ConnectionStatus {
+  static async connect(remoteId: string, password: string, performancePreset: string = 'smooth'): Promise<ConnectionStatus> {
+    const generation: number = ++ConnectionService.preparationGeneration
+    const settings: string = ConnectionService.authNetworkSnapshot()
+    const started: number = Date.now()
+    const direct: boolean = ConnectionService.isDirectAddress(remoteId.replace(/[\s\u200B-\u200D\uFEFF]+/g, ''))
+    RustDeskNapi.appendDiagnosticLog('connection-auth', `gate_start generation=${generation} direct_ip=${direct}`)
+    if (!direct) {
+      try {
+        await AccountSession.getApi().prepareConnection()
+      } catch (error) {
+        RustDeskNapi.appendDiagnosticLog('connection-auth', `gate_failed generation=${generation} reason=account_unavailable elapsed_ms=${Date.now() - started}`)
+        throw error as Error
+      }
+    }
+    if (generation !== ConnectionService.preparationGeneration || settings !== ConnectionService.authNetworkSnapshot()) {
+      RustDeskNapi.appendDiagnosticLog('connection-auth', `gate_cancelled generation=${generation} cancelled=${generation !== ConnectionService.preparationGeneration} network_changed=${settings !== ConnectionService.authNetworkSnapshot()} elapsed_ms=${Date.now() - started}`)
+      throw new Error('连接已取消或服务器配置已改变，请重试')
+    }
+    RustDeskNapi.appendDiagnosticLog('connection-auth', `gate_ready generation=${generation} elapsed_ms=${Date.now() - started}`)
     ConnectionService.relativeMouse = false
     ConnectionService.keyboardMode = 0
     ConnectionService.resetTransientInputState()
@@ -96,6 +116,15 @@ export class ConnectionService {
     return status
   }
 
+  private static authNetworkSnapshot(): string {
+    return JSON.stringify(['api-server', 'custom-rendezvous-server', 'relay-server', 'key']
+      .map((key: string) => RustDeskNapi.getOption(key)))
+  }
+
+  static cancelPendingConnection(): void {
+    ConnectionService.preparationGeneration++
+  }
+
   static async recordNetworkSnapshot(): Promise<void> {
     if (RustDeskNapi.getOption('diagnostic-log-enabled') !== '1') {
       return
@@ -113,6 +142,7 @@ export class ConnectionService {
   }
 
   static disconnect(): void {
+    ConnectionService.preparationGeneration++
     ConnectionService.relativeMouse = false
     ConnectionService.retryPeer = ''
     ConnectionService.retryPassword = ''

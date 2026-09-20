@@ -13,7 +13,9 @@ const vault = {
   clear: async () => { if (clearWait) await clearWait; stored = undefined; }
 };
 let transportContext = '';
+const diagnostics = [];
 const native = { getOption: key => options.get(key) || '', setOption: (key, value) => options.set(key, value), getDeviceName: () => 'test device',
+  appendDiagnosticLog: (component, message) => diagnostics.push({ component, message }),
   setApiAccountContext: json => { transportContext = json; return 0; } };
 class Request {
   constructor(url, method, headers, content, _cookies, _range, configuration) {
@@ -31,7 +33,7 @@ const rcp = {
       const next = pending.shift();
       assert(next, `unexpected ${request.url}`);
       if (next.path) assert(request.url.endsWith(next.path), request.url);
-      if (next.check) next.check(request);
+      if (next.check) await next.check(request);
       const raw = next.raw !== undefined ? next.raw : JSON.stringify(next.body);
       const bytes = new TextEncoder().encode(raw);
       request.configuration.tracing.httpEventsHandler.onDataReceive(bytes.buffer);
@@ -71,6 +73,8 @@ async function login(api, provider = 'official') {
   }
   assert.equal(Api.normalizeServer('http://192.168.1.2:21114/', true), 'http://192.168.1.2:21114');
   const api = new Api(); await login(api);
+  assert.equal(diagnostics.length, 0, 'account diagnostics disabled by default');
+  options.set('diagnostic-log-enabled', '1');
   assert.equal(stored.token, 'private-token');
   assert(!JSON.stringify([...options]).includes('private-token'));
   assert(!JSON.stringify(stored).includes('private-password'));
@@ -133,6 +137,94 @@ async function login(api, provider = 'official') {
   assert.equal(transportContext, ''); assert.match(changedNetwork.warning, /配置已改变/);
   respond({}); await pro.logout();
   assert.equal(transportContext, ''); assert.equal(stored, undefined);
+  options.delete('api-server'); options.delete('custom-rendezvous-server'); options.delete('key');
+  assert.equal(Api.defaultServer(), 'https://admin.rustdesk.com');
+  options.set('custom-rendezvous-server', '[2001:db8::1]:21116');
+  assert.equal(Api.defaultServer(), 'http://[2001:db8::1]:21114');
+  options.delete('custom-rendezvous-server');
+  const publicApi = new Api(); publicApi.configure(Api.defaultServer(), 'official', false);
+  respond({ type: 'access_token', access_token: 'official-token', user: { name: 'alice' } });
+  await publicApi.login('alice', 'pw', true);
+  assert.equal(JSON.parse(transportContext).rendezvous, '@public');
+  assert.equal(JSON.parse(transportContext).key, '', 'native layer resolves pinned built-in public key');
+  const publicSaved = { ...stored };
+  options.set('api-server', Api.PUBLIC_API + '/api/');
+  const networkFailure = new Api(); respond({}, undefined, 503);
+  await assert.rejects(networkFailure.prepareConnection(), /恢复/);
+  assert.equal(stored.token, 'official-token', 'transient API outage must not erase remembered credential');
+  assert.equal(transportContext, '');
+  respond({ name: 'alice' }); await networkFailure.prepareConnection();
+  assert.equal(JSON.parse(transportContext).token, 'official-token');
+  stored = { server: 'https://book.test', provider: 'official', token: 'book-token', username: 'alice',
+    allowHttp: false, boundRendezvous: '', boundKey: '' };
+  options.set('api-server', 'https://book.test'); respond({}, undefined, 503);
+  await new Api().prepareConnection();
+  assert.equal(stored.token, 'book-token', 'address-book-only outage retains account and does not block anonymous control');
+  options.set('api-server', Api.PUBLIC_API);
+  options.set('custom-rendezvous-server', 'other.test');
+  await networkFailure.prepareConnection(); assert.equal(transportContext, '', 'public token never follows custom network');
+  options.delete('custom-rendezvous-server');
+  stored = { ...publicSaved, boundRendezvous: '' };
+  respond({ name: 'alice' }); await new Api().prepareConnection();
+  assert.equal(JSON.parse(transportContext).rendezvous, '@public', 'old official sessions acquire safe public binding');
+  const expired = new Api(); respond({}, undefined, 401);
+  await assert.rejects(expired.prepareConnection(), /恢复/); assert.equal(stored, undefined);
+  const web = new Api(); web.configure(Api.PUBLIC_API, 'official', false);
+  respond(['oidc/github', 'common-oidc/[{"name":"company"}]', 'oidc/github']);
+  const webOptions = await web.loginOptions(); assert.equal(webOptions.length, 2);
+  await assert.rejects(web.startWebLogin('unlisted', false, false), /刷新/);
+  respond({ code: 'one-time-secret', url: 'https://identity.example.test/auth' }, '/api/oidc/auth');
+  assert.equal(await web.startWebLogin('github', true, false), 'https://identity.example.test/auth');
+  const oidcBody = JSON.parse(calls.at(-1).content);
+  assert.equal(oidcBody.apiDomain, Api.PUBLIC_API); assert.equal(oidcBody.op, 'github');
+  assert.equal(calls.at(-1).headers.Authorization, undefined);
+  respond({ error: 'No authed oidc is found' }); assert.equal(await web.pollWebLogin(), false);
+  assert(calls.at(-1).url.includes('/api/oidc/auth-query?code=one-time-secret'));
+  assert.equal(calls.at(-1).headers.Authorization, undefined);
+  respond({ type: 'access_token', access_token: 'web-token', user: { name: 'web-user' } });
+  assert.equal(await web.pollWebLogin(), true); assert.equal(stored.token, 'web-token');
+  assert.equal(JSON.parse(transportContext).token, 'web-token');
+  respond({ code: 's', url: 'http://identity.example.test/' });
+  await assert.rejects(web.startWebLogin('github', false, false), /HTTPS/);
+  respond({ code: 's', url: 'https://identity.example.test/' });
+  await web.startWebLogin('github', false, false);
+  let releasePoll; const waitPoll = new Promise(resolve => { releasePoll = resolve; });
+  pending.push({ body: { type: 'access_token', access_token: 'late-secret' }, check: async () => waitPoll });
+  const late = web.pollWebLogin(); web.cancel(); releasePoll();
+  await assert.rejects(late, /取消/); assert.equal(transportContext, ''); assert.equal(stored, undefined);
+  respond({ code: 's', url: 'https://identity.example.test/' });
+  await web.startWebLogin('github', false, false); web.oidcDeadline = 0;
+  await assert.rejects(web.pollWebLogin(), /超时/);
+  // Exercise unsampled pending polls, failed HTTP/transport/JSON and hostile raw text.
+  respond({ code: 'private-poll-code', url: 'https://identity.example.test/private-url' });
+  await web.startWebLogin('github', false, false);
+  const beforePolling = diagnostics.length;
+  for (let i = 0; i < 16; i++) { respond({}); assert.equal(await web.pollWebLogin(), false); }
+  const pollLog = diagnostics.slice(beforePolling).map(v => v.message).join('\n');
+  assert.equal((pollLog.match(/request_start/g) || []).length, 2, 'pending polling sampled first and every 15 attempts');
+  respond({}, undefined, 503); await assert.rejects(web.pollWebLogin());
+  pending.push({ check: () => { throw Object.assign(Error('sensitive-network-secret'), { code: 2300006 }); } }); await assert.rejects(web.pollWebLogin());
+  pending.push({ check: () => { throw Object.assign(Error('sensitive-network-secret'), { code: 'sensitive-error-code' }); } }); await assert.rejects(web.pollWebLogin());
+  pending.push({ check: () => { throw null; } }); await assert.rejects(web.pollWebLogin(), /网络请求失败/);
+  pending.push({ raw: 'sensitive-invalid-json' }); await assert.rejects(web.pollWebLogin());
+  respond({ error: 'sensitive-server-refusal' }); await assert.rejects(web.pollWebLogin());
+  const log = diagnostics.map(v => v.message).join('\n');
+  for (const event of ['restore_start', 'restore_complete', 'restore_failed', 'restore_skip reason=api_changed',
+    'prepare_bypass', 'prepare_failed', 'transport_auth_ready mode=public', 'transport_auth_skipped mode=public',
+    'credential_invalidated', 'login_challenge', 'web_pending', 'web_complete', 'web_timeout',
+    'phase=cancelled', 'phase=response_limit', 'phase=transport', 'phase=response_format', 'phase=server_result', 'http=503', 'error_code=2300006']) {
+    assert(log.includes(event), `missing diagnostic ${event}`);
+  }
+  for (const secret of ['private-token', 'private-password', 'official-token', 'book-token', 'challenge-secret',
+    'one-time-secret', 'late-secret', 'web-token', 'web-user', 'alice', '123456', 'identity.example.test',
+    'private-poll-code', 'private-url', 'sensitive-network-secret', 'sensitive-error-code', 'sensitive-invalid-json', 'sensitive-server-refusal', 'Bearer ', 'https://']) {
+    assert(!log.includes(secret), `sensitive diagnostic content: ${secret}`);
+  }
+  options.set('diagnostic-log-enabled', '0');
+  const disabledCount = diagnostics.length; web.cancel(); await web.restore();
+  assert.equal(diagnostics.length, disabledCount, 'disabling diagnostics takes effect immediately');
+  console.log('PASS staged diagnostics, request correlation, polling throttle, failure classification, redaction and diagnostic switch');
+  console.log('PASS public API defaults/binding, restore failure/retry/expiry, old session migration, SSO polling/cancel/timeout and safe browser URLs');
   const storage = read('entry/src/main/ets/service/ApiAccountStore.ets');
   assert(storage.includes('asset.SyncType.NEVER'));
   assert(storage.includes("getOption('api-session-disabled') === '1'"));

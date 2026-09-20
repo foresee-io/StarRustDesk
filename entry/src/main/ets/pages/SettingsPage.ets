@@ -140,12 +140,7 @@ export struct SettingsPage {
           this.buildInputCard()
           this.buildAudioCard()
           this.buildServerConfigCard()
-          Button('服务器账号 / API 地址簿')
-            .width('100%').height(48).fontSize(15)
-            .fontColor(this.isDarkMode ? '#C5DFFF' : '#2763AC')
-            .backgroundColor(this.isDarkMode ? '#27384D' : '#E8F1FF')
-            .onClick(() => { this.apiAccountDialogController.open() })
-            .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
+          this.buildApiAccountEntry()
           this.buildCloudSyncCard()
           this.buildDiagnosticsCard()
           this.buildThemeToggle()
@@ -168,6 +163,44 @@ export struct SettingsPage {
     .onAreaChange((oldValue: Area, newValue: Area) => {
       this.pageWidth = newValue.width as number
     })
+  }
+
+  @Builder
+  buildApiAccountEntry() {
+    Button() {
+      Row({ space: 12 }) {
+        Column({ space: 5 }) {
+          Text('服务器账号')
+            .fontSize(17)
+            .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+            .fontColor(this.isDarkMode ? '#F2F6FF' : '#17253D')
+            .width('100%')
+            .textAlign(TextAlign.Start)
+          Text('API 登录与地址簿')
+            .fontSize(14)
+            .fontColor(this.isDarkMode ? '#C5D5EB' : '#445B78')
+            .width('100%')
+            .textAlign(TextAlign.Start)
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Text('›')
+          .fontSize(28)
+          .fontColor(this.isDarkMode ? '#B9D8FF' : '#2763AC')
+          .width(24)
+          .textAlign(TextAlign.Center)
+      }
+      .width('100%')
+      .padding({ left: 20, right: 16, top: 15, bottom: 15 })
+    }
+    .width('100%')
+    .constraintSize({ minHeight: 80 })
+    .padding(0)
+    .backgroundColor(this.isDarkMode ? '#24364D' : '#EDF4FF')
+    .border({ width: 1, color: this.isDarkMode ? '#516B8B' : '#CDDEF4' })
+    .accessibilityText('服务器账号，API 登录与地址簿')
+    .onClick(() => { this.apiAccountDialogController.open() })
+    .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
   }
 
   @Builder

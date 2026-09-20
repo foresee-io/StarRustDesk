@@ -208,6 +208,7 @@ impl Drop for PeerTaskCompletion {
 
 #[derive(Clone)]
 struct ConnectionConfig {
+    public_server: bool,
     peer: String,
     password: String,
     rendezvous_addr: String,
@@ -430,7 +431,7 @@ pub extern "C" fn rust_set_video_codec_support(
 
 #[no_mangle]
 pub extern "C" fn rust_get_build_id() -> *const c_char {
-    b"auth-diagnostics-20260917-r1\0".as_ptr() as *const c_char
+    b"public-account-auth-20260918-r2\0".as_ptr() as *const c_char
 }
 
 #[no_mangle]
@@ -519,6 +520,7 @@ pub extern "C" fn rust_connect(
     let rendezvous_addr = rendezvous_candidates.first().cloned().unwrap_or_default();
     if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() {
         *config = Some(ConnectionConfig {
+            public_server,
             peer: peer.clone(),
             password: pass.clone(),
             rendezvous_addr: rendezvous_addr.clone(),
@@ -561,13 +563,17 @@ pub extern "C" fn rust_connect(
             }
         };
         emit_event("rendezvous tcp connected");
-        let account_token = api_account::token_for(&active_rendezvous_addr, &key);
+        let account_token = api_account::token_for(&active_rendezvous_addr, &key, public_server);
         if !account_token.is_empty() {
+            let encryption_started = Instant::now();
+            emit_event("account rendezvous encryption start token_sent=false");
             if secure_rendezvous_connection(&mut rv_conn, &key).await.is_err() {
-                emit_event("account rendezvous encryption failed; token not sent");
+                emit_event(&format!("account rendezvous encryption failed; token not sent elapsed_ms={} raw_redacted=true",
+                    encryption_started.elapsed().as_millis()));
                 return -13;
             }
-            emit_event("account rendezvous encryption ready");
+            emit_event(&format!("account rendezvous encryption ready elapsed_ms={}",
+                encryption_started.elapsed().as_millis()));
         }
         if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() {
             if let Some(config) = config.as_mut() {
@@ -621,8 +627,36 @@ pub extern "C" fn rust_connect(
                 None
             }
         };
-        let (udp_candidate, ipv6_candidate, webrtc_candidate) =
+        let (udp_candidate, ipv6_candidate, mut webrtc_candidate) =
             tokio::join!(udp_future, ipv6_future, webrtc_future);
+        // ICE candidates must not be disclosed in plaintext, even for an
+        // anonymous connection. A failed exchange consumes the old stream.
+        if webrtc_candidate.is_some() && account_token.is_empty() {
+            let encryption_started = Instant::now();
+            emit_event("webrtc offer encryption start budget_ms=1500");
+            let encryption = tokio::time::timeout(Duration::from_millis(1500),
+                secure_rendezvous_connection(&mut rv_conn, &key)).await;
+            if !matches!(&encryption, Ok(Ok(()))) {
+                emit_event(&format!("webrtc offer encryption unavailable; reconnect without offer reason={} elapsed_ms={} raw_redacted=true",
+                    if encryption.is_err() { "timeout" } else { "handshake_failed" },
+                    encryption_started.elapsed().as_millis()));
+                webrtc_candidate = None;
+                let reconnect_started = Instant::now();
+                rv_conn = match connect_transport_endpoint(active_rendezvous_addr.clone(),
+                    EndpointRole::Rendezvous, SERVER_CONNECT_TIMEOUT).await {
+                    Ok(stream) => {
+                        emit_event(&format!("webrtc offer fallback reconnected elapsed_ms={}", reconnect_started.elapsed().as_millis()));
+                        stream
+                    }
+                    Err(_) => {
+                        emit_event(&format!("webrtc offer fallback failed elapsed_ms={} raw_redacted=true", reconnect_started.elapsed().as_millis()));
+                        return -1;
+                    }
+                };
+            } else {
+                emit_event(&format!("webrtc offer encryption ready elapsed_ms={}", encryption_started.elapsed().as_millis()));
+            }
+        }
         emit_event(&format!(
             "transport preparation completed elapsed_ms={} udp={} ipv6={} webrtc={}",
             preparation_started.elapsed().as_millis(),
@@ -661,7 +695,7 @@ pub extern "C" fn rust_connect(
                 emit_event("rendezvous response timeout");
                 return -7;
             }
-            Err(()) => return -2,
+            Err(code) => return code,
         };
 
         let mut peer_addr: Option<SocketAddr> = None;
@@ -690,7 +724,7 @@ pub extern "C" fn rust_connect(
                 ));
                 if !ph.other_failure.is_empty() {
                     log_rendezvous_refusal("punch", &ph.other_failure);
-                    return -13;
+                    return refusal_diagnostics::connection_code(&ph.other_failure);
                 }
                 signed_id_pk = ph.pk.to_vec();
                 peer_is_udp = ph.is_udp;
@@ -750,7 +784,7 @@ pub extern "C" fn rust_connect(
                 ));
                 if !rr.refuse_reason.is_empty() {
                     log_rendezvous_refusal("relay", &rr.refuse_reason);
-                    return -13;
+                    return refusal_diagnostics::connection_code(&rr.refuse_reason);
                 }
                 signed_id_pk = rr.pk().to_vec();
                 let relay = if rr.relay_server.is_empty() {
@@ -3049,8 +3083,8 @@ async fn prepare_webrtc_offerer(force_relay: bool) -> Option<(WebRTCStream, Stri
     .await
     {
         Ok(Ok(stream)) => stream,
-        Ok(Err(error)) => {
-            emit_event(&format!("webrtc offer unavailable: {error}"));
+        Ok(Err(_)) => {
+            emit_event("webrtc offer unavailable reason=initialization_failed raw_redacted=true");
             return None;
         }
         Err(_) => {
@@ -3063,8 +3097,8 @@ async fn prepare_webrtc_offerer(force_relay: bool) -> Option<(WebRTCStream, Stri
             emit_event("webrtc offer prepared");
             Some((stream, endpoint))
         }
-        Err(error) => {
-            emit_event(&format!("webrtc local endpoint unavailable: {error}"));
+        Err(_) => {
+            emit_event("webrtc offer unavailable reason=local_endpoint_failed raw_redacted=true");
             None
         }
     }
@@ -3199,19 +3233,21 @@ async fn send_punch_request(
     conn: &mut Stream,
     request: &RendezvousMessage,
     allow_config_updates: bool,
-) -> Result<Option<RendezvousMessage>, ()> {
+) -> Result<Option<RendezvousMessage>, i32> {
     for (index, reply_timeout) in PUNCH_REPLY_TIMEOUTS.into_iter().enumerate() {
         let attempt = index + 1;
-        if conn.send(request).await.is_err() {
-            emit_event("punch request send failed");
-            return Err(());
+        if let Err(error) = conn.send(request).await {
+            let kind = error.downcast_ref::<std::io::Error>().map(|e| format!("{:?}", e.kind()))
+                .unwrap_or_else(|| "transport_error".into());
+            emit_event(&format!("punch request send failed attempt={attempt} kind={kind} raw_redacted=true"));
+            return Err(-2);
         }
         emit_event(&format!(
             "punch request sent attempt={attempt}/{} token_attached={}",
             PUNCH_REPLY_TIMEOUTS.len(), !request.punch_hole_request().token.is_empty()
         ));
         if let Some(response) =
-            next_rendezvous_with_updates(conn, reply_timeout, allow_config_updates).await
+            next_rendezvous_checked(conn, reply_timeout, allow_config_updates).await.map_err(|_| -28)?
         {
             return Ok(Some(response));
         }
@@ -3555,9 +3591,28 @@ async fn next_rendezvous_with_updates(
     timeout: u64,
     allow_config_updates: bool,
 ) -> Option<RendezvousMessage> {
+    next_rendezvous_checked(conn, timeout, allow_config_updates).await.ok().flatten()
+}
+
+async fn next_rendezvous_checked(
+    conn: &mut Stream,
+    timeout: u64,
+    allow_config_updates: bool,
+) -> Result<Option<RendezvousMessage>, ()> {
     let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
-    tokio::time::timeout_at(deadline, async {
-        while let Some(Ok(bytes)) = conn.next_timeout(timeout).await {
+    match tokio::time::timeout_at(deadline, async {
+        loop {
+            let bytes = match conn.next().await {
+                Some(Ok(bytes)) => bytes,
+                Some(Err(error)) => {
+                    emit_event(&format!("rendezvous receive failed kind={:?} raw_redacted=true", error.kind()));
+                    return Err(());
+                }
+                None => {
+                    emit_event("rendezvous receive failed kind=eof raw_redacted=true");
+                    return Err(());
+                }
+            };
             match RendezvousMessage::parse_from_bytes(&bytes) {
                 Ok(msg) => {
                     let kind = rendezvous_message_kind(&msg.union);
@@ -3576,21 +3631,23 @@ async fn next_rendezvous_with_updates(
                         continue;
                     }
                     emit_event(&format!("rendezvous message kind={kind}"));
-                    return Some(msg);
+                    return Ok(Some(msg));
                 }
-                Err(e) => {
+                Err(_) => {
                     emit_event(&format!(
-                        "rendezvous parse failed len={} err={e}",
+                        "rendezvous parse failed len={} raw_redacted=true",
                         bytes.len()
                     ));
                 }
             }
         }
-        None
-    })
-    .await
-    .ok()
-    .flatten()
+    }).await {
+        Ok(result) => result,
+        Err(_) => {
+            emit_event("rendezvous receive timeout");
+            Ok(None)
+        }
+    }
 }
 
 async fn connect_direct_peer(
@@ -3633,7 +3690,7 @@ async fn connect_file_stream(config: &ConnectionConfig) -> Result<Stream, String
     )
     .await
     .map_err(|error| error.to_string())?;
-    let account_token = api_account::token_for(&config.rendezvous_addr, &config.key);
+    let account_token = api_account::token_for(&config.rendezvous_addr, &config.key, config.public_server);
     if !account_token.is_empty() {
         secure_rendezvous_connection(&mut rendezvous, &config.key).await
             .map_err(|_| "账号连接认证需要安全的 ID 服务器通道，令牌未发送".to_string())?;

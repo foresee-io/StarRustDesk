@@ -4,7 +4,7 @@ import { inputCompatibilityKey, selectedKeyboardMode, selectedCursorMode, should
 import { RustDeskTheme } from '../theme/RustDeskTheme';
 import { CommunicationService } from '../service/CommunicationService';
 import { CommunicationPanel } from '../widget/CommunicationPanel';
-import { KeyboardAvoidMode, window } from '@kit.ArkUI';
+import { FrameCallback, KeyboardAvoidMode, window } from '@kit.ArkUI';
 import { BusinessError, deviceInfo, zlib } from '@kit.BasicServicesKit';
 import { translate } from '../utils/I18n';
 import { ConnectionStatus } from '../model/ConnectionModel';
@@ -20,6 +20,12 @@ import pointer from '@ohos.multimodalInput.pointer';
 import { FileTransferHistoryRecord, FileTransferHistoryService } from '../service/FileTransferHistoryService';
 import { FileTransferHistoryDialog } from '../widget/FileTransferHistoryDialog';
 import { sortRemoteFiles } from '../utils/RemoteFileSort';
+
+class ViewportFrameCallback extends FrameCallback {
+  private apply: () => void;
+  constructor(apply: () => void) { super(); this.apply = apply; }
+  onFrame(_frameTimeInNano: number): void { this.apply(); }
+}
 
 interface RemotePoint {
   x: number;
@@ -376,6 +382,10 @@ struct RemotePage {
   private threeFingerLastCenterX: number = 0;
   private threeFingerLastCenterY: number = 0;
   private viewportPanActive: boolean = false;
+  private viewportPanFramePending: boolean = false;
+  private viewportPanFrameGeneration: number = 0;
+  private viewportPanTargetX: number = 0;
+  private viewportPanTargetY: number = 0;
   private viewportPanLastX: number = 0;
   private viewportPanLastY: number = 0;
   private directKeyboardCommittedText: string = KEYBOARD_CAPTURE_SENTINEL;
@@ -760,6 +770,7 @@ struct RemotePage {
   }
 
   resetViewportTransform(): void {
+    this.discardViewportPanFrame();
     this.relativePointerSampleValid = false;
     this.stopEdgeAutoPan();
     this.zoomScale = 1.0;
@@ -1198,7 +1209,7 @@ struct RemotePage {
   }
 
   pollRemoteCursorImage(): void {
-    let cursorData = RustDeskNapi.getRemoteCursorData();
+    let cursorData = RustDeskNapi.getRemoteCursorData(this.lastRemoteCursorImageSequence);
     if (!cursorData.valid || cursorData.sequence === undefined ||
       cursorData.sequence === this.lastRemoteCursorImageSequence) {
       return;
@@ -4311,6 +4322,7 @@ struct RemotePage {
   }
 
   cancelActiveTouchGesture(): void {
+    this.discardViewportPanFrame();
     this.relativePointerSampleValid = false;
     this.stopEdgeAutoPan();
     this.edgePanTouchActive = false;
@@ -4403,6 +4415,7 @@ struct RemotePage {
     }
 
     if (event.touches.length >= 2) {
+      if (this.viewportPanActive) this.finishViewportPan();
       this.stopEdgeAutoPan();
       this.handleMultiTouch(event);
       return;
@@ -5640,6 +5653,7 @@ struct RemotePage {
       this.clearTapTimer();
       this.sendLeftUp(this.lastAbsX, this.lastAbsY);
       this.viewportPanActive = true;
+      this.discardViewportPanFrame();
       this.viewportPanLastX = touch.x;
       this.viewportPanLastY = touch.y;
       return;
@@ -5649,9 +5663,7 @@ struct RemotePage {
       let deltaY: number = (touch.y - this.viewportPanLastY) * VIEWPORT_PAN_SPEED;
       this.viewportPanLastX = touch.x;
       this.viewportPanLastY = touch.y;
-      this.offsetX = this.clampHorizontalOffset(this.offsetX + deltaX, this.zoomScale);
-      this.offsetY = this.clampVerticalOffset(this.offsetY + deltaY, this.zoomScale);
-      this.syncVirtualMouseToCurrentPointer();
+      this.queueViewportPanFrame(deltaX, deltaY);
       return;
     }
     if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
@@ -5660,10 +5672,37 @@ struct RemotePage {
   }
 
   finishViewportPan(): void {
+    this.flushViewportPanFrame();
     this.viewportPanActive = false;
     this.viewportPanLastX = 0;
     this.viewportPanLastY = 0;
     this.clampViewportOffset();
+  }
+
+  discardViewportPanFrame(): void {
+    this.viewportPanFrameGeneration += 1;
+    this.viewportPanFramePending = false;
+  }
+
+  flushViewportPanFrame(): void {
+    if (!this.viewportPanFramePending) return;
+    this.offsetX = this.clampHorizontalOffset(this.viewportPanTargetX, this.zoomScale);
+    this.offsetY = this.clampVerticalOffset(this.viewportPanTargetY, this.zoomScale);
+    this.discardViewportPanFrame();
+    this.syncVirtualMouseToCurrentPointer();
+  }
+
+  queueViewportPanFrame(deltaX: number, deltaY: number): void {
+    this.viewportPanTargetX = this.clampHorizontalOffset(
+      (this.viewportPanFramePending ? this.viewportPanTargetX : this.offsetX) + deltaX, this.zoomScale);
+    this.viewportPanTargetY = this.clampVerticalOffset(
+      (this.viewportPanFramePending ? this.viewportPanTargetY : this.offsetY) + deltaY, this.zoomScale);
+    if (this.viewportPanFramePending) return;
+    this.viewportPanFramePending = true;
+    const generation: number = this.viewportPanFrameGeneration;
+    this.getUIContext().postFrameCallback(new ViewportFrameCallback(() => {
+      if (generation === this.viewportPanFrameGeneration) this.flushViewportPanFrame();
+    }));
   }
 
   applyPinchTransform(localX: number, localY: number, nextScale: number, deltaX: number, deltaY: number): void {

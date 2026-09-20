@@ -547,6 +547,7 @@ static bool IsSafeRustLifecycleEvent(const std::string& text) {
         "rendezvous candidate attempt=",
         "rendezvous configuration updated",
         "rendezvous rejected",
+        "rendezvous receive ",
         "connection auth config ",
         "account auth selection ",
         "account rendezvous encryption ",
@@ -767,6 +768,10 @@ static std::string ConnectionResultToMessage(int result) {
         case -22: return "Connection state is busy";
         case -23: return "Invalid direct IP address or port";
         case -24: return "Server key is invalid";
+        case -25: return "服务器要求账号登录，请到设置中的 API 账号登录；这不是远端设备密码";
+        case -26: return "服务器账号登录已过期或令牌无效，请到设置中的 API 账号重新登录";
+        case -27: return "服务器拒绝访问，请检查账号的远控权限";
+        case -28: return "ID 服务器连接中断，请重试；如持续失败，请导出诊断日志";
         default: return "Connection failed (" + std::to_string(result) + ")";
     }
 }
@@ -1536,6 +1541,11 @@ static napi_value GetRemoteCursorPosition(napi_env env, napi_callback_info info)
 }
 
 static napi_value GetRemoteCursorData(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t lastSequence = -1;
+    if (argc > 0) napi_get_value_int64(env, args[0], &lastSequence);
     uint64_t id = 0;
     uint64_t sequence = 0;
     int32_t hotx = 0;
@@ -1548,9 +1558,10 @@ static napi_value GetRemoteCursorData(napi_env env, napi_callback_info info) {
     napi_value object;
     napi_create_object(env, &object);
     napi_value validValue;
-    napi_get_boolean(env, required > 0, &validValue);
+    const bool changed = required > 0 && (lastSequence < 0 || sequence != static_cast<uint64_t>(lastSequence));
+    napi_get_boolean(env, changed, &validValue);
     napi_set_named_property(env, object, "valid", validValue);
-    if (required <= 0) {
+    if (!changed) {
         return object;
     }
 

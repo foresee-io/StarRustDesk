@@ -2,7 +2,7 @@ import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002004'
+export const RELEASE_NOTES_BUILD: string = '1002006'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -46,6 +46,17 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.0（1002006）· 账号登录与操控优化', [
+            '完善官方服务器账号认证与网页登录流程，优化登录恢复、连接等待、取消和异常提示；补充脱敏诊断日志。',
+            '修复服务器账号与地址簿弹窗请求结束后按钮仍不可点击的问题，优化设置入口的文字层级及深浅色可读性。',
+            '单指移动画面按显示帧合并更新；光标图片未变化时不再重复复制，减少界面处理开销。',
+            '优化 VP9 软解码入队与渲染的锁分离，减少视频提交对输入发送的间接阻塞。',
+            '更新应用单层图标为 1024×1024 方角不透明图片，修正透明边角并校验打包后的图标。',
+          ])
+          this.buildSection('1.2.0（1002005）· 密码保护与认证诊断', [
+            '整合本轮密码显示保护：已保存密码不再回显，支持更换、取消与保存后清除；新输入密码仍可临时查看。',
+            '保留连接认证脱敏诊断、PC 自适应布局与 One-KVM 键鼠兼容改进；升级后首次启动展示更新说明。'
+          ])
           this.buildSection('1.2.0（1002004）· 密码保护、PC 布局与键鼠兼容', [
             '已保存连接的密码仅显示“密码已保存”，不再回填或明文查看；新输入密码仍可临时查看，保存后立即隐藏。',
             '支持更换、取消更换和清除密码，清除在保存后生效；修改名称或分组保留原密码，更换远端 ID 不再沿用旧设备密码。',

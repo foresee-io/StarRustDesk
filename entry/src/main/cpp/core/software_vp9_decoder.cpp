@@ -72,6 +72,7 @@ void SoftwareVP9Decoder::decodeFrame(const uint8_t* data, int length, bool key, 
 }
 
 void SoftwareVP9Decoder::release() {
+    std::lock_guard<std::mutex> presentationLock(presentationMutex_);
     std::lock_guard<std::mutex> lock(mutex_);
     if (queuedFrames_ > 0 || decodedFrames_.load() > 0 || initialized_.load()) {
         DiagnosticLog::instance().append("I", "vp9_software",
@@ -214,9 +215,12 @@ void SoftwareVP9Decoder::workerLoop() {
             }
             // Keep generation validation, presentation and global counters
             // atomic with respect to release/reset of this decoder.
-            std::lock_guard<std::mutex> outputLock(mutex_);
-            if (frame.generation != generation_ || resetRequested_) {
-                break;
+            std::lock_guard<std::mutex> outputLock(presentationMutex_);
+            {
+                std::lock_guard<std::mutex> queueLock(mutex_);
+                if (frame.generation != generation_ || resetRequested_ || stopping_) {
+                    break;
+                }
             }
             decodedFrames_.fetch_add(1);
             const bool presented = XComponentRender::instance().renderBGRAFrame(bgra.data(), static_cast<int>(bgra.size()),

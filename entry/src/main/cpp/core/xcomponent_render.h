@@ -18,6 +18,7 @@ public:
     bool renderFrame(const uint8_t* data, int length, int width, int height);
     bool renderBGRAFrame(const uint8_t* data, int length, int width, int height);
     OHNativeWindow* window();
+    bool isReady() const { return windowReady_.load() && !renderingPaused_.load(); }
     void release();
 
 private:
@@ -36,6 +37,7 @@ private:
     uint32_t bufferHeight_{0};
     int consecutiveNoBuffer_{0};
     std::atomic<bool> renderingPaused_{false};
+    std::atomic<bool> windowReady_{false};
 };
 
 #endif

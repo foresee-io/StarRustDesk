@@ -14,6 +14,15 @@ impl AccountContext {
             && !self.key.is_empty() && self.key == key
             && default_rendezvous_addr(server) == default_rendezvous_addr(&self.rendezvous)
     }
+    fn server_matches(&self, server: &str, public_server: bool) -> bool {
+        if self.rendezvous == "@public" {
+            public_server && rendezvous_candidates("").iter().any(|candidate|
+                default_rendezvous_addr(candidate) == default_rendezvous_addr(server))
+        } else {
+            !public_server && !server.trim().is_empty() && !self.rendezvous.trim().is_empty()
+                && default_rendezvous_addr(server) == default_rendezvous_addr(&self.rendezvous)
+        }
+    }
 }
 static ACCOUNT: Mutex<Option<AccountContext>> = Mutex::new(None);
 
@@ -24,7 +33,11 @@ pub extern "C" fn rust_set_api_account_context(json: *const c_char) -> i32 {
     *account = None;
     if json.is_empty() { return 0; }
     if json.len() > 32768 { return -1; }
-    let Ok(context) = serde_json::from_str::<AccountContext>(&json) else { return -1; };
+    let Ok(mut context) = serde_json::from_str::<AccountContext>(&json) else { return -1; };
+    if context.rendezvous == "@public" {
+        if !context.key.is_empty() { return -1; }
+        context.key = RS_PUB_KEY.to_string();
+    }
     if context.token.is_empty() || context.token.len() > 16384
         || context.token.chars().any(char::is_control)
         || context.rendezvous.trim().is_empty() || context.rendezvous.len() > 1024
@@ -33,10 +46,10 @@ pub extern "C" fn rust_set_api_account_context(json: *const c_char) -> i32 {
     0
 }
 
-pub(super) fn token_for(server: &str, key: &str) -> String {
+pub(super) fn token_for(server: &str, key: &str, public_server: bool) -> String {
     // Diagnose the same snapshot used for selection, never the token itself.
     let (token, diagnostic) = match ACCOUNT.lock() {
-        Ok(account) => select_token(account.as_ref(), server, key),
+        Ok(account) => select_token_for_network(account.as_ref(), server, key, public_server),
         Err(_) => (String::new(), "context=unavailable token_selected=false".to_string()),
     };
     emit_event(&format!("account auth selection {diagnostic}"));
@@ -44,13 +57,16 @@ pub(super) fn token_for(server: &str, key: &str) -> String {
 }
 
 fn select_token(account: Option<&AccountContext>, server: &str, key: &str) -> (String, String) {
+    select_token_for_network(account, server, key, false)
+}
+
+fn select_token_for_network(account: Option<&AccountContext>, server: &str, key: &str, public_server: bool) -> (String, String) {
     let Some(account) = account else {
         return (String::new(), "context=absent token_selected=false".to_string());
     };
-    let server_match = !server.trim().is_empty() && !account.rendezvous.trim().is_empty()
-        && default_rendezvous_addr(server) == default_rendezvous_addr(&account.rendezvous);
+    let server_match = account.server_matches(server, public_server);
     let key_match = !account.key.is_empty() && account.key == key;
-    let selected = account.matches(server, key) && !account.token.is_empty();
+    let selected = server_match && key_match && !account.token.is_empty();
     (if selected { account.token.clone() } else { String::new() }, format!(
         "context=present server_match={server_match} key_match={key_match} token_present={} token_selected={selected}",
         !account.token.is_empty()))
@@ -65,6 +81,15 @@ pub(super) fn attach(request: &mut RendezvousMessage, token: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn public_tokens_require_public_network_and_builtin_key() {
+        let account = AccountContext { token: "secret".into(), rendezvous: "@public".into(), key: RS_PUB_KEY.into() };
+        let server = default_rendezvous_addr("");
+        assert_eq!(select_token_for_network(Some(&account), &server, RS_PUB_KEY, true).0, "secret");
+        assert!(select_token_for_network(Some(&account), &server, RS_PUB_KEY, false).0.is_empty());
+        assert!(select_token_for_network(Some(&account), "evil.test", RS_PUB_KEY, true).0.is_empty());
+        assert!(select_token_for_network(Some(&account), &server, "other-key", true).0.is_empty());
+    }
     #[test]
     fn selection_diagnostics_are_consistent_and_secret_free() {
         let account = AccountContext { token: "private-token".into(), rendezvous: "private.test".into(), key: "private-key".into() };

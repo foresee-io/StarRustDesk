@@ -74,6 +74,7 @@ export struct ConnectionPage {
   @State passwordEditMode: string = 'keep'
   @State isIdEmpty: boolean = true
   @State isConnecting: boolean = false
+  private preparingAccount: boolean = false
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @StorageLink('serverConfigVersion') @Watch('onServerConfigVersionChanged') serverConfigVersion: number = 0
   @StorageLink('savedConnectionsCloudRevision') @Watch('onCloudConnectionsChanged')
@@ -157,6 +158,10 @@ export struct ConnectionPage {
   aboutToDisappear(): void {
     this.savePageActive = false
     this.clearSaveTip()
+    if (this.preparingAccount) {
+      ConnectionService.cancelPendingConnection()
+      this.preparingAccount = false
+    }
     if (this.statusTimer !== -1) {
       clearTimeout(this.statusTimer)
       this.statusTimer = -1
@@ -212,6 +217,7 @@ export struct ConnectionPage {
   }
 
   syncConnectionState(): ConnectionStatus {
+    if (this.preparingAccount) return ConnectionStatus.CONNECTING
     let status: ConnectionStatus = RustDeskNapi.getConnectionStatus() as ConnectionStatus
     RemoteSessionBackgroundTask.syncForConnectionStatus(status)
     this.connectionStatusValue = status
@@ -1823,7 +1829,8 @@ export struct ConnectionPage {
     return this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG
   }
 
-  onConnect(): void {
+  async onConnect(): Promise<void> {
+    if (this.preparingAccount) return
     let peerId: string = this.normalizeRemoteId(this.remoteId)
     this.remoteId = peerId
     this.isIdEmpty = peerId.length === 0
@@ -1851,7 +1858,18 @@ export struct ConnectionPage {
       this.connectionStatusText = translate('Connecting...')
       this.connectionStatusColor = RustDeskTheme.WARNING
       AppStorage.set<string>('connectedPeerId', peerId)
-      let status: ConnectionStatus = ConnectionService.connect(peerId, password, this.performancePreset)
+      this.preparingAccount = true
+      let status: ConnectionStatus
+      try {
+        status = await ConnectionService.connect(peerId, password, this.performancePreset)
+      } catch (_error) {
+        this.preparingAccount = false
+        this.connectionStatusText = '账号恢复失败或服务器配置已改变，请重试；必要时到设置中的 API 账号重新登录'
+        this.connectionStatusColor = RustDeskTheme.ERROR
+        this.isConnecting = false
+        return
+      }
+      this.preparingAccount = false
       if (status !== ConnectionStatus.CONNECTING) {
         let error: string = ConnectionService.getLastConnectionError()
         this.connectionStatusText = error

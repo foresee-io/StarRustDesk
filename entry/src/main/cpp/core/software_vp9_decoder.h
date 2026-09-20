@@ -37,6 +37,8 @@ private:
     bool convertFrame(vpx_image_t* image, std::vector<uint8_t>& bgra);
 
     std::mutex mutex_;
+    // Serialize presentation against reset, without holding the input queue lock.
+    std::mutex presentationMutex_;
     std::condition_variable condition_;
     std::deque<EncodedFrame> frames_;
     std::thread worker_;

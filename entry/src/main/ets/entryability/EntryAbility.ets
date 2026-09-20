@@ -41,7 +41,9 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('serverConfigVersion', 0);
     AppStorage.setOrCreate('savedConnectionsCloudRevision', 0);
     // Validate only the locally remembered account; never log credentials or responses.
-    AccountSession.getApi().restore().catch(() => {});
+    AccountSession.getApi().restore().catch(() => {
+      RustDeskNapi.appendDiagnosticLog('api-account', 'startup_restore_failed; retry_before_connection=true');
+    });
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 

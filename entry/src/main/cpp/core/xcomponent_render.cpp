@@ -69,6 +69,7 @@ bool XComponentRender::createWindowLocked() {
     consecutiveNoBuffer_ = 0;
         OH_LOG_INFO(LOG_APP, "Native window created for surface %{public}s ret=%{public}d", surfaceId_.c_str(), ret);
         configureWindowLocked(640, 360);
+        windowReady_.store(true);
         return true;
     } else {
         OH_LOG_ERROR(LOG_APP, "Failed to create native window for surface %{public}s ret=%{public}d", surfaceId_.c_str(), ret);
@@ -213,6 +214,7 @@ void XComponentRender::release() {
 }
 
 void XComponentRender::destroyWindowLocked() {
+    windowReady_.store(false);
     if (nativeWindow_) {
         OH_NativeWindow_DestroyNativeWindow(nativeWindow_);
         nativeWindow_ = nullptr;

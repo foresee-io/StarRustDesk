@@ -7,7 +7,8 @@ const account = fs.readFileSync(path.join(root, 'entry/src/main/rust/src/api_acc
 const native = fs.readFileSync(path.join(root, 'entry/src/main/cpp/napi_init.cpp'), 'utf8');
 const allowlist = native.slice(native.indexOf('static bool IsSafeRustLifecycleEvent'), native.indexOf('static void OnRustEvent'));
 for (const prefix of ['connection auth config ', 'account auth selection ', 'account rendezvous encryption ',
-  'file account rendezvous encryption ', 'file punch request sent ', 'relay request sent ', 'rendezvous rejected']) {
+  'file account rendezvous encryption ', 'file punch request sent ', 'relay request sent ', 'rendezvous rejected',
+  'webrtc offer ', 'rendezvous receive ']) {
   assert(allowlist.includes(`"${prefix}"`), `exported diagnostic log must allow ${prefix}`);
 }
 for (const source of ['punch', 'relay', 'file_punch', 'file_relay', 'relay_request']) {
@@ -24,4 +25,9 @@ assert(!core.includes('bail!("relay refused: {}", resp.refuse_reason)'));
 assert(account.includes('context=absent token_selected=false'));
 assert(account.includes('server_match={server_match} key_match={key_match}'));
 assert(core.indexOf('account rendezvous encryption ready') < core.indexOf('api_account::attach(&mut req, &account_token)'));
+assert(!core.includes('webrtc offer unavailable: {error}'));
+assert(!core.includes('webrtc local endpoint unavailable: {error}'));
+assert(core.includes('webrtc offer fallback reconnected elapsed_ms='));
+assert(core.includes('webrtc offer fallback failed elapsed_ms='));
+assert(core.includes('"timeout" } else { "handshake_failed"'));
 console.log('PASS auth diagnostics cover all refusal paths, config/token metadata, and redact raw server errors');

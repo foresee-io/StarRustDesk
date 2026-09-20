@@ -258,8 +258,8 @@ export class RustDeskNapi {
     return (rustdeskNapi as ESObject).getRemoteCursorPosition() as RemoteCursorPosition
   }
 
-  static getRemoteCursorData(): RemoteCursorData {
-    return (rustdeskNapi as ESObject).getRemoteCursorData() as RemoteCursorData
+  static getRemoteCursorData(lastSequence: number = -1): RemoteCursorData {
+    return (rustdeskNapi as ESObject).getRemoteCursorData(lastSequence) as RemoteCursorData
   }
 
   static switchDisplay(display: number): number {

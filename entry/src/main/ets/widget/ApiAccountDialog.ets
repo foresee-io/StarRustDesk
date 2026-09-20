@@ -1,7 +1,8 @@
-import { ApiBook, ApiPeer, ApiFailure, RustDeskApiService, AccountSession } from '../service/RustDeskApiService';
+import { ApiBook, ApiPeer, ApiFailure, ApiLoginOption, RustDeskApiService, AccountSession } from '../service/RustDeskApiService';
+import { common } from '@kit.AbilityKit';
 import { ApiAddressBookImport } from '../service/ApiAddressBookImport';
 import { RustDeskNapi } from '../service/RustDeskNapi';
-import { ButtonShapeModifier } from '../theme/ButtonShapeModifier';
+import { ApiAccountAction } from './ApiAccountAction';
 
 @CustomDialog
 export struct ApiAccountDialog {
@@ -24,19 +25,90 @@ export struct ApiAccountDialog {
   @State peers: ApiPeer[] = [];
   @State selected: string[] = [];
   @State bookIndex: number = -1;
+  @State loginOptions: ApiLoginOption[] = [];
+  @State webWaiting: boolean = false;
+  private webTimer: number = -1;
+  private webAttempt: number = 0;
   private api: RustDeskApiService = AccountSession.getApi();
   private alive: boolean = true;
 
   aboutToAppear(): void {
     this.alive = true;
-    this.server = RustDeskNapi.getOption('api-server');
+    this.server = RustDeskApiService.defaultServer();
     this.provider = RustDeskNapi.getOption('api-account-provider') === 'thirdParty' ? 'thirdParty' : 'official';
     this.initialize();
   }
   aboutToDisappear(): void {
     this.alive = false;
+    this.stopWebLogin();
     this.password = ''; this.code = '';
     this.api.cancel();
+  }
+
+  stopWebLogin(): void {
+    this.webAttempt++;
+    if (this.webTimer >= 0) clearTimeout(this.webTimer);
+    this.webTimer = -1; this.webWaiting = false;
+    this.api.cancel();
+  }
+
+  async loadLoginOptions(): Promise<void> {
+    this.busy = true; this.message = ''; this.loginOptions = [];
+    try {
+      this.api.configure(this.server, this.provider, this.allowHttp);
+      const options = await this.api.loginOptions();
+      if (this.alive) {
+        this.loginOptions = options;
+        if (!options.length) this.message = '服务器没有提供网页登录方式，可使用账号密码登录';
+      }
+    } catch (error) { this.showError(error as Error); }
+    finally { if (this.alive) this.busy = false; }
+  }
+
+  async webLogin(op: string): Promise<void> {
+    this.busy = true; this.webWaiting = true; this.message = '正在打开安全登录网页…';
+    const attempt: number = ++this.webAttempt;
+    let browserPhase: boolean = false;
+    try {
+      const address = await this.api.startWebLogin(op, this.remember, this.authorizeConnections);
+      if (!this.alive || attempt !== this.webAttempt) return;
+      const context = getContext(this) as common.UIAbilityContext;
+      browserPhase = true;
+      RustDeskNapi.appendDiagnosticLog('api-account', `web_browser_open_start attempt=${attempt}`);
+      await context.startAbility({ action: 'ohos.want.action.viewData', uri: address });
+      RustDeskNapi.appendDiagnosticLog('api-account', `web_browser_open_complete attempt=${attempt}`);
+      if (!this.alive || attempt !== this.webAttempt) return;
+      this.message = '请在浏览器完成登录后返回，正在等待确认（最多 3 分钟）';
+      this.pollWebLogin(attempt);
+    } catch (error) {
+      RustDeskNapi.appendDiagnosticLog('api-account', `web_launch_failed attempt=${attempt} phase=${browserPhase ? 'browser' : 'authorization'} raw_redacted=true`);
+      if (this.alive && attempt === this.webAttempt) {
+        this.stopWebLogin(); this.busy = false;
+        this.showError(error as Error);
+      }
+    }
+  }
+
+  async pollWebLogin(attempt: number): Promise<void> {
+    if (!this.alive || attempt !== this.webAttempt) return;
+    try {
+      const done = await this.api.pollWebLogin();
+      if (!this.alive || attempt !== this.webAttempt) return;
+      if (done) {
+        this.loggedIn = true; this.username = this.api.username;
+        this.webWaiting = false; this.busy = false;
+        this.message = this.api.warning || '登录成功';
+        await this.refreshBooks();
+        return;
+      }
+      this.challenge = this.api.challenge;
+      if (this.challenge) { this.webWaiting = false; this.busy = false; return; }
+    } catch (error) {
+      if (!this.alive || attempt !== this.webAttempt) return;
+      this.stopWebLogin(); this.busy = false; this.showError(error as Error);
+      return;
+    }
+    this.webTimer = setTimeout(() => { this.pollWebLogin(attempt); }, 1000);
   }
   async initialize(): Promise<void> {
     this.busy = true;
@@ -113,36 +185,37 @@ export struct ApiAccountDialog {
     return options;
   }
 
-  @Builder
-  action(label: string, selected: boolean, enabled: boolean, handler: () => void) {
-    Button(label).height(38).fontSize(13).fontColor(this.isDarkMode ? '#C5DFFF' : '#2763AC')
-      .backgroundColor(this.isDarkMode ? (selected ? '#314E71' : '#27384D') : (selected ? '#CFE3FF' : '#EEF4FC'))
-      .enabled(enabled).onClick(handler)
-      .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule));
-  }
   build() {
     Column({ space: 12 }) {
       Row() {
         Text('服务器账号与地址簿').fontSize(19).fontWeight(FontWeight.Bold).fontColor(this.textColor()).layoutWeight(1);
-        this.action(this.busy ? '取消请求' : '关闭', false, true, () => {
-          this.api.cancel();
-          if (!this.busy) this.controller.close();
-        });
+        ApiAccountAction({ label: this.busy ? '取消请求' : '关闭', onAction: () => {
+          if (this.webWaiting) {
+            this.stopWebLogin(); this.busy = false; this.message = '已取消网页登录';
+          } else if (this.busy) {
+            // Leave controls disabled until the cancelled HTTP call settles.
+            this.api.cancel();
+          } else {
+            this.stopWebLogin(); this.controller.close();
+          }
+        } });
       }.width('100%');
       Scroll() {
         Column({ space: 12 }) {
           Row({ space: 8 }) {
-            this.action('官方 Server Pro', this.provider === 'official', !this.busy && !this.loggedIn && !this.challenge,
-              () => { this.provider = 'official'; });
-            this.action('第三方 rustdesk-api', this.provider === 'thirdParty', !this.busy && !this.loggedIn && !this.challenge,
-              () => { this.provider = 'thirdParty'; });
+            ApiAccountAction({ label: '官方 / Server Pro', selected: this.provider === 'official',
+              isEnabled: !this.busy && !this.loggedIn && !this.challenge,
+              onAction: () => { this.provider = 'official'; this.loginOptions = []; } });
+            ApiAccountAction({ label: '第三方 rustdesk-api', selected: this.provider === 'thirdParty',
+              isEnabled: !this.busy && !this.loggedIn && !this.challenge,
+              onAction: () => { this.provider = 'thirdParty'; this.loginOptions = []; } });
           }.width('100%');
           TextInput({ text: this.server, placeholder: 'API 地址，例如 https://api.example.com' }).fontSize(14)
-            .enabled(!this.loggedIn && !this.busy && !this.challenge).onChange((value: string) => { this.server = value; });
+            .enabled(!this.loggedIn && !this.busy && !this.challenge).onChange((value: string) => { this.server = value; this.loginOptions = []; });
           if (!this.loggedIn && !this.challenge) {
             Row() {
               Checkbox({ name: 'allowHttp' }).select(this.allowHttp).enabled(!this.busy)
-                .onChange((value: boolean) => { this.allowHttp = value; });
+                .onChange((value: boolean) => { this.allowHttp = value; this.loginOptions = []; });
               Text('允许 HTTP（账号密码和令牌可能被窃听）').fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
             }.width('100%');
             TextInput({ text: this.username, placeholder: '服务器账号，不是远端设备 ID' }).enabled(!this.busy)
@@ -160,31 +233,38 @@ export struct ApiAccountDialog {
               Text('用于当前自建 ID 服务器的连接权限认证（需公钥）')
                 .fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
             }.width('100%');
-            this.action('登录', true, !this.busy, () => { this.login(); });
+            ApiAccountAction({ label: '登录', selected: true, isEnabled: !this.busy, onAction: () => { this.login(); } });
+            Text('官方公共网络登录后自动用于官方连接；自建网络需勾选上方连接认证。账号密码不是远端设备密码。')
+              .fontSize(12).fontColor(this.secondaryColor());
+            ApiAccountAction({ label: '获取网页登录方式', isEnabled: !this.busy, onAction: () => { this.loadLoginOptions(); } });
+            ForEach(this.loginOptions, (option: ApiLoginOption) => {
+              ApiAccountAction({ label: `通过 ${option.name} 登录`, isEnabled: !this.busy, onAction: () => { this.webLogin(option.name); } });
+            }, (option: ApiLoginOption) => option.name);
           } else if (!this.loggedIn) {
             Text(this.challenge === 'email' ? '请输入邮箱验证码' : '请输入身份验证器验证码')
               .fontSize(14).fontColor(this.textColor());
             TextInput({ text: this.code, placeholder: '6 位验证码' }).maxLength(6).type(InputType.Number)
               .enabled(!this.busy).onChange((value: string) => { this.code = value; });
             Row({ space: 8 }) {
-              this.action('验证', true, !this.busy, () => { this.login(); });
-              this.action('重新登录', false, !this.busy, () => { this.api.cancel(); this.challenge = ''; this.code = ''; });
+              ApiAccountAction({ label: '验证', selected: true, isEnabled: !this.busy, onAction: () => { this.login(); } });
+              ApiAccountAction({ label: '重新登录', isEnabled: !this.busy, onAction: () => { this.api.cancel(); this.challenge = ''; this.code = ''; } });
             }
           } else {
             Row({ space: 8 }) {
               Text(`已登录：${this.username}`).fontSize(14).fontColor(this.textColor()).layoutWeight(1);
-              this.action('刷新', false, !this.busy, () => { this.refreshBooks(); });
-              this.action('退出', false, !this.busy, () => { this.logout(); });
+              ApiAccountAction({ label: '刷新', isEnabled: !this.busy, onAction: () => { this.refreshBooks(); } });
+              ApiAccountAction({ label: '退出', isEnabled: !this.busy, onAction: () => { this.logout(); } });
             }.width('100%');
             Select(this.bookOptions())
               .value(this.bookIndex >= 0 ? this.books[this.bookIndex]?.name : '选择个人或共享地址簿')
               .enabled(!this.busy).width('100%').onSelect((index: number) => { this.loadBook(index); });
             if (this.peers.length > 0) {
               Row({ space: 8 }) {
-                this.action(this.selected.length === this.peers.length ? '取消全选' : '全选', false, !this.busy, () => {
+                ApiAccountAction({ label: this.selected.length === this.peers.length ? '取消全选' : '全选', isEnabled: !this.busy, onAction: () => {
                   this.selected = this.selected.length === this.peers.length ? [] : this.peers.map((peer: ApiPeer) => peer.id);
-                });
-                this.action(`导入已选 (${this.selected.length})`, true, !this.busy && this.selected.length > 0, () => { this.importPeers(); });
+                } });
+                ApiAccountAction({ label: `导入已选 (${this.selected.length})`, selected: true,
+                  isEnabled: !this.busy && this.selected.length > 0, onAction: () => { this.importPeers(); } });
               }.width('100%');
               ForEach(this.peers, (peer: ApiPeer) => {
                 Row({ space: 8 }) {
