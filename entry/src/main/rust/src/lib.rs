@@ -4,6 +4,7 @@ mod communication;
 mod api_account;
 mod refusal_diagnostics;
 mod performance;
+mod session_recording;
 mod input_compat;
 use performance::PerformanceConfig;
 #[cfg(test)]
@@ -84,6 +85,8 @@ static PEER_IS_ANDROID: AtomicBool = AtomicBool::new(false);
 static PEER_SAS_ENABLED: AtomicBool = AtomicBool::new(false);
 static CURRENT_PEER_PLATFORM: Mutex<String> = Mutex::new(String::new());
 static PEER_IS_ONE_KVM: AtomicBool = AtomicBool::new(false);
+static PEER_IS_WAYLAND: AtomicBool = AtomicBool::new(false);
+static FILE_ONLY_SESSION: AtomicBool = AtomicBool::new(false);
 // 0 = automatic, 1 = Map 1:1, 2 = Legacy. Configured before accepting local input.
 static INPUT_KEYBOARD_MODE: AtomicI32 = AtomicI32::new(0);
 static INPUT_RELATIVE_MOUSE: AtomicBool = AtomicBool::new(false);
@@ -309,6 +312,7 @@ fn new_protocol_session_id() -> u64 {
 
 fn reset_display_state() {
     PEER_IS_ONE_KVM.store(false, Ordering::SeqCst);
+    PEER_IS_WAYLAND.store(false, Ordering::SeqCst);
     INPUT_KEYBOARD_MODE.store(0, Ordering::SeqCst);
     INPUT_RELATIVE_MOUSE.store(false, Ordering::SeqCst);
     if let Ok(mut guard) = DISPLAY_COUNT.try_lock() {
@@ -445,6 +449,7 @@ pub extern "C" fn rust_connect(
     client_id: *const c_char,
     force_relay: i32,
     allow_insecure_fallback: i32,
+    file_only: i32,
 ) -> i32 {
     if peer_id.is_null() {
         return -1;
@@ -475,6 +480,7 @@ pub extern "C" fn rust_connect(
     reset_display_state();
     let _ = clear_connection_for_session(session_id);
     emit_event("previous connection cleared");
+    FILE_ONLY_SESSION.store(file_only != 0, Ordering::SeqCst);
     let pass = cstr_to_string(password).unwrap_or_default();
     let rv = cstr_to_string(rendezvous_server).unwrap_or_default();
     let relay_override = cstr_to_string(relay_server).unwrap_or_default();
@@ -532,6 +538,22 @@ pub extern "C" fn rust_connect(
     }
     emit_event(&format!("connect start peer={peer} rendezvous={rendezvous_addr} relay_override={relay_override} key_set={}", !key.is_empty()));
     let rt = runtime();
+
+    if file_only != 0 {
+        let Some(config) = CURRENT_CONNECTION_CONFIG.lock().ok().and_then(|c| c.clone()) else { return -22; };
+        let (sender, receiver) = mpsc::channel();
+        if let Ok(mut s) = FILE_MESSAGE_SENDER.lock() { *s = Some(sender); }
+        CONNECTION_ACTIVE.store(true, Ordering::SeqCst);
+        thread::spawn(move || {
+            runtime().block_on(run_file_session(session_id, config, receiver));
+            if SESSION_ID.load(Ordering::SeqCst) == session_id {
+                CONNECTION_ACTIVE.store(false, Ordering::SeqCst);
+                if let Ok(mut s) = FILE_MESSAGE_SENDER.lock() { *s = None; }
+                emit_event("file-only session ended");
+            }
+        });
+        return 0;
+    }
 
     rt.block_on(async {
       match await_connection_attempt(session_id, &SESSION_ID, CONNECTION_DEADLINE, async {
@@ -1138,6 +1160,8 @@ pub extern "C" fn rust_set_background_video_mode(enabled: i32) -> i32 {
 
 #[no_mangle]
 pub extern "C" fn rust_disconnect() -> i32 {
+    session_recording::stop();
+    rust_cancel_file_operation();
     let closing_session_id = SESSION_ID.load(Ordering::SeqCst);
     let graceful_close_completed = request_graceful_peer_close(closing_session_id);
     finish_peer_task(closing_session_id, graceful_close_completed);
@@ -1223,7 +1247,7 @@ pub extern "C" fn rust_get_input_capabilities() -> i32 {
     let version = CURRENT_PEER_VERSION.lock().map(|p| p.clone()).unwrap_or_default();
     let relative = platform.eq_ignore_ascii_case("windows") && !version.trim().is_empty()
         && version_at_least(&version, [1, 4, 5]);
-    (kvm as i32) | ((relative as i32) << 1)
+    (kvm as i32) | ((relative as i32) << 1) | ((PEER_IS_WAYLAND.load(Ordering::SeqCst) as i32) << 2)
 }
 
 #[no_mangle]
@@ -1732,6 +1756,79 @@ pub extern "C" fn rust_request_remote_directory(path: *const c_char) -> i32 {
         .unwrap_or(-4)
 }
 
+// File operations use their own id/result, never the transfer progress channel.
+static FILE_OPERATION_ID: AtomicI32 = AtomicI32::new(0);
+static FILE_OPERATION_RESULT: Mutex<String> = Mutex::new(String::new());
+static CANCELLED_FILE_OPERATIONS: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+
+fn safe_remote_operation_path(path: &str) -> bool {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    !trimmed.is_empty() && path.len() <= 4096 && !trimmed.ends_with(':') &&
+        !path.chars().any(|c| c.is_control()) &&
+        !path.split(['/', '\\']).any(|part| part == "." || part == "..")
+}
+
+#[no_mangle]
+pub extern "C" fn rust_remote_file_operation(kind: i32, path: *const c_char, name: *const c_char) -> i32 {
+    use hbb_common::message_proto::{FileDirCreate, FileRemoveDir, FileRemoveFile, FileRename};
+    let Some(path) = cstr_to_string(path) else { return -1; };
+    let name = cstr_to_string(name).unwrap_or_default();
+    if !safe_remote_operation_path(&path) {
+        return -2;
+    }
+    if kind == 1 && (name.is_empty() || name == "." || name == ".." || name.len() > 255 || name.contains(['/', '\\', '\0'])) { return -2; }
+    let Some(sender) = ensure_file_session() else { return -3; };
+    let id = next_file_job_id();
+    if FILE_OPERATION_ID.compare_exchange(0, id, Ordering::SeqCst, Ordering::SeqCst).is_err() { return -4; }
+    if let Ok(mut result) = FILE_OPERATION_RESULT.lock() { result.clear(); }
+    let mut action = FileAction::new();
+    match kind {
+        0 => action.set_create(FileDirCreate { id, path, ..Default::default() }),
+        1 => action.set_rename(FileRename { id, path, new_name: name, ..Default::default() }),
+        2 => action.set_remove_file(FileRemoveFile { id, path, ..Default::default() }),
+        3 => action.set_remove_dir(FileRemoveDir { id, path, recursive: true, ..Default::default() }),
+        _ => { FILE_OPERATION_ID.store(0, Ordering::SeqCst); return -2; }
+    }
+    let mut msg = PeerMessage::new(); msg.set_file_action(action);
+    if sender.send(QueuedPeerCommand::Message { session_id: SESSION_ID.load(Ordering::SeqCst), message: msg, voice_timestamp: 0 }).is_err() {
+        FILE_OPERATION_ID.store(0, Ordering::SeqCst); return -5;
+    }
+    emit_event(&format!("file-operation queued kind={kind} id={id}"));
+    id
+}
+
+#[no_mangle]
+pub extern "C" fn rust_take_file_operation_result() -> *mut c_char {
+    let result = FILE_OPERATION_RESULT.lock().map(|mut value| std::mem::take(&mut *value)).unwrap_or_default();
+    CString::new(result).unwrap_or_default().into_raw()
+}
+
+#[no_mangle]
+pub extern "C" fn rust_cancel_file_operation() {
+    let id = FILE_OPERATION_ID.swap(0, Ordering::SeqCst);
+    if id > 0 {
+        if let Ok(mut ids) = CANCELLED_FILE_OPERATIONS.lock() {
+            if ids.len() >= 64 { ids.remove(0); }
+            ids.push(id);
+        }
+    }
+    if let Ok(mut result) = FILE_OPERATION_RESULT.lock() { result.clear(); }
+}
+
+fn consume_file_operation_result(response: &hbb_common::message_proto::FileResponse) -> bool {
+    let (id, ok) = match &response.union {
+        Some(file_response::Union::Done(done)) => (done.id, true),
+        Some(file_response::Union::Error(error)) => (error.id, false),
+        _ => return false,
+    };
+    if id <= 0 { return false; }
+    if CANCELLED_FILE_OPERATIONS.lock().map(|ids| ids.contains(&id)).unwrap_or(false) { return true; }
+    if FILE_OPERATION_ID.compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst).is_err() { return false; }
+    if let Ok(mut result) = FILE_OPERATION_RESULT.lock() { *result = serde_json::json!({"id": id, "ok": ok}).to_string(); }
+    emit_event(&format!("file-operation completed id={id} ok={ok}"));
+    true
+}
+
 #[no_mangle]
 pub extern "C" fn rust_take_remote_directory_result() -> *mut c_char {
     let value = REMOTE_DIRECTORY_RESULT
@@ -1769,7 +1866,7 @@ pub extern "C" fn rust_start_file_upload(
     let Ok(metadata) = std::fs::metadata(&local_path) else {
         return -3;
     };
-    if !metadata.is_file() {
+    if !metadata.is_file() && !metadata.is_dir() {
         return -4;
     }
 
@@ -1783,18 +1880,14 @@ pub extern "C" fn rust_start_file_upload(
     } else {
         format!("{remote_directory}{separator}{file_name}")
     };
-    let id = (SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        % i32::MAX as u128) as i32;
+    let id = next_file_job_id();
     let mut job = match TransferJob::new_read(
         id,
         JobType::Generic,
         remote_path.clone(),
         DataSource::FilePath(PathBuf::from(local_path)),
         0,
-        false,
+        true,
         false,
         true,
     ) {
@@ -1995,12 +2088,15 @@ async fn run_file_session(
     let mut read_jobs: Vec<TransferJob> = Vec::new();
     let mut write_jobs: Vec<TransferJob> = Vec::new();
     let mut download_state = DownloadBatchState::default();
+    let login_started = Instant::now();
     loop {
         if SESSION_ID.load(Ordering::SeqCst) != session_id {
             return;
         }
         while let Ok(command) = receiver.try_recv() {
-            if authenticated {
+            let authentication = matches!(&command, QueuedPeerCommand::Message { message, .. }
+                if matches!(message.union, Some(message::Union::Auth2fa(_))));
+            if authenticated || authentication {
                 if !send_file_command(
                     command,
                     session_id,
@@ -2028,8 +2124,12 @@ async fn run_file_session(
                 set_file_transfer_status("completed", total, total, "");
             }
         }
-        match stream.next_timeout(20).await {
-            Some(Ok(bytes)) => {
+        if !authenticated && login_started.elapsed().as_secs() > 120 {
+            set_remote_directory_result(RemoteDirectoryResult { path: String::new(), entries: Vec::new(), error: "文件传输登录超时".into() });
+            return;
+        }
+        match tokio::time::timeout(Duration::from_millis(20), stream.next()).await {
+            Ok(Some(Ok(bytes))) => {
                 let Ok(message) = PeerMessage::parse_from_bytes(&bytes) else {
                     continue;
                 };
@@ -2046,6 +2146,14 @@ async fn run_file_session(
                     }
                     Some(message::Union::LoginResponse(response)) => match response.union {
                         Some(login_response::Union::Error(error)) => {
+                            if FILE_ONLY_SESSION.load(Ordering::SeqCst) {
+                                if error == "2FA Required" || error == "Wrong 2FA Code" {
+                                    emit_event(if error == "Wrong 2FA Code" { "login response: 2fa-wrong" }
+                                        else { "login response: 2fa-required enable_trusted_devices=0" });
+                                    continue;
+                                }
+                                emit_event(&format!("login response: error={error}"));
+                            }
                             set_remote_directory_result(RemoteDirectoryResult {
                                 path: String::new(),
                                 entries: Vec::new(),
@@ -2056,6 +2164,7 @@ async fn run_file_session(
                         _ => {
                             authenticated = true;
                             emit_event("file-session:authenticated");
+                            if FILE_ONLY_SESSION.load(Ordering::SeqCst) { emit_event("file-only session ready"); }
                             for command in pending.drain(..) {
                                 if is_root_directory_command(&command) {
                                     continue;
@@ -2093,14 +2202,16 @@ async fn run_file_session(
                             }
                         }
                     }
+                    Some(message::Union::TestDelay(delay)) => { send_test_delay_response(delay, &mut stream).await; }
                     _ => {}
                 }
             }
-            Some(Err(error)) => {
+            Ok(Some(Err(error))) => {
                 set_file_transfer_status("failed", 0, 0, &error.to_string());
                 return;
             }
-            None => {}
+            Ok(None) => { return; }
+            Err(_) => {}
         }
     }
 }
@@ -4318,6 +4429,9 @@ fn spawn_receive_loop(session_id: u64, mut stream: Stream, kcp_guard: Option<Kcp
                                 true
                             }
                             Some(Err(e)) => {
+                                if SESSION_ID.load(Ordering::SeqCst) == session_id {
+                                    emit_event("peer transport interrupted");
+                                }
                                 emit_event(&format!(
                                     "receive loop error session_id={} elapsed_ms={} received={} video={} test_delay={} misc={} last_message={} last_message_age_ms={} route={} error={}",
                                     session_id,
@@ -4430,6 +4544,10 @@ async fn handle_peer_bytes(
                     }
                 }
                 Some(login_response::Union::PeerInfo(info)) => {
+                    let wayland = info.platform.eq_ignore_ascii_case("linux") &&
+                        serde_json::from_str::<serde_json::Value>(&info.platform_additions).ok()
+                            .and_then(|v| v.get("is_wayland").and_then(|v| v.as_bool())).unwrap_or(false);
+                    PEER_IS_WAYLAND.store(wayland, Ordering::SeqCst);
                     PEER_IS_ONE_KVM.store(input_compat::is_one_kvm(&info.username,
                         &info.displays.iter().map(|d| d.name.clone()).collect::<Vec<_>>()), Ordering::SeqCst);
                     let is_android = info.platform.eq_ignore_ascii_case("android");
@@ -4622,6 +4740,7 @@ async fn handle_file_session_response(
     download_state: &mut DownloadBatchState,
     stream: &mut Stream,
 ) {
+    if consume_file_operation_result(&response) { return; }
     match response.union {
         Some(file_response::Union::Dir(directory)) => {
             if fs::get_job_immutable(directory.id, write_jobs).is_none() {
@@ -5162,6 +5281,7 @@ async fn send_performance_options(refresh_video: bool) {
 }
 
 fn supported_decoding_options(prefer_vp9: bool) -> SupportedDecoding {
+    let prefer_vp9 = prefer_vp9 || session_recording::status() > 0;
     let h264_supported = H264_DECODER_SUPPORTED.load(Ordering::SeqCst);
     let vp9_supported = VP9_DECODER_SUPPORTED.load(Ordering::SeqCst);
     let vp8_supported = VP8_DECODER_SUPPORTED.load(Ordering::SeqCst);
@@ -5335,6 +5455,24 @@ fn should_forward_video_display(
     !supports_display_tag || frame_display == current_display
 }
 
+#[no_mangle]
+pub extern "C" fn rust_start_recording(path: *const c_char) -> i32 {
+    if !CONNECTION_ACTIVE.load(Ordering::SeqCst) || FILE_ONLY_SESSION.load(Ordering::SeqCst) { return -1; }
+    let Some(path) = cstr_to_string(path) else { return -1; };
+    let result = session_recording::start(&path);
+    if result != 0 { return result; }
+    if rust_fallback_video_to_vp9() != 0 { session_recording::stop(); return -4; }
+    0
+}
+#[no_mangle]
+pub extern "C" fn rust_stop_recording() -> i32 {
+    let status = session_recording::stop();
+    runtime().spawn(async { send_performance_options(true).await; });
+    status
+}
+#[no_mangle]
+pub extern "C" fn rust_get_recording_status() -> i32 { session_recording::status() }
+
 fn forward_encoded_frames(frames: EncodedVideoFrames, codec_tag: u8) -> usize {
     let frame_count = frames.frames.len();
     if frame_count > 1 {
@@ -5350,6 +5488,7 @@ fn forward_encoded_frames(frames: EncodedVideoFrames, codec_tag: u8) -> usize {
         if frame.data.is_empty() {
             continue;
         }
+        session_recording::frame(&frame.data, codec_tag, frame.key, width, height);
         let mut tagged = Vec::with_capacity(frame.data.len() + 5);
         tagged.extend_from_slice(b"SRD0");
         tagged.push(codec_tag);
@@ -5476,7 +5615,8 @@ fn mark_connection_lost(session_id: u64, reason: &str) {
         emit_event("skip stale connection lost");
         return;
     }
-    emit_event(&format!("connection lost: {reason}"));
+    let _ = reason; // Transport errors can contain endpoint or untrusted peer data.
+    emit_event("peer transport interrupted");
     communication::reset();
     SESSION_ID.fetch_add(1, Ordering::SeqCst);
     CONNECTION_ACTIVE.store(false, Ordering::SeqCst);
@@ -5499,6 +5639,17 @@ async fn send_peer_message_async(msg: PeerMessage) -> Result<(), hbb_common::any
 
 fn enqueue_peer_message(msg: PeerMessage) -> Result<(), hbb_common::anyhow::Error> {
     let session_id = SESSION_ID.load(Ordering::SeqCst);
+    if FILE_ONLY_SESSION.load(Ordering::SeqCst) {
+        // File-only sessions have no screen/control stream; only authentication
+        // and explicit file-manager messages may use their sender.
+        if !matches!(msg.union, Some(message::Union::Auth2fa(_)) | Some(message::Union::FileAction(_))) {
+            return Err(hbb_common::anyhow::anyhow!("file-only session"));
+        }
+        let sender = FILE_MESSAGE_SENDER.lock().ok().and_then(|s| s.clone())
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("file session closed"))?;
+        return sender.send(QueuedPeerCommand::Message { session_id, message: msg, voice_timestamp: 0 })
+            .map_err(|_| hbb_common::anyhow::anyhow!("file session closed"));
+    }
     let sender = PEER_MESSAGE_SENDER
         .lock()
         .map_err(|_| hbb_common::anyhow::anyhow!("sender lock poisoned"))?

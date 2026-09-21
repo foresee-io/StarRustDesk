@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { ApiAddressBookImport } from '../service/ApiAddressBookImport';
 import { RustDeskNapi } from '../service/RustDeskNapi';
 import { ApiAccountAction } from './ApiAccountAction';
+import { ApiBookSync, BookSyncPlan, BookSyncChange } from '../service/ApiBookSync';
 
 @CustomDialog
 export struct ApiAccountDialog {
@@ -27,6 +28,11 @@ export struct ApiAccountDialog {
   @State bookIndex: number = -1;
   @State loginOptions: ApiLoginOption[] = [];
   @State webWaiting: boolean = false;
+  @State syncPlan: BookSyncPlan | undefined = undefined;
+  @State preferLocal: boolean = false;
+  @State editingId: string = '';
+  @State editingName: string = '';
+  @State editingTags: string = '';
   private webTimer: number = -1;
   private webAttempt: number = 0;
   private api: RustDeskApiService = AccountSession.getApi();
@@ -153,12 +159,14 @@ export struct ApiAccountDialog {
     this.busy = false;
   }
   async refreshBooks(): Promise<void> {
+    this.syncPlan = undefined; this.editingId = '';
     this.busy = true; this.peers = []; this.selected = []; this.bookIndex = -1;
     try { this.books = await this.api.books(); }
     catch (error) { this.showError(error as Error); }
     finally { if (this.alive) this.busy = false; }
   }
   async loadBook(index: number): Promise<void> {
+    this.syncPlan = undefined; this.editingId = '';
     this.busy = true; this.message = ''; this.peers = []; this.selected = []; this.bookIndex = index;
     try {
       const peers = await this.api.peers(this.books[index]);
@@ -176,6 +184,62 @@ export struct ApiAccountDialog {
       this.message = `已新增 ${count} 台设备；已有设备已跳过，未覆盖密码或修改服务器地址`;
       this.selected = [];
     } catch (error) { this.showError(error as Error); }
+  }
+  async previewSync(): Promise<void> {
+    if (this.bookIndex < 0 || this.busy) return;
+    this.busy = true; this.syncPlan = undefined;
+    try {
+      const plan = await ApiBookSync.preview(this.api, this.books[this.bookIndex]);
+      if (this.alive) { this.syncPlan = plan; this.message = plan.changes.length ? '请核对以下双向同步变更，再点击确认执行' : '本地和服务器一致，无需变更'; }
+    } catch (error) { this.showError(error as Error); }
+    finally { if (this.alive) this.busy = false; }
+  }
+  async applySync(): Promise<void> {
+    if (!this.syncPlan || this.busy) return;
+    this.busy = true;
+    try {
+      await ApiBookSync.apply(this.api, this.books[this.bookIndex], this.syncPlan, this.preferLocal);
+      if (!this.alive) return;
+      const peers = await this.api.peers(this.books[this.bookIndex]);
+      if (this.alive) { this.syncPlan = undefined; this.peers = peers; this.message = '双向同步完成，未同步密码'; }
+    } catch (error) { this.syncPlan = undefined; this.showError(error as Error); }
+    finally { if (this.alive) this.busy = false; }
+  }
+  syncLabel(kind: string): string {
+    if (kind === 'upload') return '上传至服务器';
+    if (kind === 'download') return '更新至本地';
+    if (kind === 'deleteRemote') return '删除服务器记录';
+    if (kind === 'deleteLocal') return '删除本地记录';
+    return '两端冲突';
+  }
+  async savePeer(): Promise<void> {
+    const old = this.peers.find((p: ApiPeer) => p.id === this.editingId);
+    if (!old || this.busy) return;
+    this.busy = true; this.syncPlan = undefined;
+    try {
+      await this.api.writePeer(this.books[this.bookIndex], { id: old.id, name: this.editingName.trim() || old.id,
+        platform: old.platform, tags: this.editingTags.split(/[,，]/).map((s: string) => s.trim()).filter((s: string) => !!s) }, false);
+      if (!this.alive) return;
+      const peers = await this.api.peers(this.books[this.bookIndex]);
+      if (this.alive) { this.editingId = ''; this.peers = peers; this.message = '服务器设备信息已保存'; }
+    } catch (error) { this.showError(error as Error); }
+    finally { if (this.alive) this.busy = false; }
+  }
+  confirmDeletePeer(peer: ApiPeer): void {
+    AlertDialog.show({ title: '删除地址簿设备', message: `从服务器地址簿删除“${peer.name}”？不会删除远端设备或其文件。`,
+      primaryButton: { value: '取消', action: () => {} },
+      secondaryButton: { value: '删除', action: () => { this.deletePeer(peer); } } });
+  }
+  async deletePeer(peer: ApiPeer): Promise<void> {
+    if (this.busy) return;
+    this.busy = true; this.syncPlan = undefined;
+    try {
+      await this.api.deletePeer(this.books[this.bookIndex], peer.id);
+      if (!this.alive) return;
+      const peers = await this.api.peers(this.books[this.bookIndex]);
+      if (this.alive) { this.peers = peers; this.message = '已从服务器地址簿删除'; }
+    } catch (error) { this.showError(error as Error); }
+    finally { if (this.alive) this.busy = false; }
   }
   textColor(): ResourceColor { return this.isDarkMode ? '#EFF4FB' : '#17253D'; }
   secondaryColor(): ResourceColor { return this.isDarkMode ? '#B6C4D7' : '#60728B'; }
@@ -257,7 +321,32 @@ export struct ApiAccountDialog {
             }.width('100%');
             Select(this.bookOptions())
               .value(this.bookIndex >= 0 ? this.books[this.bookIndex]?.name : '选择个人或共享地址簿')
-              .enabled(!this.busy).width('100%').onSelect((index: number) => { this.loadBook(index); });
+              .enabled(!this.busy).width('100%').onSelect((index: number) => { this.syncPlan = undefined; this.editingId = ''; this.loadBook(index); });
+            if (this.bookIndex >= 0) {
+              ApiAccountAction({ label: '预览双向同步', isEnabled: !this.busy, onAction: () => { this.previewSync(); } });
+              Text('手动同步本地全部 ID 连接与当前地址簿，请确认它们属于同一服务器。IP 直连、密码及服务器密钥不参与同步。删除及冲突会先列出，不会自动执行。')
+                .fontSize(12).fontColor(this.secondaryColor());
+            }
+            if (this.syncPlan) {
+              ForEach(this.syncPlan.changes, (change: BookSyncChange) => {
+                Text(`${this.syncLabel(change.kind)}：${change.name} (${change.id})`).fontSize(13).fontColor(this.textColor()).width('100%');
+              }, (change: BookSyncChange) => change.id);
+              Row() {
+                Checkbox().select(this.preferLocal).enabled(!this.busy).onChange((v: boolean) => { this.preferLocal = v; });
+                Text('冲突时使用本地版本（不选则使用服务器版本）').fontSize(12).fontColor(this.textColor()).layoutWeight(1);
+              }
+              ApiAccountAction({ label: '确认执行上述变更（含删除）', isEnabled: !this.busy && this.syncPlan.changes.length > 0,
+                onAction: () => { this.applySync(); } });
+              ApiAccountAction({ label: '取消同步', isEnabled: !this.busy, onAction: () => { this.syncPlan = undefined; } });
+            }
+            if (this.editingId) {
+              TextInput({ text: this.editingName, placeholder: '设备名称' }).maxLength(100).onChange((v: string) => { this.editingName = v; });
+              TextInput({ text: this.editingTags, placeholder: '标签，用逗号分隔' }).maxLength(400).onChange((v: string) => { this.editingTags = v; });
+              Row({ space: 8 }) {
+                ApiAccountAction({ label: '保存到服务器', isEnabled: !this.busy, onAction: () => { this.savePeer(); } });
+                ApiAccountAction({ label: '取消修改', isEnabled: !this.busy, onAction: () => { this.editingId = ''; } });
+              }
+            }
             if (this.peers.length > 0) {
               Row({ space: 8 }) {
                 ApiAccountAction({ label: this.selected.length === this.peers.length ? '取消全选' : '全选', isEnabled: !this.busy, onAction: () => {
@@ -274,6 +363,12 @@ export struct ApiAccountDialog {
                     Text(`${peer.id} · ${peer.platform || '设备'}${peer.tags.length > 0 ? ' · ' + peer.tags.join(' / ') : ''}`)
                       .fontSize(12).fontColor(this.secondaryColor()).width('100%');
                   }.layoutWeight(1);
+                  if (this.books[this.bookIndex]?.writable) {
+                    Button('⋯').height(36).width(40).enabled(!this.busy).bindMenu([
+                      { value: '修改名称 / 标签', action: () => { this.editingId = peer.id; this.editingName = peer.name; this.editingTags = peer.tags.join(', '); } },
+                      { value: '删除服务器记录', action: () => { this.confirmDeletePeer(peer); } }
+                    ]);
+                  }
                 }.width('100%').padding({ top: 8, bottom: 8 });
               }, (peer: ApiPeer) => peer.id);
             }

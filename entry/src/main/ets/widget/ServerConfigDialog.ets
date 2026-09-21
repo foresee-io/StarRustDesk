@@ -5,6 +5,10 @@ import { RustDeskNapi } from '../service/RustDeskNapi'
 import { ServerConfigModel } from '../model/ServerConfigModel'
 import { CloudSyncService } from '../service/CloudSyncService'
 import { promptAction } from '@kit.ArkUI'
+import { scanBarcode, scanCore } from '@kit.ScanKit'
+import { common } from '@kit.AbilityKit'
+import { BusinessError } from '@kit.BasicServicesKit'
+import { OperationDiagnostic } from '../service/OperationDiagnostic'
 
 @CustomDialog
 export struct ServerConfigDialog {
@@ -18,8 +22,42 @@ export struct ServerConfigDialog {
   @State isTesting: boolean = false
   @State testResult: string = ''
   controller?: CustomDialogController
+  @State scanning: boolean = false
+  @State showQr: boolean = false
+  private alive: boolean = true
+  private scanGeneration: number = 0
+
+  aboutToDisappear(): void { this.alive = false; this.scanGeneration++ }
+
+  async scanConfig(): Promise<void> {
+    if (this.scanning) return
+    this.scanning = true
+    const generation = ++this.scanGeneration
+    const trace = new OperationDiagnostic('server-config', 'qr_scan')
+    try {
+      const result = await scanBarcode.startScanForResult(getContext(this) as common.UIAbilityContext,
+        { scanTypes: [scanCore.ScanType.QR_CODE], enableMultiMode: false })
+      if (!this.alive || generation !== this.scanGeneration) { trace.end('stale'); return }
+      trace.event('decode')
+      const config = ServerConfigModel.decode(result.originalValue)
+      if (!config.isValid()) { trace.end('rejected'); this.errorMsg = '二维码不是有效的 RustDesk 服务器配置'; return }
+      this.idServer = config.idServer
+      this.relayServer = config.relayServer
+      this.apiServer = config.apiServer
+      this.serverKey = config.serverKey
+      this.errorMsg = ''
+      this.testResult = '✓ 已识别配置，请核对服务器地址后点击确定保存'
+      trace.end('ready')
+    } catch (error) {
+      const code = OperationDiagnostic.errorCode(error as Object)
+      trace.end(code === 1000500002 ? 'cancelled' : 'failed', { code: code })
+      if (this.alive && generation === this.scanGeneration && (error as BusinessError).code !== 1000500002) this.errorMsg = '无法扫码，请使用导入或检查设备是否支持扫码'
+    } finally { if (this.alive && generation === this.scanGeneration) this.scanning = false }
+  }
 
   aboutToAppear(): void {
+    this.alive = true
+    this.scanning = false
     this.idServer = RustDeskNapi.getOption('custom-rendezvous-server')
     this.relayServer = RustDeskNapi.getOption('relay-server')
     this.apiServer = RustDeskNapi.getOption('api-server')
@@ -27,7 +65,19 @@ export struct ServerConfigDialog {
   }
 
   build() {
+    Scroll() {
     Column({ space: 12 }) {
+      Button(this.scanning ? '扫描中' : '扫码导入服务器配置').height(32).fontSize(13)
+        .enabled(!this.scanning).onClick(() => { this.scanConfig() })
+      Button(this.showQr ? '收起配置二维码' : '显示配置二维码').height(32).fontSize(13)
+        .enabled(this.idServer.trim().length > 0).onClick(() => { this.showQr = !this.showQr })
+      if (this.showQr) {
+        QRCode(new ServerConfigModel(this.idServer, this.relayServer, this.apiServer, this.serverKey).toQrPayload())
+          .width(180).height(180).color(Color.Black).backgroundColor(Color.White)
+        Text('包含当前填写的服务器地址与公钥，不含连接密码。请仅向可信设备展示。')
+          .fontSize(11).fontColor(this.isDarkMode ? '#D6DCE7' : '#52627A')
+      }
+      if (this.errorMsg) { Text(this.errorMsg).fontSize(12).fontColor(RustDeskTheme.ERROR).width('100%') }
       Row({ space: 8 }) {
         Text(translate('ID/Relay Server'))
           .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
@@ -149,7 +199,9 @@ export struct ServerConfigDialog {
       .padding({ top: 8 })
     }
     .padding(24)
-    .width('90%')
+    .width('100%')
+    }
+    .width('90%').constraintSize({ maxWidth: 650, maxHeight: '90%' })
     .backgroundColor(this.isDarkMode ? RustDeskTheme.CARD_DARK : Color.White)
     .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.BORDER_DARK : '#E4EAF3' })
     .borderRadius(8)

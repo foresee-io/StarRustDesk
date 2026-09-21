@@ -601,6 +601,9 @@ static bool IsSafeRustLifecycleEvent(const std::string& text) {
         "receive loop error:",
         "stale receive loop ended",
         "receive loop ended",
+        "peer transport interrupted",
+        "file-operation ",
+        "file-only session ",
         "skip stale peer command",
         "video frame:",
         "video fallback:",
@@ -703,6 +706,20 @@ static void OnRustEvent(const char* message) {
         g_lastConnectionResult.store(-17);
         g_connectionStartedAtMs.store(0);
         g_connectionStatus.store(3);
+    } else if (text == "file-only session ready") {
+        SetLastConnectionMessage(""); g_lastConnectionResult.store(0);
+        g_connectionStartedAtMs.store(0); g_connectionStatus.store(2);
+    } else if (text == "file-only session ended") {
+        if (g_connectionStatus.load() == 1 || g_connectionStatus.load() == 2 || g_connectionStatus.load() == 4) {
+            SetLastConnectionMessage("文件连接结束，请检查远端文件权限、密码和网络");
+            g_connectionStatus.store(3);
+        }
+    } else if (text == "peer transport interrupted") {
+        if (g_connectionStatus.load() == 2) {
+            SetLastConnectionMessage("Peer transport interrupted");
+            g_lastConnectionResult.store(-18);
+            g_connectionStatus.store(3);
+        }
     } else if (text.rfind("connection lost:", 0) == 0) {
         SetLastConnectionMessage("Peer connection closed");
         g_lastConnectionResult.store(-18);
@@ -777,13 +794,15 @@ static std::string ConnectionResultToMessage(int result) {
 }
 
 static napi_value Connect(napi_env env, napi_callback_info info) {
-    size_t argc = 6;
-    napi_value args[6] = {nullptr};
+    size_t argc = 7;
+    napi_value args[7] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
     bool forceRelay = false;
     bool allowInsecureFallback = false;
     if (argc >= 5) napi_get_value_bool(env, args[4], &forceRelay);
     if (argc >= 6) napi_get_value_bool(env, args[5], &allowInsecureFallback);
+    bool fileOnly = false;
+    if (argc >= 7) napi_get_value_bool(env, args[6], &fileOnly);
 
     char peerId[128] = {0}, password[512] = {0};
     char rendezvousServer[256] = {0}, relayServer[256] = {0};
@@ -832,7 +851,7 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
         " key=" + std::string(serverKey.empty() ? "empty" : "set") +
         " insecure_fallback=" + std::string(allowInsecureFallback ? "approved_once" : "denied"));
     std::thread([peer, pass, rendezvous, relay, serverKey, clientHwid, clientId, generation,
-                 forceRelay, allowInsecureFallback]() {
+                 forceRelay, allowInsecureFallback, fileOnly]() {
         {
             std::unique_lock<std::mutex> lock(g_connectionLifecycleMutex);
             g_disconnectFinished.wait(lock, []() { return !g_disconnectInProgress.load(); });
@@ -853,7 +872,7 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
             "rust_connect_started generation=" + std::to_string(generation));
         int result = rust_connect(peer.c_str(), pass.c_str(), rendezvous.c_str(), relay.c_str(),
                                   serverKey.c_str(), clientHwid.c_str(), clientId.c_str(), forceRelay ? 1 : 0,
-                                  allowInsecureFallback ? 1 : 0);
+                                  allowInsecureFallback ? 1 : 0, fileOnly ? 1 : 0);
         OH_LOG_INFO(LOG_APP, "rust_connect finished result=%{public}d", result);
         DiagnosticLog::instance().append(result == 0 ? "I" : "E", "connection",
             "rust_connect_finished generation=" + std::to_string(generation) +
@@ -1629,6 +1648,39 @@ static napi_value StartFileUpload(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+static napi_value RemoteFileOperation(napi_env env, napi_callback_info info) {
+    size_t argc = 3; napi_value args[3] = {nullptr, nullptr, nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int32_t kind = -1; int result = -1;
+    if (argc == 3 && napi_get_value_int32(env, args[0], &kind) == napi_ok) {
+        const auto path = GetStringArgument(env, args[1]);
+        const auto name = GetStringArgument(env, args[2]);
+        result = rust_remote_file_operation(kind, path.c_str(), name.c_str());
+    }
+    napi_value ret; napi_create_int32(env, result, &ret); return ret;
+}
+static napi_value TakeFileOperationResult(napi_env env, napi_callback_info info) {
+    char* result = rust_take_file_operation_result();
+    napi_value ret; napi_create_string_utf8(env, result ? result : "", NAPI_AUTO_LENGTH, &ret);
+    if (result) rust_free_string(result); return ret;
+}
+static napi_value CancelFileOperation(napi_env env, napi_callback_info info) {
+    rust_cancel_file_operation(); napi_value ret; napi_get_undefined(env, &ret); return ret;
+}
+
+static napi_value StartRecording(napi_env env, napi_callback_info info) {
+    size_t argc = 1; napi_value arg = nullptr;
+    napi_get_cb_info(env, info, &argc, &arg, nullptr, nullptr);
+    const auto path = argc ? GetStringArgument(env, arg) : "";
+    napi_value ret; napi_create_int32(env, rust_start_recording(path.c_str()), &ret); return ret;
+}
+static napi_value StopRecording(napi_env env, napi_callback_info info) {
+    napi_value ret; napi_create_int32(env, rust_stop_recording(), &ret); return ret;
+}
+static napi_value GetRecordingStatus(napi_env env, napi_callback_info info) {
+    napi_value ret; napi_create_int32(env, rust_get_recording_status(), &ret); return ret;
+}
+
 static napi_value StartFileDownloadBatch(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr, nullptr};
@@ -2221,6 +2273,12 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"requestRemoteDirectory", nullptr, RequestRemoteDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"takeRemoteDirectoryResult", nullptr, TakeRemoteDirectoryResult, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"startFileUpload", nullptr, StartFileUpload, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"remoteFileOperation", nullptr, RemoteFileOperation, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"takeFileOperationResult", nullptr, TakeFileOperationResult, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"cancelFileOperation", nullptr, CancelFileOperation, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"startRecording", nullptr, StartRecording, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"stopRecording", nullptr, StopRecording, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getRecordingStatus", nullptr, GetRecordingStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"startFileDownloadBatch", nullptr, StartFileDownloadBatch, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getFileTransferStatus", nullptr, GetFileTransferStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"cancelFileTransfer", nullptr, CancelFileTransfer, nullptr, nullptr, nullptr, napi_default, nullptr},

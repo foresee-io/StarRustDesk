@@ -129,7 +129,7 @@ export struct CommunicationPanel {
             .enabled(this.draft.trim().length > 0).onClick(() => { this.send(); })
             .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule));
         }.width('100%');
-        Text(VOICE_CALL_UI_ENABLED ? '记录仅保留本次连接；进入后台将结束语音，建议使用耳机。' : '聊天记录仅保留本次连接。')
+        Text(VOICE_CALL_UI_ENABLED ? '记录仅保留本次连接；已接通的语音在系统允许时可后台继续，挂断即停止采集，建议使用耳机。' : '聊天记录仅保留本次连接。')
           .fontSize(11).fontColor(this.isDarkMode ? '#ABBBD0' : '#617089').width('100%');
       }.width('92%').constraintSize({ maxWidth: 520 }).height('86%').padding(16)
         .borderRadius(20).backgroundColor(this.isDarkMode ? '#1E2A3A' : '#FFFFFF');

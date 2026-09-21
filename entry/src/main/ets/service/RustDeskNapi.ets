@@ -161,13 +161,13 @@ export class RustDeskNapi {
     return (rustdeskNapi as ESObject).clearDiagnosticLog()
   }
 
-  static connect(peerId: string, password: string, allowInsecureFallback: boolean = false): number {
-    return rustdeskNapi.connect(peerId, password, '', '', false, allowInsecureFallback)
+  static connect(peerId: string, password: string, allowInsecureFallback: boolean = false, fileOnly: boolean = false): number {
+    return rustdeskNapi.connect(peerId, password, '', '', false, allowInsecureFallback, fileOnly)
   }
 
   static connectWithServer(peerId: string, password: string, rendezvousServer: string, relayServer: string,
-    forceRelay: boolean = false, allowInsecureFallback: boolean = false): number {
-    return rustdeskNapi.connect(peerId, password, rendezvousServer, relayServer, forceRelay, allowInsecureFallback)
+    forceRelay: boolean = false, allowInsecureFallback: boolean = false, fileOnly: boolean = false): number {
+    return rustdeskNapi.connect(peerId, password, rendezvousServer, relayServer, forceRelay, allowInsecureFallback, fileOnly)
   }
 
   static restartVideoDecoder(): number {
@@ -392,6 +392,15 @@ export class RustDeskNapi {
   static requestRemoteDirectory(path: string): number {
     return (rustdeskNapi as ESObject).requestRemoteDirectory(path)
   }
+
+  static remoteFileOperation(kind: number, path: string, name: string): number {
+    return rustdeskNapi.remoteFileOperation(kind, path, name)
+  }
+  static takeFileOperationResult(): string { return rustdeskNapi.takeFileOperationResult() }
+  static cancelFileOperation(): void { rustdeskNapi.cancelFileOperation() }
+  static startRecording(path: string): number { return rustdeskNapi.startRecording(path) }
+  static stopRecording(): number { return rustdeskNapi.stopRecording() }
+  static getRecordingStatus(): number { return rustdeskNapi.getRecordingStatus() }
 
   static takeRemoteDirectoryResult(): string {
     return (rustdeskNapi as ESObject).takeRemoteDirectoryResult()

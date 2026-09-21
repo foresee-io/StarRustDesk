@@ -87,6 +87,7 @@ export struct ConnectionPage {
   @State connectionStatusValue: number = 0
   @State performancePreset: string = 'smooth'
   @State hasOpenedRemotePage: boolean = false
+  private pendingFileOnly: boolean = false
   @State pageWidth: number = 0
   @State pageFullHeight: number = 0
   @State tabletEditorVisible: boolean = false
@@ -1219,6 +1220,10 @@ export struct ConnectionPage {
               .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
               .padding(0)
               .bindMenu([
+                { value: '文件传输（不打开画面）', action: () => {
+                  this.applySavedConnection(item)
+                  this.onConnect(true)
+                } },
                 {
                   value: '移动到分组',
                   action: () => {
@@ -1829,7 +1834,7 @@ export struct ConnectionPage {
     return this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG
   }
 
-  async onConnect(): Promise<void> {
+  async onConnect(fileOnly: boolean = false): Promise<void> {
     if (this.preparingAccount) return
     let peerId: string = this.normalizeRemoteId(this.remoteId)
     this.remoteId = peerId
@@ -1850,6 +1855,7 @@ export struct ConnectionPage {
     }
     let password: string = this.connectionPasswordForUse()
     if (password.length <= 0) {
+      this.pendingFileOnly = fileOnly
       this.openConnectionPasswordDialog()
       return
     }
@@ -1861,7 +1867,7 @@ export struct ConnectionPage {
       this.preparingAccount = true
       let status: ConnectionStatus
       try {
-        status = await ConnectionService.connect(peerId, password, this.performancePreset)
+        status = await ConnectionService.connect(peerId, password, this.performancePreset, fileOnly)
       } catch (_error) {
         this.preparingAccount = false
         this.connectionStatusText = '账号恢复失败或服务器配置已改变，请重试；必要时到设置中的 API 账号重新登录'
@@ -2242,7 +2248,7 @@ export struct ConnectionPage {
     if (remember) {
       await this.saveCurrentConnection()
     }
-    this.onConnect()
+    this.onConnect(this.pendingFileOnly)
   }
 
   closeBackupDialogs(): void {

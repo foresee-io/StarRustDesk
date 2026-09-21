@@ -9,6 +9,7 @@ import { RemoteSessionBackgroundTask } from '../service/RemoteSessionBackgroundT
 import { CloudSyncService } from '../service/CloudSyncService';
 import { CommunicationService } from '../service/CommunicationService';
 import { AccountSession } from '../service/RustDeskApiService';
+import { RemoteDisplayPolicy } from '../service/RemoteDisplayPolicy';
 
 const DOMAIN = 0x0000;
 
@@ -55,6 +56,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
+    try { RemoteDisplayPolicy.attach(windowStage.getMainWindowSync()); } catch (_e) {}
     RustDeskNapi.appendDiagnosticLog('app', 'window_stage_create')
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
     windowStage.loadContent('pages/HomePage', (err) => {
@@ -69,6 +71,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    RemoteDisplayPolicy.detach();
     RustDeskNapi.appendDiagnosticLog('app', 'window_stage_destroy')
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
@@ -78,6 +81,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    RemoteDisplayPolicy.refresh();
     this.updateColorMode(this.context.config.colorMode);
     RemoteSessionBackgroundTask.setAppBackground(false)
     RemoteSessionBackgroundTask.syncForConnectionStatus(RustDeskNapi.getConnectionStatus() as ConnectionStatus)

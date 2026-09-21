@@ -1,6 +1,30 @@
 use super::*;
 use hbb_common::message_proto::SignedId;
 
+#[test]
+fn remote_file_operations_reject_roots_and_consume_their_own_results() {
+    for path in ["", "/", "\\", "C:", "C:\\", "D:/", "/home/../", "../file", "a/./b", "a\nfile"] {
+        assert!(!safe_remote_operation_path(path), "{path:?}");
+    }
+    for path in ["/home/user/file.txt", "C:\\Users\\test\\file.txt", "relative-file"] {
+        assert!(safe_remote_operation_path(path), "{path:?}");
+    }
+    let id = next_file_job_id();
+    FILE_OPERATION_ID.store(id, Ordering::SeqCst);
+    let mut reply = hbb_common::message_proto::FileResponse::new();
+    reply.set_done(hbb_common::message_proto::FileTransferDone { id, ..Default::default() });
+    assert!(consume_file_operation_result(&reply));
+    assert_eq!(FILE_OPERATION_ID.load(Ordering::SeqCst), 0);
+    assert!(FILE_OPERATION_RESULT.lock().unwrap().contains("\"ok\":true"));
+    let cancelled = next_file_job_id();
+    FILE_OPERATION_ID.store(cancelled, Ordering::SeqCst);
+    rust_cancel_file_operation();
+    let mut late = hbb_common::message_proto::FileResponse::new();
+    late.set_error(hbb_common::message_proto::FileTransferError { id: cancelled, error: "late".into(), ..Default::default() });
+    assert!(consume_file_operation_result(&late));
+    assert!(FILE_OPERATION_RESULT.lock().unwrap().is_empty());
+}
+
 async fn stream_pair() -> (Stream, Stream) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

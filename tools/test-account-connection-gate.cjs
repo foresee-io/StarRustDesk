@@ -11,12 +11,13 @@ const native = { getOption: k => options.get(k) || '', setPerformancePreset: () 
   connect: () => { calls++; return 0; }, connectWithServer: () => { calls++; return 0; } };
 const context = { RustDeskNapi: native, ConnectionStatus: { CONNECTING: 1, FAILED: 3 },
   RemoteSessionBackgroundTask: { syncForConnectionStatus: () => {} },
-  AccountSession: { getApi: () => ({ prepareConnection: async () => { if (wait) await wait; } }) } };
+  AccountSession: { getApi: () => ({ sessionRevision: () => 1, prepareConnection: async () => { if (wait) await wait; } }) } };
 vm.createContext(context);
 vm.runInContext(ts.transpileModule(`class ConnectionService { ${methods} }
   globalThis.Service = ConnectionService;`, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
 const S = context.Service;
 S.preparationGeneration = 0; S.resetTransientInputState = () => {}; S.recordNetworkSnapshot = () => {};
+S.cancelRecovery = () => {};
 S.isDirectAddress = peer => peer.includes(':') || /^(\d+\.){3}\d+$/.test(peer);
 (async () => {
   let release; wait = new Promise(resolve => { release = resolve; });

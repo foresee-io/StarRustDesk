@@ -111,6 +111,7 @@ const Service = subject(slice('entry/src/main/ets/service/ConnectionService.ets'
   RemoteSessionBackgroundTask:{stop:()=>{},syncForConnectionStatus:()=>{}},
 });
 Object.assign(Service,{retryPeer:'test',retryPassword:'test-only',relayRetryUsed:false,
+  cancelRecovery:()=>{},
   releaseModifiers:()=>{},recordNetworkSnapshot:()=>{},resetTransientInputState:()=>{}});
 test('direct retry forces relay exactly once',()=>{
   assert.equal(Service.retryDirectViaRelay('test'),true);

@@ -2,7 +2,7 @@
   "string": [
     {
       "name": "permission_voice_call_reason",
-      "value": "用于您主动发起并经远端接听的语音通话，挂断或切到后台后停止采集声音"
+      "value": "用于您主动发起并经远端接听的语音通话；通话期间可在后台继续采集，挂断或后台任务被系统停止后结束采集"
     },
     {
       "name": "module_desc",

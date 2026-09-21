@@ -31,6 +31,7 @@ export class RemoteSessionBackgroundTask {
   private static sessionDesired: boolean = false
   private static dataTransferActive: boolean = false
   private static audioPlaybackActive: boolean = false
+  private static voiceCallActive: boolean = false
   private static appBackground: boolean = false
   private static backgroundVideoApplied: boolean = false
   private static taskId: number = -1
@@ -98,6 +99,7 @@ export class RemoteSessionBackgroundTask {
     if (!desired) {
       RemoteSessionBackgroundTask.dataTransferActive = false
       RemoteSessionBackgroundTask.audioPlaybackActive = false
+      RemoteSessionBackgroundTask.voiceCallActive = false
       RemoteAudioSession.setActive(false)
     }
     RemoteSessionBackgroundTask.applyBackgroundVideoMode()
@@ -143,6 +145,7 @@ export class RemoteSessionBackgroundTask {
     RemoteSessionBackgroundTask.sessionDesired = false
     RemoteSessionBackgroundTask.dataTransferActive = false
     RemoteSessionBackgroundTask.audioPlaybackActive = false
+    RemoteSessionBackgroundTask.voiceCallActive = false
     RemoteSessionBackgroundTask.applyBackgroundVideoMode()
     RemoteAudioSession.setActive(false)
     RemoteSessionBackgroundTask.scheduleReconcile()
@@ -152,6 +155,21 @@ export class RemoteSessionBackgroundTask {
     RemoteSessionBackgroundTask.stop()
     RemoteSessionBackgroundTask.unregisterListeners()
     RemoteAudioSession.shutdown()
+  }
+
+  static setVoiceCallActive(active: boolean): void {
+    if (RemoteSessionBackgroundTask.voiceCallActive === active) return
+    RemoteSessionBackgroundTask.voiceCallActive = active
+    RustDeskNapi.appendDiagnosticLog('background-task', `voice_call_active=${active}`)
+    RemoteSessionBackgroundTask.scheduleReconcile()
+  }
+
+  static canKeepVoiceCall(): boolean {
+    return RemoteSessionBackgroundTask.voiceCallActive &&
+      (RemoteSessionBackgroundTask.state === RemoteTaskState.ACTIVE ||
+        RemoteSessionBackgroundTask.state === RemoteTaskState.UPDATING) &&
+      !RemoteSessionBackgroundTask.taskSuspended && !RemoteSessionBackgroundTask.userSuppressed &&
+      RemoteSessionBackgroundTask.currentSignature.includes('voice=1')
   }
 
   private static registerListeners(): void {
@@ -259,12 +277,14 @@ export class RemoteSessionBackgroundTask {
   private static desiredSignature(): string {
     return `remote=1;video=${deviceInfo.sdkApiVersion >= 22 ? 1 : 0};` +
       `audio=${RemoteSessionBackgroundTask.audioPlaybackActive ? 1 : 0};` +
+      `voice=${RemoteSessionBackgroundTask.voiceCallActive ? 1 : 0};` +
       `transfer=${RemoteSessionBackgroundTask.dataTransferActive ? 1 : 0}`
   }
 
   private static legacyModes(): string[] {
     let modes: string[] = ['multiDeviceConnection']
-    if (RemoteSessionBackgroundTask.audioPlaybackActive) {
+    if (RemoteSessionBackgroundTask.voiceCallActive) modes.push('voip')
+    if (RemoteSessionBackgroundTask.audioPlaybackActive && !RemoteSessionBackgroundTask.voiceCallActive) {
       modes.push('audioPlayback')
     }
     if (RemoteSessionBackgroundTask.dataTransferActive) {
@@ -284,7 +304,15 @@ export class RemoteSessionBackgroundTask {
       videoBroadcast ? backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_VIDEO_BROADCAST_NORMAL_NOTIFICATION :
         backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_NORMAL_NOTIFICATION,
     ]
-    if (RemoteSessionBackgroundTask.audioPlaybackActive) {
+    if (RemoteSessionBackgroundTask.voiceCallActive) {
+      modes.push(deviceInfo.sdkApiVersion >= 22 ?
+        backgroundTaskManager.BackgroundTaskMode.MODE_AV_PLAYBACK_AND_RECORD :
+        backgroundTaskManager.BackgroundTaskMode.MODE_VOIP)
+      submodes.push(deviceInfo.sdkApiVersion >= 22 ?
+        backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_VOICE_CHAT_NORMAL_NOTIFICATION :
+        backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_NORMAL_NOTIFICATION)
+    }
+    if (RemoteSessionBackgroundTask.audioPlaybackActive && !RemoteSessionBackgroundTask.voiceCallActive) {
       if (deviceInfo.sdkApiVersion >= 22) {
         modes.push(backgroundTaskManager.BackgroundTaskMode.MODE_AV_PLAYBACK_AND_RECORD)
         submodes.push(backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_AVSESSION_AUDIO_PLAYBACK)

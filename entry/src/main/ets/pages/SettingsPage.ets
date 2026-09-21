@@ -15,6 +15,7 @@ import { pasteboard } from '@kit.BasicServicesKit'
 import { promptAction } from '@kit.ArkUI'
 import { fileIo, picker } from '@kit.CoreFileKit'
 import { FileTransferHistoryDialog } from '../widget/FileTransferHistoryDialog'
+import { RecordingDialog } from '../widget/RecordingDialog'
 import { RemoteSessionBackgroundTask } from '../service/RemoteSessionBackgroundTask'
 import { CloudSyncResult, CloudSyncService } from '../service/CloudSyncService'
 
@@ -70,6 +71,9 @@ export struct SettingsPage {
     autoCancel: true,
     customStyle: true,
     cornerRadius: 10,
+  })
+  private recordingDialogController: CustomDialogController = new CustomDialogController({
+    builder: RecordingDialog(), customStyle: true,
   })
   private cloudPasswordDialogController: CustomDialogController = new CustomDialogController({
     builder: SettingsPasswordDialog({
@@ -943,6 +947,16 @@ export struct SettingsPage {
       .onClick(() => {
         this.fileTransferHistoryDialogController.open()
       })
+
+      Row() {
+        Text('会话录像').fontSize(RustDeskTheme.FONT_SIZE_BODY)
+          .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+          .layoutWeight(1)
+        Text('查看 / 导出  >').fontSize(RustDeskTheme.FONT_SIZE_SMALL)
+          .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
+      }
+      .width('100%').padding({ top: 14, bottom: 14 })
+      .onClick(() => { this.recordingDialogController.open() })
 
       Divider()
         .height(1)

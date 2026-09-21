@@ -69,8 +69,77 @@ export class ConnectionService {
   private static relayFailureRetryCount: number = 0
   private static insecureRetryUsed: boolean = false
   private static preparationGeneration: number = 0
+  private static recoveryTimer: number = -1
+  private static recoveryPending: boolean = false
+  private static recoveryAwaitingConnected: boolean = false
+  private static recoveryAttempts: number = 0
+  private static sessionAuthenticated: boolean = false
+  private static sessionSettings: string = ''
+  private static sessionAccountRevision: number = 0
+  private static fileOnly: boolean = false
+  static isFileOnly(): boolean { return ConnectionService.fileOnly }
 
-  static async connect(remoteId: string, password: string, performancePreset: string = 'smooth'): Promise<ConnectionStatus> {
+  static observeSession(status: number): void {
+    if (status === ConnectionStatus.CONNECTED && ConnectionService.recoveryAwaitingConnected) {
+      ConnectionService.recoveryAwaitingConnected = false
+      RustDeskNapi.appendDiagnosticLog('connection-recovery', `transport_recovered attempt=${ConnectionService.recoveryAttempts}`)
+    }
+    if (status === ConnectionStatus.CONNECTED) ConnectionService.sessionAuthenticated = true
+  }
+
+  static isRecoveryPending(): boolean { return ConnectionService.recoveryPending }
+
+  private static cancelRecovery(): void {
+    if (ConnectionService.recoveryPending || ConnectionService.recoveryAwaitingConnected) {
+      RustDeskNapi.appendDiagnosticLog('connection-recovery', 'transport_retry_cancelled reason=explicit_session_change')
+    }
+    ConnectionService.recoveryAwaitingConnected = false
+    if (ConnectionService.recoveryTimer !== -1) clearTimeout(ConnectionService.recoveryTimer)
+    ConnectionService.recoveryTimer = -1
+    ConnectionService.recoveryPending = false
+  }
+
+  static recoverInterruptedSession(message: string): boolean {
+    if (ConnectionService.recoveryPending) return true
+    if (ConnectionService.fileOnly || message !== 'Peer transport interrupted' || !ConnectionService.sessionAuthenticated ||
+      ConnectionService.recoveryAttempts >= 2 || !ConnectionService.retryPeer ||
+      ConnectionService.sessionAccountRevision !== AccountSession.getApi().sessionRevision() ||
+      RemoteSessionBackgroundTask.isAppBackground() || ConnectionService.insecureRetryUsed ||
+      ConnectionService.sessionSettings !== ConnectionService.authNetworkSnapshot()) return false
+    ConnectionService.recoveryPending = true
+    const generation = ConnectionService.preparationGeneration
+    const attempt = ++ConnectionService.recoveryAttempts
+    ConnectionService.releaseModifiers()
+    RustDeskNapi.appendDiagnosticLog('connection-recovery', `transport_retry_scheduled attempt=${attempt}/2`)
+    ConnectionService.recoveryTimer = setTimeout(async () => {
+      ConnectionService.recoveryTimer = -1
+      try {
+        if (generation !== ConnectionService.preparationGeneration || RemoteSessionBackgroundTask.isAppBackground()) {
+          RustDeskNapi.appendDiagnosticLog('connection-recovery', 'transport_retry_cancelled reason=stale_or_background'); return
+        }
+        if (!ConnectionService.isDirectAddress(ConnectionService.retryPeer)) await AccountSession.getApi().prepareConnection()
+        if (generation !== ConnectionService.preparationGeneration ||
+          ConnectionService.sessionAccountRevision !== AccountSession.getApi().sessionRevision() ||
+          ConnectionService.sessionSettings !== ConnectionService.authNetworkSnapshot() ||
+          RemoteSessionBackgroundTask.isAppBackground()) {
+          RustDeskNapi.appendDiagnosticLog('connection-recovery', 'transport_retry_cancelled reason=account_network_or_foreground_changed'); return
+        }
+        ConnectionService.recoveryAwaitingConnected = true
+        RustDeskNapi.appendDiagnosticLog('connection-recovery', `transport_retry_started attempt=${attempt}`)
+        ConnectionService.restartConnection(false, 'transport_interrupted', attempt, 2)
+      } catch (_error) {
+        RustDeskNapi.appendDiagnosticLog('connection-recovery', 'transport_retry_cancelled reason=account_gate')
+      } finally {
+        if (generation === ConnectionService.preparationGeneration) ConnectionService.recoveryPending = false
+      }
+    }, attempt === 1 ? 1000 : 3000)
+    return true
+  }
+
+  static async connect(remoteId: string, password: string, performancePreset: string = 'smooth', fileOnly: boolean = false): Promise<ConnectionStatus> {
+    ConnectionService.cancelRecovery()
+    ConnectionService.recoveryAttempts = 0
+    ConnectionService.sessionAuthenticated = false
     const generation: number = ++ConnectionService.preparationGeneration
     const settings: string = ConnectionService.authNetworkSnapshot()
     const started: number = Date.now()
@@ -104,12 +173,16 @@ export class ConnectionService {
     ConnectionService.rendezvousRetryCount = 0
     ConnectionService.relayFailureRetryCount = 0
     ConnectionService.insecureRetryUsed = false
+    ConnectionService.sessionSettings = ConnectionService.authNetworkSnapshot()
+    ConnectionService.sessionAccountRevision = AccountSession.getApi().sessionRevision()
+    ConnectionService.fileOnly = fileOnly
+    RustDeskNapi.appendDiagnosticLog('connection', `session_mode=${fileOnly ? 'file_transfer_only' : 'remote_control'} generation=${generation}`)
     RustDeskNapi.setPerformancePreset(performancePreset)
     let result: number
     if (rendezvousServer.length > 0) {
-      result = RustDeskNapi.connectWithServer(peerId, password, rendezvousServer, relayServer)
+      result = RustDeskNapi.connectWithServer(peerId, password, rendezvousServer, relayServer, false, false, fileOnly)
     } else {
-      result = RustDeskNapi.connect(peerId, password)
+      result = RustDeskNapi.connect(peerId, password, false, fileOnly)
     }
     let status: ConnectionStatus = result === 0 ? ConnectionStatus.CONNECTING : ConnectionStatus.FAILED
     RemoteSessionBackgroundTask.syncForConnectionStatus(status)
@@ -122,6 +195,7 @@ export class ConnectionService {
   }
 
   static cancelPendingConnection(): void {
+    ConnectionService.cancelRecovery()
     ConnectionService.preparationGeneration++
   }
 
@@ -142,6 +216,8 @@ export class ConnectionService {
   }
 
   static disconnect(): void {
+    ConnectionService.cancelRecovery()
+    ConnectionService.sessionAuthenticated = false
     ConnectionService.preparationGeneration++
     ConnectionService.relativeMouse = false
     ConnectionService.retryPeer = ''
@@ -179,7 +255,7 @@ export class ConnectionService {
   }
 
   static retryRecoverableConnectionFailure(message: string): string {
-    if (ConnectionService.retryPeer.length === 0 ||
+    if (ConnectionService.fileOnly || ConnectionService.retryPeer.length === 0 ||
       ConnectionService.isDirectAddress(ConnectionService.retryPeer) ||
       RustDeskNapi.getConnectionStatus() !== ConnectionStatus.FAILED) {
       return ''
@@ -257,9 +333,9 @@ export class ConnectionService {
     let result: number
     if (ConnectionService.retryRendezvous.length > 0) {
       result = RustDeskNapi.connectWithServer(ConnectionService.retryPeer, ConnectionService.retryPassword,
-        ConnectionService.retryRendezvous, ConnectionService.retryRelay, false, true)
+        ConnectionService.retryRendezvous, ConnectionService.retryRelay, false, true, ConnectionService.fileOnly)
     } else {
-      result = RustDeskNapi.connect(ConnectionService.retryPeer, ConnectionService.retryPassword, true)
+      result = RustDeskNapi.connect(ConnectionService.retryPeer, ConnectionService.retryPassword, true, ConnectionService.fileOnly)
     }
     ConnectionService.resetTransientInputState()
     RemoteSessionBackgroundTask.syncForConnectionStatus(

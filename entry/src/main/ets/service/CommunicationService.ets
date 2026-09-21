@@ -27,6 +27,7 @@ export class CommunicationService {
   private static requesting: boolean = false;
   private static connectedOnce: boolean = false;
   private static hasCallAttempt: boolean = false;
+  private static callStartedAt: number = 0;
   private static onChange: () => void = () => {};
 
   static start(onChange: () => void): void {
@@ -91,15 +92,21 @@ export class CommunicationService {
     if (CommunicationService.requesting || CommunicationService.callState === 1 || CommunicationService.callState === 2) return;
     CommunicationService.requesting = true;
     const generation = CommunicationService.generation;
+    CommunicationService.callStartedAt = Date.now();
+    RustDeskNapi.appendDiagnosticLog('voice-call', `call_requested generation=${generation}`);
     try {
       const result = await abilityAccessCtrl.createAtManager().requestPermissionsFromUser(context,
         ['ohos.permission.MICROPHONE']);
-      if (generation !== CommunicationService.generation) return;
+      if (generation !== CommunicationService.generation) {
+        RustDeskNapi.appendDiagnosticLog('voice-call', `call_cancelled generation=${generation} reason=stale_permission`); return;
+      }
       if (result.authResults.length !== 1 || result.authResults[0] !== 0) {
+        RustDeskNapi.appendDiagnosticLog('voice-call', `call_rejected generation=${generation} reason=microphone_permission`);
         CommunicationService.notice = '需要麦克风权限才能发起语音通话';
         return;
       }
       if (RustDeskNapi.getConnectionStatus() !== 2 || RemoteSessionBackgroundTask.isAppBackground()) {
+        RustDeskNapi.appendDiagnosticLog('voice-call', `call_rejected generation=${generation} reason=session_or_foreground`);
         CommunicationService.notice = '请在远控连接正常且应用在前台时呼叫';
         return;
       }
@@ -107,7 +114,9 @@ export class CommunicationService {
       RustDeskNapi.setRemoteAudioEnabled(true);
       CommunicationService.audioOverride = true;
       CommunicationService.muted = false;
-      if (native.requestVoiceCall() !== 0) {
+      const requestResult = native.requestVoiceCall();
+      RustDeskNapi.appendDiagnosticLog('voice-call', `call_request_sent generation=${generation} result=${requestResult}`);
+      if (requestResult !== 0) {
         CommunicationService.notice = '呼叫发送失败';
         CommunicationService.releaseCapture();
         return;
@@ -116,6 +125,7 @@ export class CommunicationService {
       CommunicationService.hasCallAttempt = true;
       CommunicationService.callState = 1;
     } catch (_error) {
+      RustDeskNapi.appendDiagnosticLog('voice-call', `call_failed generation=${generation} reason=permission_request`);
       CommunicationService.notice = '无法申请麦克风权限，请到系统设置检查';
     } finally {
       if (generation === CommunicationService.generation) { CommunicationService.requesting = false; CommunicationService.changed(); }
@@ -123,6 +133,9 @@ export class CommunicationService {
   }
 
   static hangup(): void {
+    if (CommunicationService.callState === 1 || CommunicationService.callState === 2 || CommunicationService.captureStarted) {
+      RustDeskNapi.appendDiagnosticLog('voice-call', `hangup generation=${CommunicationService.generation} state=${CommunicationService.callState} elapsed_ms=${Math.max(0, Date.now() - CommunicationService.callStartedAt)}`);
+    }
     CommunicationService.generation++;
     CommunicationService.requesting = false;
     native.endVoiceCall();
@@ -132,9 +145,13 @@ export class CommunicationService {
   }
 
   static onBackground(): void {
+    if (CommunicationService.callState === 2 && RemoteSessionBackgroundTask.canKeepVoiceCall()) {
+      RustDeskNapi.appendDiagnosticLog('voice-call', 'background_continue task=active');
+      return;
+    }
     if (CommunicationService.callState === 1 || CommunicationService.callState === 2 || CommunicationService.requesting) {
       CommunicationService.hangup();
-      CommunicationService.notice = '应用已进入后台，语音通话已结束；远控连接按原设置保留';
+      CommunicationService.notice = '后台通话任务尚未就绪，语音已安全结束；远控连接保留';
       CommunicationService.changed();
     }
   }
@@ -154,10 +171,13 @@ export class CommunicationService {
         CommunicationService.muted = false;
       }
     }
+    RustDeskNapi.appendDiagnosticLog('voice-call', `mute_changed muted=${CommunicationService.muted} capture=${CommunicationService.captureStarted}`);
     CommunicationService.changed();
   }
 
   private static releaseCapture(): void {
+    if (CommunicationService.captureStarted) RustDeskNapi.appendDiagnosticLog('voice-call', 'capture_stopped');
+    RemoteSessionBackgroundTask.setVoiceCallActive(false);
     native.stopVoiceCapture();
     CommunicationService.captureStarted = false;
     CommunicationService.muted = false;
@@ -181,18 +201,31 @@ export class CommunicationService {
       return;
     }
     CommunicationService.connectedOnce = true;
+    if (CommunicationService.callState === 2 && RemoteSessionBackgroundTask.isAppBackground() &&
+      !RemoteSessionBackgroundTask.canKeepVoiceCall()) {
+      CommunicationService.hangup();
+      CommunicationService.notice = '系统已暂停或取消后台语音任务，通话已结束';
+      CommunicationService.changed();
+      return;
+    }
     try {
       const received: string[] = JSON.parse(native.takeChatMessages()) as string[];
       received.forEach((text: string) => { CommunicationService.append(text, false); });
       const nativeState = native.getVoiceCallState();
       const state = nativeState === 4 && !CommunicationService.hasCallAttempt ? 0 : nativeState;
       if (state !== CommunicationService.callState) {
+        RustDeskNapi.appendDiagnosticLog('voice-call', `state_changed from=${CommunicationService.callState} to=${state} generation=${CommunicationService.generation}`);
         CommunicationService.callState = state;
         if (state === 2 && !CommunicationService.captureStarted && !CommunicationService.muted) {
           if (RemoteSessionBackgroundTask.isAppBackground() || native.startVoiceCapture() !== 0) {
+            RustDeskNapi.appendDiagnosticLog('voice-call', 'capture_failed reason=background_or_native');
             CommunicationService.hangup();
             CommunicationService.notice = '麦克风启动失败，通话已结束';
-          } else { CommunicationService.captureStarted = true; }
+          } else {
+            CommunicationService.captureStarted = true;
+            RustDeskNapi.appendDiagnosticLog('voice-call', 'capture_started');
+            RemoteSessionBackgroundTask.setVoiceCallActive(true);
+          }
         } else if (state !== 1 && state !== 2) {
           CommunicationService.releaseCapture();
         }

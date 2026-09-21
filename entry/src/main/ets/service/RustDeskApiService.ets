@@ -14,11 +14,12 @@ export interface ApiBook {
   guid: string;
   name: string;
   legacy: boolean;
+  writable?: boolean;
 }
 interface ApiUser { name?: string; display_name?: string; }
 interface ApiRow {
   id?: string; alias?: string; hostname?: string; platform?: string; tags?: string[];
-  guid?: string; name?: string; owner?: string;
+  guid?: string; name?: string; owner?: string; rule?: number;
 }
 interface ApiReply {
   code?: string; url?: string; loginOptions?: string[];
@@ -86,6 +87,9 @@ export class RustDeskApiService {
 
   private operation(path: string): string {
     const route = path.split('?')[0];
+    if (route.startsWith('/api/ab/peer/add/')) return 'peer_add';
+    if (route.startsWith('/api/ab/peer/update/')) return 'peer_update';
+    if (route.startsWith('/api/ab/peer/')) return 'peer_delete';
     switch (route) {
       case '/api/login': return 'login';
       case '/api/currentUser': return 'current_user';
@@ -416,7 +420,7 @@ export class RustDeskApiService {
     if (reply.type !== 'access_token' || typeof reply.access_token !== 'string' ||
       !reply.access_token || reply.access_token.length > 16384 || /[\r\n]/.test(reply.access_token)) {
       this.trace('login_rejected reason=invalid_token_response');
-      throw new ApiFailure('服务器未返回兼容的登录令牌；网页 SSO 登录暂未接入');
+      throw new ApiFailure('服务器未返回兼容的登录令牌，请检查 API 版本和登录策略，或重新选择网页登录方式');
     }
     this.token = reply.access_token; this.secret = ''; this.challenge = '';
     if (reply.user && typeof reply.user.name === 'string') this.username = reply.user.name;
@@ -451,8 +455,8 @@ export class RustDeskApiService {
     try { personal = await this.request('/api/ab/personal', 'POST'); }
     catch (error) { if (!(error instanceof ApiFailure) || error.status !== 404) throw error as Error; }
     if (typeof personal.guid === 'string' && personal.guid.length > 0) {
-      books.push({ guid: personal.guid, name: '个人地址簿', legacy: false });
-    } else { books.push({ guid: '', name: '个人地址簿（旧版）', legacy: true }); }
+      books.push({ guid: personal.guid, name: '个人地址簿', legacy: false, writable: true });
+    } else { books.push({ guid: '', name: '个人地址簿（旧版）', legacy: true, writable: true }); }
     const seen: string[] = books.map((book: ApiBook) => book.guid);
     for (let page = 1; page <= 20; page++) {
       let result: ApiReply;
@@ -464,7 +468,8 @@ export class RustDeskApiService {
       for (const row of result.data) {
         if (row && typeof row.guid === 'string' && row.guid && !seen.includes(row.guid)) {
           seen.push(row.guid); added++;
-          books.push({ guid: row.guid, name: (typeof row.name === 'string' ? row.name : '共享地址簿').slice(0, 100), legacy: false });
+          books.push({ guid: row.guid, name: (typeof row.name === 'string' ? row.name : '共享地址簿').slice(0, 100), legacy: false,
+            writable: row.rule === 2 || row.rule === 3 });
         }
       }
       if (!added || result.data.length < 100 || (typeof result.total === 'number' && (result.total === 0 || page * 100 >= result.total))) break;
@@ -486,23 +491,34 @@ export class RustDeskApiService {
     return peers;
   }
 
-  async peers(book: ApiBook): Promise<ApiPeer[]> {
+  sessionRevision(): number { return this.epoch; }
+
+  async peers(book: ApiBook, strict: boolean = false): Promise<ApiPeer[]> {
     if (book.legacy) {
       const result = await this.request('/api/ab', 'GET');
-      if (result.data === undefined || result.data === null || result.data === '') return [];
+      if (result.data === undefined || result.data === null || result.data === '') {
+        if (strict) throw new ApiFailure('服务器未返回明确的设备列表，已取消同步');
+        return [];
+      }
       if (typeof result.data !== 'string') throw new ApiFailure('旧版地址簿格式不兼容');
       let data: ApiReply;
       try { data = JSON.parse(result.data) as ApiReply; } catch (_e) { throw new ApiFailure('旧版地址簿内容无效'); }
-      if (!data || data.peers === undefined || data.peers === null) return [];
+      if (!data || data.peers === undefined || data.peers === null) {
+        if (strict) throw new ApiFailure('服务器未返回明确的设备列表，已取消同步');
+        return [];
+      }
       if (!Array.isArray(data.peers)) throw new ApiFailure('地址簿设备列表无效');
-      return RustDeskApiService.parsePeers(data.peers);
+      const parsed = RustDeskApiService.parsePeers(data.peers);
+      if (strict && parsed.length !== data.peers.length) throw new ApiFailure('设备列表含无效或重复记录，已取消同步');
+      return parsed;
     }
     const peers: ApiPeer[] = [];
     for (let page = 1; page <= 50; page++) {
       const result = await this.request(`/api/ab/peers?current=${page}&pageSize=100&ab=${encodeURIComponent(book.guid)}`, 'POST');
-      if (result.data === undefined || result.data === null) break;
+      if (result.data === undefined || result.data === null) throw new ApiFailure('服务器未返回完整设备列表，已取消同步');
       if (!Array.isArray(result.data)) throw new ApiFailure('地址簿设备列表无效');
       const rows = RustDeskApiService.parsePeers(result.data);
+      if (strict && rows.length !== result.data.length) throw new ApiFailure('设备列表含无效或重复记录，已取消同步');
       let added = 0;
       for (const row of rows) {
         if (!peers.some((peer: ApiPeer) => peer.id === row.id)) { peers.push(row); added++; }
@@ -518,6 +534,47 @@ export class RustDeskApiService {
       if (page === 50) throw new ApiFailure('设备超过分页限制，请在服务端分组后重试');
     }
     return peers;
+  }
+
+  async writePeer(book: ApiBook, peer: ApiPeer, create: boolean): Promise<void> {
+    if (!book.writable) throw new ApiFailure('当前地址簿为只读，不能上传或修改');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(peer.id)) throw new ApiFailure('设备 ID 不支持地址簿同步');
+    const data: ApiRow = { id: peer.id, alias: peer.name.slice(0, 100), tags: peer.tags.slice(0, 20) };
+    if (book.legacy) { await this.editLegacyPeer(data, false); return; }
+    const action = create ? 'add' : 'update';
+    await this.request(`/api/ab/peer/${action}/${encodeURIComponent(book.guid)}`, create ? 'POST' : 'PUT', JSON.stringify(data));
+  }
+
+  async deletePeer(book: ApiBook, id: string): Promise<void> {
+    if (!book.writable) throw new ApiFailure('当前地址簿为只读，不能删除');
+    if (book.legacy) { await this.editLegacyPeer({ id: id }, true); return; }
+    await this.request(`/api/ab/peer/${encodeURIComponent(book.guid)}`, 'DELETE', JSON.stringify([id]));
+  }
+
+  private async editLegacyPeer(peer: ApiRow, remove: boolean): Promise<void> {
+    // Keep fields from other clients (including their hashes) in the server document.
+    // Do not create password/hash fields or copy credentials from local storage.
+    const epoch = this.epoch;
+    const reply = await this.request('/api/ab', 'GET');
+    let document: ApiReply = { peers: [] };
+    if (reply.data !== undefined && reply.data !== null && typeof reply.data !== 'string') {
+      throw new ApiFailure('旧版地址簿格式不兼容，未覆盖');
+    }
+    if (typeof reply.data === 'string' && reply.data) {
+      try { document = JSON.parse(reply.data) as ApiReply; }
+      catch (_e) { throw new ApiFailure('旧版地址簿内容无效，已取消写入'); }
+    }
+    if (!Array.isArray(document.peers)) throw new ApiFailure('旧版地址簿格式不兼容，未覆盖');
+    if (remove) document.peers = document.peers.filter((row: ApiRow) => row.id !== peer.id);
+    else {
+      const found = document.peers.find((row: ApiRow) => row.id === peer.id);
+      if (found) { found.alias = peer.alias; found.tags = peer.tags; }
+      else document.peers.push(peer);
+    }
+    if (epoch !== this.epoch) throw new ApiFailure('操作已取消');
+    const latest = await this.request('/api/ab', 'GET');
+    if (latest.data !== reply.data) throw new ApiFailure('旧版地址簿被其他客户端修改，请重新预览');
+    await this.request('/api/ab', 'POST', JSON.stringify({ data: JSON.stringify(document) }));
   }
 
   private async request(path: string, method: rcp.HttpMethod, content?: string, authenticated: boolean = true): Promise<ApiReply> {

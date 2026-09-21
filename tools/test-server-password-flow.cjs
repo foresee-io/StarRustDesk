@@ -67,6 +67,11 @@ test('official server config token round-trips all four fields', () => {
   const plain = context.Model.decode('rustdesk-host=id.example:21116,key=test-public-key,api=https://api.example,relay=relay.example:21117,.exe');
   assert.equal(plain.idServer, 'id.example:21116');
   assert.equal(plain.relayServer, 'relay.example:21117');
+  assert.deepEqual(JSON.parse(JSON.stringify(context.Model.decode(config.toQrPayload()))), JSON.parse(JSON.stringify(config)));
+  assert.equal(context.Model.decode('config=' + officialJson).apiServer, 'https://api.example');
+  for (const bad of ['config=null', 'config={"host":42}', 'config={"host":"test","relay":{}}', 'x'.repeat(16385)]) {
+    assert.equal(context.Model.decode(bad).isValid(), false);
+  }
 });
 
 test('home network indicator updates from either custom server field', () => {
@@ -85,12 +90,12 @@ test('missing connection password opens an input dialog', () => {
   assert.match(connectionPage, /@State showConnectionPasswordDialog: boolean = false/);
   assert.match(connectionPage, /TextInput\(\{ placeholder: '连接密码'/);
   assert.match(connectionPage, /Toggle\(\{ type: ToggleType\.Checkbox, isOn: this\.rememberConnectionPassword \}\)/);
-  assert.match(connectionPage, /if \(password\.length <= 0\) \{\s*this\.openConnectionPasswordDialog\(\)/);
+  assert.match(connectionPage, /if \(password\.length <= 0\) \{\s*this\.pendingFileOnly = fileOnly;?\s*this\.openConnectionPasswordDialog\(\)/);
 });
 
 test('remember password is opt-in and saved before connect', () => {
   assert.match(connectionPage, /this\.rememberConnectionPassword = false/);
-  assert.match(connectionPage, /if \(remember\) \{\s*await this\.saveCurrentConnection\(\)\s*\}\s*this\.onConnect\(\)/);
+  assert.match(connectionPage, /if \(remember\) \{\s*await this\.saveCurrentConnection\(\)\s*\}\s*this\.onConnect\(this\.pendingFileOnly\)/);
 });
 
 console.log(`${passed} server/password regression checks passed`);

@@ -12,7 +12,7 @@ int rust_connect(const char* peer_id, const char* password,
                  const char* rendezvous_server, const char* relay_server,
                  const char* server_key, const char* client_hwid,
                  const char* client_id, int force_relay,
-                 int allow_insecure_fallback);
+                 int allow_insecure_fallback, int file_only);
 const char* rust_get_build_id(void);
 void rust_set_video_codec_support(int h264_supported, int vp9_supported,
                                   int vp8_supported, int av1_supported, int h265_supported);
@@ -47,6 +47,12 @@ int rust_send_text(const char* text);
 int rust_send_2fa(const char* code, const char* client_hwid);
 int rust_send_clipboard_text(const char* text);
 int rust_request_remote_directory(const char* path);
+int rust_remote_file_operation(int kind, const char* path, const char* name);
+char* rust_take_file_operation_result(void);
+void rust_cancel_file_operation(void);
+int rust_start_recording(const char* path);
+int rust_stop_recording(void);
+int rust_get_recording_status(void);
 char* rust_take_remote_directory_result(void);
 int rust_start_file_upload(const char* local_path, const char* file_name, const char* remote_directory);
 int rust_start_file_download_batch(const char* requests_json, const char* local_root);

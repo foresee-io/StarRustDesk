@@ -34,6 +34,17 @@ export class ServerConfigModel {
       return new ServerConfigModel()
     }
 
+    if (source.length > 16384) return new ServerConfigModel()
+    if (source.startsWith('config=') || source.startsWith('{')) {
+      try {
+        const json = JSON.parse(source.startsWith('config=') ? source.substring(7) : source) as OfficialServerConfig
+        if (typeof json.host !== 'string' ||
+          (json.key !== undefined && typeof json.key !== 'string') ||
+          (json.api !== undefined && typeof json.api !== 'string') ||
+          (json.relay !== undefined && typeof json.relay !== 'string')) return new ServerConfigModel()
+        return new ServerConfigModel(json.host, json.relay, json.api, json.key)
+      } catch (_e) { return new ServerConfigModel() }
+    }
     const plain: ServerConfigModel = ServerConfigModel.decodePlainConfig(source)
     if (plain.isValid()) {
       return plain
@@ -123,5 +134,11 @@ export class ServerConfigModel {
 
   isValid(): boolean {
     return this.idServer.length > 0
+  }
+
+  toQrPayload(): string {
+    const config: OfficialServerConfig = { host: this.idServer, relay: this.relayServer,
+      api: this.apiServer, key: this.serverKey }
+    return `config=${JSON.stringify(config)}`
   }
 }

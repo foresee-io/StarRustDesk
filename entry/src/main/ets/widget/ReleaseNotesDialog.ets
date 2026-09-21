@@ -3,7 +3,7 @@ import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.0'
 export const RELEASE_NOTES_BUILD: string = '1002006'
-export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
+export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}-r1`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
@@ -46,6 +46,15 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.0（1002006）· 控制端功能与诊断修订', [
+            '新增独立文件传输会话、批量和文件夹上传，以及远端新建文件夹、重命名和删除；文件夹上传暂不保留空文件夹。',
+            '新增地址簿手动双向同步预览、冲突处理和设备标签管理，不同步本地连接密码与密钥。',
+            '支持扫描和显示服务器配置二维码，扫码后确认保存才生效。',
+            '新增远端画面录像、录像导出和删除；录像为 WebM，仅包含画面，不包含声音。',
+            '完善前台会话网络中断后的限次重连、Wayland 文本输入授权提示及已接通语音的后台任务处理。',
+            '优化单独投屏方向策略；实际可用性仍受设备与接收端能力限制。',
+            '完善文件传输、地址簿同步、录像、扫码、重连和语音诊断，记录操作阶段、耗时和错误码；日志默认关闭，敏感内容不写入新增日志。'
+          ])
           this.buildSection('1.2.0（1002006）· 账号登录与操控优化', [
             '完善官方服务器账号认证与网页登录流程，优化登录恢复、连接等待、取消和异常提示；补充脱敏诊断日志。',
             '修复服务器账号与地址簿弹窗请求结束后按钮仍不可点击的问题，优化设置入口的文字层级及深浅色可读性。',

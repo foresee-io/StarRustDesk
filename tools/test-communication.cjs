@@ -10,6 +10,7 @@ const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarg
 let connected = 2, state = 0, received = [], capture = false, starts = 0, permission = 0, background = false;
 let permissionResolver;
 let delayedPermission = false;
+let voiceDesired = false, voiceReady = false;
 const audio = [];
 const native = {
   getVoiceCallState: () => state,
@@ -28,8 +29,10 @@ const context = {
       requestPermissionsFromUser: () => delayedPermission ? new Promise(resolve => { permissionResolver = resolve; }) : Promise.resolve({ authResults: [permission] })
     }) } };
     if (name === './RustDeskNapi') return { RustDeskNapi: { getConnectionStatus: () => connected,
-      setRemoteAudioEnabled: enabled => audio.push(enabled), getOption: () => '0' } };
-    if (name === './RemoteSessionBackgroundTask') return { RemoteSessionBackgroundTask: { isAppBackground: () => background } };
+      setRemoteAudioEnabled: enabled => audio.push(enabled), getOption: () => '0', appendDiagnosticLog: () => {} } };
+    if (name === './RemoteSessionBackgroundTask') return { RemoteSessionBackgroundTask: {
+      isAppBackground: () => background, setVoiceCallActive: active => voiceDesired = active,
+      canKeepVoiceCall: () => voiceDesired && voiceReady } };
     throw Error(name);
   }
 };
@@ -49,6 +52,10 @@ const service = context.exports.CommunicationService;
   service.toggleMute(); assert.equal(capture, false); assert.equal(service.muted, true);
   service.toggleMute(); assert.equal(capture, true);
   service.onBackground(); assert.equal(capture, false); assert.equal(state, 4); assert.equal(audio.at(-1), false);
+  await service.call({}); state = 2; service.poll(); voiceReady = true; background = true;
+  service.onBackground(); assert.equal(capture, true, 'granted task keeps active call');
+  voiceReady = false; service.poll(); assert.equal(capture, false, 'task revocation stops microphone');
+  assert.equal(voiceDesired, false); background = false;
   await service.call({}); state = 3; service.poll(); assert.equal(capture, false); assert.equal(audio.at(-1), false);
   delayedPermission = true;
   const pending = service.call({});
