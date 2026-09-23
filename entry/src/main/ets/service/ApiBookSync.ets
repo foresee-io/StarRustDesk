@@ -26,8 +26,9 @@ export class ApiBookSync {
     }
     return result;
   }
-  // 按设计"IP 直连不参与双向同步"：同步两侧（本地与服务器）统一只处理
-  // 可同步 ID，避免 IP 直连条目产生无法消解的"更新至本地"幻影变更。
+  // By design, direct-IP entries do not take part in two-way sync: both sides
+  // (local and remote) are filtered to syncable IDs, so direct-IP peers never
+  // produce "download" changes that can never settle.
   static syncableId(id: string): boolean {
     return /^[A-Za-z0-9_-]{1,64}$/.test(id);
   }

@@ -478,8 +478,9 @@ export class RustDeskApiService {
     return books;
   }
 
-  // 官方客户端对地址簿 ID 不做格式限制；此处仅排除明显无效行。
-  // 允许 "." 和 ":" 以兼容 IP 直连条目（如 192.168.0.100:21117）。
+  // The official client does not restrict address book ID format; only drop
+  // obviously invalid rows. "." and ":" are allowed for direct-IP entries
+  // (e.g. 192.168.0.100:21117).
   static validPeerId(id: string): boolean {
     return /^[A-Za-z0-9_.:\-]{1,64}$/.test(id);
   }
