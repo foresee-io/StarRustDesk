@@ -1,8 +1,8 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.13'
-export const RELEASE_NOTES_BUILD: string = '1002013'
+export const RELEASE_NOTES_VERSION: string = '1.2.14'
+export const RELEASE_NOTES_BUILD: string = '1002014'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -46,6 +46,11 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.14（1002014）· 虚拟鼠标边缘操作', [
+            '放大远端画面后，虚拟鼠标拖到右侧或下侧边缘时，继续拖动可让画面移开并露出黑色操作空间；控件和自带箭头保持贴合。',
+            '修复在画面其他区域平移后，虚拟鼠标控件与自带箭头可能分离的问题；反向拖动可收回边缘空白。',
+            '开启虚拟鼠标时，控件外的单指拖动只用于移动画面，不再误移动远端光标；未放大时不再把该手势当作触控板输入。'
+          ])
           this.buildSection('1.2.13（1002013）· 远端安全选项', [
             '新增按设备配置断开后锁定远端、隐私屏幕和自动解锁远端系统；功能是否生效取决于被控端支持与授权。',
             '自动解锁仅在符合条件的加密连接中发送本机安全保存的系统密码；密码不参与连接备份或云同步。',

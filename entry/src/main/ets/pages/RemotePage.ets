@@ -75,6 +75,8 @@ const EDGE_AUTO_PAN_MAX_SPEED: number = 640;
 const VIEWPORT_PAN_SPEED: number = 1.5;
 const VIRTUAL_MOUSE_WIDTH: number = 112;
 const VIRTUAL_MOUSE_HEIGHT: number = 138;
+const VIRTUAL_MOUSE_RIGHT_OUTSIDE_MARGIN: number = VIRTUAL_MOUSE_WIDTH * 2 + 32;
+const VIRTUAL_MOUSE_BOTTOM_OUTSIDE_MARGIN: number = VIRTUAL_MOUSE_HEIGHT * 2 + 32;
 const VIRTUAL_MOUSE_POINTER_HOT_X: number = 1;
 const VIRTUAL_MOUSE_POINTER_HOT_Y: number = 1;
 const VIRTUAL_MOUSE_BUTTON_DRAG_THRESHOLD: number = 8;
@@ -2034,6 +2036,7 @@ struct RemotePage {
       Stack({ alignContent: Alignment.TopEnd }) {
         this.buildRemoteViewport();
         if (this.showVirtualMouse && this.isHandheldDevice()) {
+          this.buildVirtualMousePointer();
           this.buildVirtualMouseOverlay();
         }
       }
@@ -2041,6 +2044,7 @@ struct RemotePage {
       .height(this.getRemoteCanvasHeight())
       .constraintSize({ minHeight: this.keyboardViewportHeight })
       .align(Alignment.Center)
+      .backgroundColor('#090D14')
       this.buildDraggableQualityMonitor();
     }
     .width('100%')
@@ -2911,31 +2915,41 @@ struct RemotePage {
 
   clampVirtualMouseX(value: number): number {
     const width: number = this.componentWidth > 0 ? this.componentWidth : 360;
+    const controlMaxX: number = Math.max(0, width - VIRTUAL_MOUSE_WIDTH);
     const centerX: number = width / 2;
     const displayLeft: number = centerX + (this.getDisplayLeft() - centerX) * this.zoomScale + this.offsetX;
     const displayRight: number = centerX +
       (this.getDisplayLeft() + this.getDisplayWidth() - centerX) * this.zoomScale + this.offsetX;
     const minPointerX: number = Math.max(0, Math.min(width - 1, displayLeft));
     const maxPointerX: number = Math.max(minPointerX, Math.min(width - 1, displayRight - 1));
-    return Math.max(minPointerX - VIRTUAL_MOUSE_POINTER_HOT_X,
-      Math.min(maxPointerX - VIRTUAL_MOUSE_POINTER_HOT_X, value));
+    return Math.max(0, Math.min(controlMaxX,
+      Math.max(minPointerX - VIRTUAL_MOUSE_POINTER_HOT_X,
+        Math.min(maxPointerX - VIRTUAL_MOUSE_POINTER_HOT_X, value))));
   }
 
   clampVirtualMouseY(value: number): number {
     const height: number = this.componentHeight > 0 ? this.componentHeight : 640;
+    const controlMaxY: number = Math.max(0, height - VIRTUAL_MOUSE_HEIGHT);
     const centerY: number = height / 2;
     const displayTop: number = centerY + (this.getDisplayTop() - centerY) * this.zoomScale + this.offsetY;
     const displayBottom: number = centerY +
       (this.getDisplayTop() + this.getDisplayHeight() - centerY) * this.zoomScale + this.offsetY;
     const minPointerY: number = Math.max(0, Math.min(height - 1, displayTop));
     const maxPointerY: number = Math.max(minPointerY, Math.min(height - 1, displayBottom - 1));
-    return Math.max(minPointerY - VIRTUAL_MOUSE_POINTER_HOT_Y,
-      Math.min(maxPointerY - VIRTUAL_MOUSE_POINTER_HOT_Y, value));
+    return Math.max(0, Math.min(controlMaxY,
+      Math.max(minPointerY - VIRTUAL_MOUSE_POINTER_HOT_Y,
+        Math.min(maxPointerY - VIRTUAL_MOUSE_POINTER_HOT_Y, value))));
   }
 
   alignVirtualMouseToRemotePosition(remoteX: number, remoteY: number): void {
     if (!this.showVirtualMouse || !this.isHandheldDevice() || this.componentWidth <= 0 ||
       this.componentHeight <= 0 || this.remoteWidth <= 0 || this.remoteHeight <= 0) {
+      return;
+    }
+    if (this.offsetX < -this.getHorizontalPanLimit(this.zoomScale) ||
+      this.offsetY < -this.getVerticalPanLimit(this.zoomScale)) {
+      // In the black margin the control and its local arrow stay together;
+      // a delayed remote cursor echo must not pull either back onto the image.
       return;
     }
     const visualPoint: RemotePoint = this.remotePointToVisual(remoteX, remoteY);
@@ -2958,6 +2972,16 @@ struct RemotePage {
     const remotePoint: RemotePoint = this.visualPointToRemote(
       this.virtualMouseX + VIRTUAL_MOUSE_POINTER_HOT_X,
       this.virtualMouseY + VIRTUAL_MOUSE_POINTER_HOT_Y);
+    const remoteRight: number = this.remotePointToVisual(this.remoteWidth, 0).x;
+    if (this.remoteWidth > 0 && remoteRight <= this.componentWidth + 0.01 &&
+      this.virtualMouseX + VIRTUAL_MOUSE_POINTER_HOT_X >= remoteRight - 1) {
+      remotePoint.x = this.remoteWidth - 1;
+    }
+    const remoteBottom: number = this.remotePointToVisual(0, this.remoteHeight).y;
+    if (this.remoteHeight > 0 && remoteBottom <= this.componentHeight + 0.01 &&
+      this.virtualMouseY + VIRTUAL_MOUSE_POINTER_HOT_Y >= remoteBottom - 1) {
+      remotePoint.y = this.remoteHeight - 1;
+    }
     this.lastAbsX = remotePoint.x;
     this.lastAbsY = remotePoint.y;
     this.pointerInitialized = true;
@@ -2973,7 +2997,7 @@ struct RemotePage {
     this.ensurePointerInitialized();
     this.initializeVirtualMousePosition();
     this.syncVirtualMouseToCurrentPointer();
-    this.virtualMouseDragStartX = this.clampVirtualMouseX(this.virtualMouseX);
+    this.virtualMouseDragStartX = this.virtualMouseX;
     this.virtualMouseDragStartY = this.clampVirtualMouseY(this.virtualMouseY);
     this.virtualMouseLastPanX = 0;
     this.virtualMouseLastPanY = 0;
@@ -2986,13 +3010,88 @@ struct RemotePage {
     const deltaY: number = offsetY - this.virtualMouseLastPanY;
     this.virtualMouseLastPanX = offsetX;
     this.virtualMouseLastPanY = offsetY;
-    this.virtualMouseX = this.clampVirtualMouseX(this.virtualMouseDragStartX + offsetX);
-    this.virtualMouseY = this.clampVirtualMouseY(this.virtualMouseDragStartY + offsetY);
     if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) return;
     const follow: boolean = this.shouldFollowTouchMouse();
-    const remotePoint: RemotePoint = follow ? this.updateCenterFollowPointer(deltaX, deltaY, 1) :
-      (this.relativeMouseEnabled ? this.updatePointerFromDelta(deltaX, deltaY) : this.updatePointerFromVirtualMouse());
+    const absoluteVirtual: boolean = !follow && !this.relativeMouseEnabled;
+    const panLimitX: number = this.getHorizontalPanLimit(this.zoomScale);
+    const panLimitY: number = this.getVerticalPanLimit(this.zoomScale);
+    if (!this.relativeMouseEnabled) {
+      // The mouse control and arrow are one visual unit. Once the entire
+      // control reaches the viewport edge, consume further drag by panning
+      // the image immediately; do not keep moving the arrow on its own.
+      const controlMaxX: number = Math.max(0, this.componentWidth - VIRTUAL_MOUSE_WIDTH);
+      const controlMaxY: number = Math.max(0, this.componentHeight - VIRTUAL_MOUSE_HEIGHT);
+      this.virtualMouseX = Math.max(0, Math.min(this.virtualMouseX, controlMaxX));
+      this.virtualMouseY = Math.max(0, Math.min(this.virtualMouseY, controlMaxY));
+      if (deltaX > 0) {
+        const cursorTravel: number = Math.min(deltaX, controlMaxX - this.virtualMouseX);
+        this.virtualMouseX += cursorTravel;
+        this.offsetX = Math.max(-panLimitX - VIRTUAL_MOUSE_RIGHT_OUTSIDE_MARGIN,
+          this.offsetX - (deltaX - cursorTravel));
+      } else if (deltaX < 0) {
+        const blackMargin: number = Math.max(0, -panLimitX - this.offsetX);
+        const retract: number = Math.min(-deltaX, blackMargin);
+        this.offsetX += retract;
+        this.virtualMouseX = Math.max(0, this.virtualMouseX + deltaX + retract);
+      }
+      if (deltaY > 0) {
+        const cursorTravel: number = Math.min(deltaY, controlMaxY - this.virtualMouseY);
+        this.virtualMouseY += cursorTravel;
+        this.offsetY = Math.max(-panLimitY - VIRTUAL_MOUSE_BOTTOM_OUTSIDE_MARGIN,
+          this.offsetY - (deltaY - cursorTravel));
+      } else if (deltaY < 0) {
+        const blackMargin: number = Math.max(0, -panLimitY - this.offsetY);
+        const retract: number = Math.min(-deltaY, blackMargin);
+        this.offsetY += retract;
+        this.virtualMouseY = Math.max(0, this.virtualMouseY + deltaY + retract);
+      }
+      const groupedPoint: RemotePoint = this.updatePointerFromVirtualMouse();
+      ConnectionService.sendMouseEvent(groupedPoint.x, groupedPoint.y, 0);
+      if (!follow) this.updateEdgeAutoPan(groupedPoint.x, groupedPoint.y, true);
+      return;
+    }
+    let cursorDeltaX: number = deltaX;
+    if ((follow || absoluteVirtual) && cursorDeltaX < 0 && panLimitX > 0 && this.offsetX < -panLimitX) {
+      // Retract the black area before moving the actual remote cursor left.
+      const retracted: number = Math.min(-cursorDeltaX, -panLimitX - this.offsetX);
+      this.offsetX += retracted;
+      cursorDeltaX += retracted;
+      this.alignVirtualMouseToRemotePosition(this.lastAbsX, this.lastAbsY);
+    }
+    const previousRemoteX: number = this.lastAbsX;
+    let remotePoint: RemotePoint;
+    if (absoluteVirtual) {
+      const wantedX: number = this.virtualMouseX + cursorDeltaX;
+      this.virtualMouseX = this.clampVirtualMouseX(wantedX);
+      this.virtualMouseY = this.clampVirtualMouseY(this.virtualMouseY + deltaY);
+      if (cursorDeltaX > 0 && panLimitX > 0) {
+        let excess: number = Math.max(0, wantedX - this.virtualMouseX);
+        const normalPan: number = Math.min(excess, Math.max(0, this.offsetX + panLimitX));
+        this.offsetX -= normalPan;
+        excess -= normalPan;
+        this.offsetX = Math.max(-panLimitX - VIRTUAL_MOUSE_RIGHT_OUTSIDE_MARGIN, this.offsetX - excess);
+        this.virtualMouseX = this.clampVirtualMouseX(wantedX);
+      }
+      remotePoint = this.updatePointerFromVirtualMouse();
+      if (this.offsetX < -panLimitX) {
+        this.alignVirtualMouseToRemotePosition(remotePoint.x, remotePoint.y);
+      }
+    } else {
+      this.virtualMouseX = this.clampVirtualMouseX(this.virtualMouseDragStartX + offsetX);
+      this.virtualMouseY = this.clampVirtualMouseY(this.virtualMouseDragStartY + offsetY);
+      remotePoint = follow ? this.updateCenterFollowPointer(cursorDeltaX, deltaY, 1) :
+        this.updatePointerFromDelta(deltaX, deltaY);
+    }
     if (follow) {
+      if (panLimitX > 0 && cursorDeltaX > 0 && remotePoint.x >= this.remoteWidth - 1) {
+        const remotePixelScale: number = this.getDisplayWidth() * this.zoomScale / this.remoteWidth;
+        const cursorTravel: number = Math.max(0, remotePoint.x - previousRemoteX) * remotePixelScale;
+        const outsideTravel: number = Math.max(0, cursorDeltaX - cursorTravel);
+        this.offsetX = Math.max(-panLimitX - VIRTUAL_MOUSE_RIGHT_OUTSIDE_MARGIN,
+          this.offsetX - outsideTravel);
+      }
+      // The virtual mouse arrow remains at the remote edge, but the control
+      // body extends into the newly exposed black area on its right.
       this.alignVirtualMouseToRemotePosition(remotePoint.x, remotePoint.y);
       this.virtualMouseDragStartX = this.virtualMouseX - offsetX;
       this.virtualMouseDragStartY = this.virtualMouseY - offsetY;
@@ -3169,6 +3268,24 @@ struct RemotePage {
     RustDeskNapi.appendDiagnosticLog('input', `virtual_mouse_wheel delta=${delta}`);
   }
 
+  virtualMouseOverlayX(): number {
+    return Math.max(0, Math.min(this.virtualMouseX,
+      Math.max(0, this.componentWidth - VIRTUAL_MOUSE_WIDTH)));
+  }
+
+  virtualMouseOverlayY(): number {
+    return Math.max(0, Math.min(this.virtualMouseY,
+      Math.max(0, this.componentHeight - VIRTUAL_MOUSE_HEIGHT)));
+  }
+
+  virtualMousePointerX(): number {
+    return this.virtualMouseOverlayX();
+  }
+
+  virtualMousePointerY(): number {
+    return this.virtualMouseOverlayY();
+  }
+
   @Builder
   buildVirtualMousePointer() {
     Shape() {
@@ -3181,13 +3298,14 @@ struct RemotePage {
     .viewPort({ x: 0, y: 0, width: 24, height: 24 })
     .width(24)
     .height(24)
+    .position({ x: this.virtualMousePointerX(), y: this.virtualMousePointerY() })
+    .zIndex(76)
+    .hitTestBehavior(HitTestMode.None)
   }
 
   @Builder
   buildVirtualMouseOverlay() {
     Stack({ alignContent: Alignment.TopStart }) {
-      this.buildVirtualMousePointer()
-
       Button('×')
         .width(18)
         .height(18)
@@ -3293,7 +3411,7 @@ struct RemotePage {
     }
     .width(VIRTUAL_MOUSE_WIDTH)
     .height(VIRTUAL_MOUSE_HEIGHT)
-    .position({ x: this.virtualMouseX, y: this.virtualMouseY })
+    .position({ x: this.virtualMouseOverlayX(), y: this.virtualMouseOverlayY() })
     .zIndex(75)
     .onAppear(() => { this.initializeVirtualMousePosition(); })
   }
@@ -4359,6 +4477,7 @@ struct RemotePage {
       this.resetVirtualMouseButtonTouch();
       this.resetVirtualMouseWheelTouch();
       this.stopEdgeAutoPan();
+      this.clampViewportOffset();
     }
     RustDeskNapi.appendDiagnosticLog('input', `virtual_mouse enabled=${enabled ? 1 : 0}`);
   }
@@ -4408,6 +4527,7 @@ struct RemotePage {
     RustDeskNapi.setOption('edge-auto-pan-enabled', enabled ? '1' : '0');
     if (!enabled) {
       this.stopEdgeAutoPan();
+      this.clampViewportOffset();
     }
     RustDeskNapi.appendDiagnosticLog('input', `edge_auto_pan enabled=${enabled}`);
   }
@@ -4599,7 +4719,7 @@ struct RemotePage {
     }
 
     if (event.touches.length <= 0) {
-      if (this.isPanMode || (this.showVirtualMouse && this.isHandheldDevice() && this.canPanViewport())) {
+      if (this.isPanMode || (this.showVirtualMouse && this.isHandheldDevice())) {
         this.finishViewportPan();
       } else {
         this.finishSingleTouch(event.type === TouchType.Cancel);
@@ -4629,7 +4749,7 @@ struct RemotePage {
 
     // RustDesk-style virtual mouse owns pointer movement. Once the canvas is
     // enlarged, a one-finger drag anywhere outside the mouse pans the canvas.
-    if ((this.showVirtualMouse && this.isHandheldDevice() && this.canPanViewport()) || this.isPanMode) {
+    if ((this.showVirtualMouse && this.isHandheldDevice()) || this.isPanMode) {
       this.handleViewportPan(event);
       return;
     }
