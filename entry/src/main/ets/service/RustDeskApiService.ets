@@ -478,10 +478,16 @@ export class RustDeskApiService {
     return books;
   }
 
+  // 官方客户端对地址簿 ID 不做格式限制；此处仅排除明显无效行。
+  // 允许 "." 和 ":" 以兼容 IP 直连条目（如 192.168.0.100:21117）。
+  static validPeerId(id: string): boolean {
+    return /^[A-Za-z0-9_.:\-]{1,64}$/.test(id);
+  }
+
   static parsePeers(rows: ApiRow[]): ApiPeer[] {
     const peers: ApiPeer[] = [];
     for (const row of rows) {
-      if (!row || typeof row.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(row.id)) continue;
+      if (!row || typeof row.id !== 'string' || !RustDeskApiService.validPeerId(row.id)) continue;
       if (peers.some((peer: ApiPeer) => peer.id === row.id)) continue;
       const name = typeof row.alias === 'string' && row.alias ? row.alias :
         (typeof row.hostname === 'string' ? row.hostname : row.id);
@@ -540,7 +546,7 @@ export class RustDeskApiService {
 
   async writePeer(book: ApiBook, peer: ApiPeer, create: boolean): Promise<void> {
     if (!book.writable) throw new ApiFailure('当前地址簿为只读，不能上传或修改');
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(peer.id)) throw new ApiFailure('设备 ID 不支持地址簿同步');
+    if (!RustDeskApiService.validPeerId(peer.id)) throw new ApiFailure('设备 ID 不支持地址簿同步');
     const data: ApiRow = { id: peer.id, alias: peer.name.slice(0, 100), tags: peer.tags.slice(0, 20) };
     if (book.legacy) { await this.editLegacyPeer(data, false); return; }
     const action = create ? 'add' : 'update';

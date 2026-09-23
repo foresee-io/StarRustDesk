@@ -357,7 +357,12 @@ export struct ApiAccountDialog {
               }.width('100%');
               ForEach(this.peers, (peer: ApiPeer) => {
                 Row({ space: 8 }) {
-                  Checkbox({ name: peer.id }).select(this.selected.includes(peer.id)).onChange(() => { this.toggle(peer.id); });
+                  // 框架在状态驱动的 select() 变化时也会回调 onChange；
+                  // 仅当回调值与当前选中集合不一致（真实用户点击）时才切换，
+                  // 否则"全选/取消全选"会与 toggle() 无条件反转形成无限振荡导致无响应。
+                  Checkbox({ name: peer.id }).select(this.selected.includes(peer.id)).onChange((value: boolean) => {
+                    if (value !== this.selected.includes(peer.id)) this.toggle(peer.id);
+                  });
                   Column({ space: 3 }) {
                     Text(peer.name).fontSize(15).fontColor(this.textColor()).width('100%');
                     Text(`${peer.id} · ${peer.platform || '设备'}${peer.tags.length > 0 ? ' · ' + peer.tags.join(' / ') : ''}`)
