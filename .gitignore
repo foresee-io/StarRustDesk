@@ -16,3 +16,4 @@
 /.appanalyzer
 /signing
 *.log
+/debug-util/

@@ -513,24 +513,26 @@ export class RustDeskApiService {
       return parsed;
     }
     const peers: ApiPeer[] = [];
+    let total = 0;
     for (let page = 1; page <= 50; page++) {
       const result = await this.request(`/api/ab/peers?current=${page}&pageSize=100&ab=${encodeURIComponent(book.guid)}`, 'POST');
       if (result.data === undefined || result.data === null) throw new ApiFailure('服务器未返回完整设备列表，已取消同步');
       if (!Array.isArray(result.data)) throw new ApiFailure('地址簿设备列表无效');
+      // Official-client semantics (upstream _fetchPeers): total is a first-page hint for
+      // loop counting only, never a completeness guarantee. Some servers ignore
+      // current/pageSize and always return the whole table, so a mismatch between total
+      // and accumulated rows must not fail the fetch.
+      if (total === 0 && typeof result.total === 'number' && result.total > 0) total = result.total;
       const rows = RustDeskApiService.parsePeers(result.data);
       if (strict && rows.length !== result.data.length) throw new ApiFailure('设备列表含无效或重复记录，已取消同步');
       let added = 0;
       for (const row of rows) {
         if (!peers.some((peer: ApiPeer) => peer.id === row.id)) { peers.push(row); added++; }
       }
-      // Some third-party releases ignore pagination and return 1000 entries.
-      // Never spin forever or silently claim a partial list is complete.
-      if (typeof result.total === 'number' && result.total > 0 && peers.length >= result.total) break;
-      if (!added) {
-        if (typeof result.total === 'number' && result.total > peers.length) throw new ApiFailure('服务器未正确分页，设备列表不完整，请升级 API 服务');
-        break;
-      }
-      if (result.data.length < 100 && !(typeof result.total === 'number' && result.total > peers.length)) break;
+      if (total > 0 && peers.length >= total) break;
+      if (total > 0 && page * 100 >= total) break;
+      if (!added) break;
+      if (result.data.length < 100 && !(total > peers.length)) break;
       if (page === 50) throw new ApiFailure('设备超过分页限制，请在服务端分组后重试');
     }
     return peers;
