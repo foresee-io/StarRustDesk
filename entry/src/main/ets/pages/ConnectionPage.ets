@@ -10,8 +10,9 @@ import { ConnectionService } from '../service/ConnectionService'
 import { RemoteSessionBackgroundTask } from '../service/RemoteSessionBackgroundTask'
 import { ConnectionStatus } from '../model/ConnectionModel'
 import { PerformanceSettings } from '../model/PerformanceSettings'
-import { PeerOnlineResult, PeerOnlineState, RustDeskNapi } from '../service/RustDeskNapi'
+import { PeerOnlineResult, PeerOnlineState, RemoteSecurityOptions, RustDeskNapi } from '../service/RustDeskNapi'
 import { CredentialStore } from '../service/CredentialStore'
+import { RemoteSecurityStore } from '../service/RemoteSecurityStore'
 import { CloudSyncService } from '../service/CloudSyncService'
 import {
   ConnectionBackupGroup,
@@ -72,10 +73,17 @@ export struct ConnectionPage {
   @State password: string = ''
   // Only newly typed text may enter the password TextInput. Saved secrets stay out of it.
   @State passwordEditMode: string = 'keep'
+  @State lockAfterDisconnect: boolean = false
+  @State privacyMode: boolean = false
+  @State autoUnlock: boolean = false
+  @State osPasswordDraft: string = ''
+  @State hasStoredOsPassword: boolean = false
+  @State clearOsPassword: boolean = false
   @State isIdEmpty: boolean = true
   @State isConnecting: boolean = false
   private preparingAccount: boolean = false
   @StorageLink('isDarkMode') isDarkMode: boolean = false
+  @StorageLink('peerOnlineQueryEnabled') @Watch('onPeerOnlineQuerySettingChanged') peerOnlineQueryEnabled: boolean = false
   @StorageLink('serverConfigVersion') @Watch('onServerConfigVersionChanged') serverConfigVersion: number = 0
   @StorageLink('savedConnectionsCloudRevision') @Watch('onCloudConnectionsChanged')
   savedConnectionsCloudRevision: number = 0
@@ -193,6 +201,14 @@ export struct ConnectionPage {
     }
   }
 
+  onPeerOnlineQuerySettingChanged(): void {
+    this.markAllPeerStatesUnknown()
+    this.nextPeerOnlineRefreshAt = 0
+    if (this.peerOnlineQueryEnabled && !this.peerOnlineQueryInFlight) {
+      this.refreshSavedConnectionOnlineStates(true)
+    }
+  }
+
   onCloudConnectionsChanged(): void {
     this.loadConnectionGroups()
     this.loadSavedConnections()
@@ -201,7 +217,7 @@ export struct ConnectionPage {
   startStatusPolling(): void {
     let poll = () => {
       this.pollPeerOnlineStates()
-      if (Date.now() >= this.nextPeerOnlineRefreshAt) {
+      if (this.peerOnlineQueryEnabled && Date.now() >= this.nextPeerOnlineRefreshAt) {
         this.refreshSavedConnectionOnlineStates()
       }
       let status: ConnectionStatus = this.syncConnectionState()
@@ -524,6 +540,7 @@ export struct ConnectionPage {
           this.buildConnectionNameInput()
           this.buildConnectionGroupSelector()
           this.buildPasswordInput()
+          this.buildRemoteSecurityOptions()
           this.buildPerformancePresetSelector()
           this.buildConnectionEditActions()
           if (this.connectionStatusText.length > 0) {
@@ -1034,7 +1051,8 @@ export struct ConnectionPage {
             }, (group: SavedConnectionGroup) =>
               `${group.id}-${this.savedConnectionsVersion}-${this.savedConnectionSearch}`)
           }
-          if (this.savedConnections.length > 0 && this.filteredSavedConnectionCount() > 0) {
+          if (this.peerOnlineQueryEnabled && this.savedConnections.length > 0 &&
+            this.filteredSavedConnectionCount() > 0) {
             this.buildConnectionStatusLegend()
           }
         }
@@ -1051,6 +1069,74 @@ export struct ConnectionPage {
     .borderRadius(RustDeskTheme.HOME_CARD_RADIUS)
     .shadow({ radius: 18, color: this.isDarkMode ? RustDeskTheme.HOME_SHADOW_DARK : RustDeskTheme.HOME_SHADOW, offsetX: 0, offsetY: 5 })
     .margin({ bottom: 8 })
+  }
+
+  @Builder
+  buildRemoteSecurityOptions() {
+    Column({ space: 8 }) {
+      Text('远端安全选项（仅对此设备生效）')
+        .fontSize(15)
+        .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+        .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+      Row() {
+        Text('断开连接后锁定远端')
+          .fontSize(14)
+          .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+          .layoutWeight(1)
+        Toggle({ type: ToggleType.Switch, isOn: this.lockAfterDisconnect })
+          .onChange((value: boolean) => {
+            this.lockAfterDisconnect = value
+            if (!value) this.autoUnlock = false
+          })
+      }.width('100%')
+      Row() {
+        Text('隐私屏幕（需被控端支持并允许）')
+          .fontSize(14)
+          .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+          .layoutWeight(1)
+        Toggle({ type: ToggleType.Switch, isOn: this.privacyMode })
+          .onChange((value: boolean) => { this.privacyMode = value })
+      }.width('100%')
+      Row() {
+        Text('自动解锁远端系统（需开启断开锁屏）')
+          .fontSize(14)
+          .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+          .layoutWeight(1)
+        Toggle({ type: ToggleType.Switch, isOn: this.autoUnlock })
+          .enabled(this.lockAfterDisconnect)
+          .onChange((value: boolean) => { this.autoUnlock = value })
+      }.width('100%')
+      if (this.autoUnlock) {
+        Text('仅在端到端加密连接中发送系统密码；密码与连接密码不同。若远端已解锁，可能输入到当前窗口。')
+          .fontSize(12)
+          .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+        TextInput({ placeholder: this.hasStoredOsPassword && !this.clearOsPassword ?
+          '系统密码已安全保存；输入可更换' : '输入远端系统密码', text: this.osPasswordDraft })
+          .type(InputType.Password)
+          .maxLength(240)
+          .showPasswordIcon(false)
+          .width('100%')
+          .height(44)
+          .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
+          .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+          .onChange((value: string) => { this.osPasswordDraft = value })
+        if (this.hasStoredOsPassword && !this.clearOsPassword) {
+          Button('清除已保存的系统密码')
+            .fontSize(12)
+            .backgroundColor(Color.Transparent)
+            .fontColor(RustDeskTheme.ERROR)
+            .onClick(() => {
+              this.clearOsPassword = true
+              this.hasStoredOsPassword = false
+              this.osPasswordDraft = ''
+            })
+        }
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
+    .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
   }
 
   @Builder
@@ -1170,13 +1256,15 @@ export struct ConnectionPage {
               .backgroundColor(this.isDarkMode ? '#26364E' : RustDeskTheme.ACCENT_SOFT)
               .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
 
-              Row()
-                .width(10)
-                .height(10)
-                .backgroundColor(this.peerOnlineStateColor(item.remoteId))
-                .border({ width: 2, color: this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE })
-                .borderRadius(5)
-                .position({ x: 27, y: 27 })
+              if (this.peerOnlineQueryEnabled) {
+                Row()
+                  .width(10)
+                  .height(10)
+                  .backgroundColor(this.peerOnlineStateColor(item.remoteId))
+                  .border({ width: 2, color: this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE })
+                  .borderRadius(5)
+                  .position({ x: 27, y: 27 })
+              }
             }
             .width(38)
             .height(38)
@@ -1867,7 +1955,23 @@ export struct ConnectionPage {
       this.preparingAccount = true
       let status: ConnectionStatus
       try {
-        status = await ConnectionService.connect(peerId, password, this.performancePreset, fileOnly)
+        const selectedMatchesPeer: boolean = this.savedConnections.some((item: SavedConnectionInfo) =>
+          item.id === this.selectedConnectionId && this.normalizeRemoteId(item.remoteId) === peerId)
+        if (this.autoUnlock && selectedMatchesPeer && this.osPasswordDraft.length === 0 &&
+          !RemoteSecurityStore.isCurrentServer(this.selectedConnectionId)) {
+          RustDeskNapi.appendDiagnosticLog('remote-security', 'auto_unlock_skipped server_configuration_changed')
+        }
+        const security: RemoteSecurityOptions = {
+          lockAfterDisconnect: this.lockAfterDisconnect,
+          privacyMode: this.privacyMode,
+          autoUnlock: this.autoUnlock && this.lockAfterDisconnect && selectedMatchesPeer &&
+            (this.osPasswordDraft.length > 0 || RemoteSecurityStore.isCurrentServer(this.selectedConnectionId))
+        }
+        const osPassword: string = security.autoUnlock ?
+          (this.osPasswordDraft.length > 0 ? this.osPasswordDraft :
+            (this.clearOsPassword ? '' : await RemoteSecurityStore.loadOsPassword(this.selectedConnectionId))) : ''
+        status = await ConnectionService.connect(peerId, password, this.performancePreset, fileOnly,
+          security, osPassword)
       } catch (_error) {
         this.preparingAccount = false
         this.connectionStatusText = '账号恢复失败或服务器配置已改变，请重试；必要时到设置中的 API 账号重新登录'
@@ -1987,6 +2091,7 @@ export struct ConnectionPage {
   }
 
   savedConnectionOnlineRank(remoteId: string): number {
+    if (!this.peerOnlineQueryEnabled) return 2
     const state: number = this.peerOnlineStates[remoteId] ?? PEER_STATE_CHECKING
     return state === PEER_STATE_ONLINE ? 0 : state === PEER_STATE_OFFLINE ? 1 : 2
   }
@@ -2438,6 +2543,7 @@ export struct ConnectionPage {
     let imported: NormalizedImportData = this.normalizeImportedData(payload, [], [])
     for (let item of oldConnections) {
       await CredentialStore.remove(item.id)
+      await RemoteSecurityStore.remove(item.id)
     }
     for (let item of imported.connections) {
       await CredentialStore.save(item.id, item.password)
@@ -2654,7 +2760,7 @@ export struct ConnectionPage {
   }
 
   refreshSavedConnectionOnlineStates(force: boolean = false): void {
-    if (this.peerOnlineQueryInFlight || this.savedConnections.length <= 0) {
+    if (!this.peerOnlineQueryEnabled || this.peerOnlineQueryInFlight || this.savedConnections.length <= 0) {
       return
     }
     let peerIds: string[] = []
@@ -2678,6 +2784,10 @@ export struct ConnectionPage {
       this.peerOnlineStatesVersion++
     }
     let result: number = RustDeskNapi.queryPeerOnlineStates(peerIds, this.peerStateServer)
+    if (result === 0) {
+      // Diagnostic only: do not delay the query for the platform network snapshot.
+      ConnectionService.recordNetworkSnapshot('online_state').catch(() => {})
+    }
     if (result === 0 || result === 1) {
       this.peerOnlineQueryInFlight = true
       this.peerOnlineQueryStartedAt = Date.now()
@@ -2689,6 +2799,12 @@ export struct ConnectionPage {
   }
 
   pollPeerOnlineStates(): void {
+    if (!this.peerOnlineQueryEnabled) {
+      if (this.peerOnlineQueryInFlight && RustDeskNapi.takePeerOnlineStates().length > 0) {
+        this.peerOnlineQueryInFlight = false
+      }
+      return
+    }
     // A timed-out UI request can still complete in the native worker.
     // Always drain its result before starting another query.
     let raw: string = RustDeskNapi.takePeerOnlineStates()
@@ -2756,6 +2872,7 @@ export struct ConnectionPage {
   }
 
   peerOnlineStateColor(remoteId: string): ResourceColor {
+    if (!this.peerOnlineQueryEnabled) return this.isDarkMode ? '#697386' : '#A5ADBA'
     let state: number = this.isDirectPeerEndpoint(remoteId) ? PEER_STATE_UNKNOWN :
       (this.peerOnlineStates[remoteId] ?? PEER_STATE_CHECKING)
     if (state === PEER_STATE_ONLINE) {
@@ -2768,6 +2885,7 @@ export struct ConnectionPage {
   }
 
   peerOnlineStateHint(remoteId: string): string {
+    if (!this.peerOnlineQueryEnabled) return '在线查询已关闭，仍可尝试连接'
     if (this.isDirectPeerEndpoint(remoteId)) return '直连地址 · 状态未知，请尝试连接'
     const state: number = this.peerOnlineStates[remoteId] ?? PEER_STATE_CHECKING
     if (state === PEER_STATE_ONLINE) return '在线'
@@ -2785,6 +2903,16 @@ export struct ConnectionPage {
     this.performancePreset = PerformanceSettings.normalize(item.performancePreset)
     this.selectedGroupId = this.validGroupId(item.groupId)
     this.isIdEmpty = this.remoteId.length === 0
+    const security: RemoteSecurityOptions = RemoteSecurityStore.options(item.id)
+    this.lockAfterDisconnect = security.lockAfterDisconnect
+    this.privacyMode = security.privacyMode
+    this.autoUnlock = security.autoUnlock && security.lockAfterDisconnect
+    this.osPasswordDraft = ''
+    this.clearOsPassword = false
+    this.hasStoredOsPassword = false
+    RemoteSecurityStore.loadOsPassword(item.id).then((secret: string) => {
+      if (this.selectedConnectionId === item.id) this.hasStoredOsPassword = secret.length > 0
+    })
   }
 
   connectSavedConnection(item: SavedConnectionInfo): void {
@@ -2889,6 +3017,21 @@ export struct ConnectionPage {
     const originalMode: string = this.passwordEditMode
     let savedName: string = this.connectionName.trim()
     let targetId: string = this.selectedConnectionId.length > 0 ? this.selectedConnectionId : this.makeConnectionId(peerId)
+    const identityChanged: boolean = this.savedConnections.some((item: SavedConnectionInfo) =>
+      item.id === targetId && this.normalizeRemoteId(item.remoteId) !== peerId)
+    const osPasswordDraft: string = this.osPasswordDraft
+    const storedOsPassword: boolean = this.hasStoredOsPassword
+    const draftClearOsPassword: boolean = this.clearOsPassword
+    const draftAutoUnlock: boolean = this.autoUnlock
+    const clearOsPassword: boolean = this.clearOsPassword || (identityChanged && osPasswordDraft.length === 0)
+    const security: RemoteSecurityOptions = {
+      lockAfterDisconnect: this.lockAfterDisconnect,
+      privacyMode: this.privacyMode,
+      autoUnlock: this.autoUnlock && this.lockAfterDisconnect && !(identityChanged && osPasswordDraft.length === 0)
+    }
+    if (identityChanged && osPasswordDraft.length === 0) {
+      RustDeskNapi.appendDiagnosticLog('remote-security', 'os_password_cleared peer_identity_changed')
+    }
     let next: SavedConnectionInfo = {
       id: targetId,
       name: savedName.length > 0 ? savedName : peerId,
@@ -2911,6 +3054,21 @@ export struct ConnectionPage {
       list.unshift(next)
     }
     await CredentialStore.save(targetId, password)
+    if (clearOsPassword) await RemoteSecurityStore.removeOsPassword(targetId)
+    if (osPasswordDraft.length > 0) await RemoteSecurityStore.saveOsPassword(targetId, osPasswordDraft)
+    RemoteSecurityStore.saveOptions(targetId, security)
+    RustDeskNapi.appendDiagnosticLog('remote-security',
+      `options_saved lock=${security.lockAfterDisconnect} privacy=${security.privacyMode} auto_unlock=${security.autoUnlock} ` +
+      `os_password_configured=${osPasswordDraft.length > 0 || (storedOsPassword && !clearOsPassword)}`)
+    if (this.selectedConnectionId === originalSelection && this.normalizeRemoteId(this.remoteId) === peerId &&
+      this.osPasswordDraft === osPasswordDraft && this.clearOsPassword === draftClearOsPassword &&
+      this.autoUnlock === draftAutoUnlock && this.lockAfterDisconnect === security.lockAfterDisconnect &&
+      this.privacyMode === security.privacyMode) {
+      this.hasStoredOsPassword = osPasswordDraft.length > 0 || (storedOsPassword && !clearOsPassword)
+      this.osPasswordDraft = ''
+      this.clearOsPassword = false
+      this.autoUnlock = security.autoUnlock
+    }
     this.savedConnections = this.cloneSavedConnections(list)
     this.savedConnectionsVersion++
     if (this.selectedConnectionId === originalSelection && this.normalizeRemoteId(this.remoteId) === peerId &&
@@ -2937,6 +3095,7 @@ export struct ConnectionPage {
       this.clearConnectionForm()
     }
     await CredentialStore.remove(id)
+    await RemoteSecurityStore.remove(id)
     this.persistSavedConnections(list)
     this.nextPeerOnlineRefreshAt = 0
     this.refreshSavedConnectionOnlineStates(true)
@@ -2950,6 +3109,12 @@ export struct ConnectionPage {
     this.password = ''
     this.passwordEditMode = 'keep'
     this.performancePreset = 'smooth'
+    this.lockAfterDisconnect = false
+    this.privacyMode = false
+    this.autoUnlock = false
+    this.osPasswordDraft = ''
+    this.hasStoredOsPassword = false
+    this.clearOsPassword = false
     this.isIdEmpty = true
   }
 

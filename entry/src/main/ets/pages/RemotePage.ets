@@ -25,6 +25,8 @@ import { OperationDiagnostic } from '../service/OperationDiagnostic';
 import { RecordingDialog } from '../widget/RecordingDialog';
 import { sortRemoteFiles } from '../utils/RemoteFileSort';
 import { RemoteDisplayPolicy } from '../service/RemoteDisplayPolicy';
+import { RemoteFullscreenPolicy } from '../service/RemoteFullscreenPolicy';
+import { followTouchMouseAxis } from '../utils/TouchMouseFollow';
 
 class ViewportFrameCallback extends FrameCallback {
   private apply: () => void;
@@ -103,7 +105,7 @@ const KEYBOARD_CAPTURE_SENTINEL: string =
   '1111111111111111111111111111111111111111111111111111111111111111';
 const CONTROL_TOOLBAR_DEFAULT_ORDER: string[] = [
   'displays', 'input', 'virtualMouse', 'edgePan', 'keyboard', 'mobileActions', 'gestureHelp',
-  'pan', 'chat', 'upload', 'uploadFolder', 'download', 'recording', 'recordings', 'clipboard', 'zoomIn', 'zoomOut', 'fullscreen', 'orientation', 'disconnect'
+  'pan', 'chat', 'upload', 'uploadFolder', 'download', 'recording', 'recordings', 'clipboard', 'privacy', 'zoomIn', 'zoomOut', 'fullscreen', 'orientation', 'disconnect'
 ];
 const KEYBOARD_TOOLBAR_DEFAULT_ORDER: string[] = [
   'ctrl', 'alt', 'shift', 'meta', 'function', 'more', 'release'
@@ -211,6 +213,7 @@ struct RemotePage {
   @State showGestureHelp: boolean = false;
   @State showMobileActions: boolean = false;
   @State isPeerAndroid: boolean = false;
+  @State privacyModeState: number = 0;
   @State showLocalCursor: boolean = true;
   @State showLeftButtonHoldIndicator: boolean = false;
   @State keyboardInput: string = KEYBOARD_CAPTURE_SENTINEL;
@@ -276,6 +279,8 @@ struct RemotePage {
   @State connectionError: string = '';
   private insecureFallbackPromptShown: boolean = false;
   @State isFullScreen: boolean = false;
+  @State fullscreenTransitioning: boolean = false;
+  private fullscreenRequestId: number = 0;
   @State isPanMode: boolean = false;
   @State edgeAutoPanEnabled: boolean = false;
   private xComponentController: XComponentController = new XComponentController();
@@ -312,6 +317,7 @@ struct RemotePage {
   private pointerHoverExitTimer: number = -1;
   private clipboardTimer: number = -1;
   private surfaceRebindTimer: number = -1;
+  private surfaceRebindForced: boolean = false;
   private remoteDirectoryTimer: number = -1;
   private longPressTimer: number = -1;
   private tapTimer: number = -1;
@@ -368,6 +374,9 @@ struct RemotePage {
   private keyboardToolsDragStartY: number = 0;
   private lastSurfaceWidth: number = 0;
   private lastSurfaceHeight: number = 0;
+  private lastBoundSurfaceId: string = '';
+  private lastLayoutViewportWidth: number = 0;
+  private lastLayoutViewportHeight: number = 0;
   private touchStartX: number = 0;
   private touchStartY: number = 0;
   private lastTouchX: number = 0;
@@ -544,13 +553,11 @@ struct RemotePage {
     this.restoreKeyboardAvoidMode();
     this.pointerOverRemoteViewport = false;
     this.setSystemPointerHidden(false);
-    if (this.isFullScreen) {
-      this.applyFullscreenWindow(false);
-      this.isFullScreen = false;
-    }
+    this.restoreFullscreenOnLeave();
   }
 
   onBackPress(): boolean {
+    if (this.fullscreenTransitioning) return true;
     if (this.showCommunicationPanel) {
       this.closeCommunication();
       return true;
@@ -690,6 +697,11 @@ struct RemotePage {
         this.updateConnectionRoute();
         this.isPeerAndroid = RustDeskNapi.isPeerAndroid();
         this.canSendCtrlAltDel = ConnectionService.canSendCtrlAltDel();
+        const nextPrivacyState: number = RustDeskNapi.getPrivacyModeState();
+        if (nextPrivacyState === -2 && this.privacyModeState !== -2) {
+          this.showFileToast('隐私屏未启用：被控端不支持、未授权或启用失败');
+        }
+        this.privacyModeState = nextPrivacyState;
       }
       if (status === ConnectionStatus.CONNECTED) {
         if (!this.fileOnly) this.ensureClipboardSyncRunning();
@@ -698,6 +710,7 @@ struct RemotePage {
       if (status !== ConnectionStatus.CONNECTED) {
         this.displayStateInitialized = false;
         this.isPeerAndroid = false;
+        this.privacyModeState = 0;
         this.canSendCtrlAltDel = false;
         this.showMobileActions = false;
         this.hasVideo = false;
@@ -727,8 +740,6 @@ struct RemotePage {
     this.componentWidth = newValue.width as number;
     this.componentHeight = newValue.height as number;
     if (this.lastSurfaceWidth <= 0 || this.lastSurfaceHeight <= 0) {
-      this.lastSurfaceWidth = this.componentWidth;
-      this.lastSurfaceHeight = this.componentHeight;
       this.bindSurfaceIfReady();
       return;
     }
@@ -1576,15 +1587,22 @@ struct RemotePage {
 
   @Builder
   buildRemoteScreen() {
-    if (this.isFullScreen) {
+      // Keep the viewport and XComponent in one stable branch. Only the
+      // toolbar siblings change when entering/exiting immersive mode.
       Stack({ alignContent: Alignment.Bottom }) {
+        Row() {
         Column() {
           this.buildRemoteViewportWithQualityMonitor();
         }
-        .width('100%')
+        .layoutWeight(1)
         .height('100%')
+        if (!this.isFullScreen && this.isLargeLayout() && !this.isHandheldDevice()) {
+          this.buildSideToolbar();
+        }
+        }
+        .width('100%').height('100%')
 
-        if (!this.isHandheldDevice()) {
+        if (this.isFullScreen && !this.isHandheldDevice()) {
         Row({ space: 8 }) {
           if (this.isPeerAndroid) {
             Button('手机操作')
@@ -1647,7 +1665,7 @@ struct RemotePage {
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
             }
           }
-          Button('退出全屏')
+          Button(this.fullscreenTransitioning ? '切换中…' : '退出全屏')
             .width(88)
             .height(36)
             .fontSize(12)
@@ -1658,6 +1676,7 @@ struct RemotePage {
             .onClick(() => {
               this.exitFullScreen();
             })
+            .enabled(!this.fullscreenTransitioning)
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 18, ButtonType.Capsule))
         }
         .position({
@@ -1673,26 +1692,7 @@ struct RemotePage {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#090D14');
-    } else if (this.isLargeLayout() && !this.isHandheldDevice()) {
-      Row() {
-        Column() {
-          this.buildRemoteViewportWithQualityMonitor();
-        }
-        .layoutWeight(1)
-        .height('100%')
-
-        this.buildSideToolbar();
-      }
-      .width('100%').height('100%')
-      .backgroundColor(this.isDarkMode ? RustDeskTheme.BG_DARK : '#DCE5F2');
-    } else {
-      Column() {
-        this.buildRemoteViewportWithQualityMonitor();
-      }
-      .width('100%').height('100%')
-      .backgroundColor(this.isDarkMode ? RustDeskTheme.BG_DARK : '#DCE5F2');
-    }
+      .backgroundColor(this.isFullScreen ? '#090D14' : (this.isDarkMode ? RustDeskTheme.BG_DARK : '#DCE5F2'));
   }
 
   @Builder
@@ -2353,6 +2353,12 @@ struct RemotePage {
     } else if (item === 'clipboard') {
       this.buildToolbarButton(this.clipboardSyncEnabled ? '剪贴板开' : '剪贴板关', vertical ? 80 : 82,
         this.clipboardSyncEnabled, false, true, () => { this.toggleClipboardSync(); }, item)
+    } else if (item === 'privacy' && !this.isPeerAndroid) {
+      this.buildToolbarButton(this.privacyModeState === 2 ? '关闭隐私屏' :
+        (this.privacyModeState === 1 ? '隐私屏处理中' : '隐私屏'), vertical ? 80 : 96,
+        this.privacyModeState === 2, false, this.privacyModeState !== 1, () => {
+          this.togglePrivacyMode();
+        }, item)
     } else if (item === 'zoomIn') {
       this.buildToolbarButton('+', vertical ? 80 : 40, false, false, true, () => {
         this.adjustZoom(0.25);
@@ -2362,10 +2368,7 @@ struct RemotePage {
         this.adjustZoom(-0.25);
       }, item)
     } else if (item === 'fullscreen') {
-      this.buildToolbarButton(this.isFullScreen ? '退出全屏' : '全屏', vertical ? 80 : 68,
-        this.isFullScreen, false, true, () => {
-        if (this.isFullScreen) this.exitFullScreen(); else this.enterFullScreen();
-      }, item)
+      this.buildFullscreenButton(vertical ? 80 : 68, item)
     } else if (item === 'orientation' && this.isHandheldDevice()) {
       this.buildToolbarButton(this.remoteLandscapeLocked ? '自动旋转' : '横屏', 88,
         this.remoteLandscapeLocked, false, true, () => {
@@ -2420,6 +2423,7 @@ struct RemotePage {
       case 'upload': return '发送文件';
       case 'download': return '取回文件';
       case 'clipboard': return '剪贴板';
+      case 'privacy': return '隐私屏';
       case 'recording': return '开始 / 停止录像';
       case 'uploadFolder': return '发送整个文件夹';
       case 'recordings': return '录像列表';
@@ -2724,15 +2728,17 @@ struct RemotePage {
         this.buildToolbarButton(this.clipboardSyncEnabled ? '剪贴板开' : '剪贴板关', 80, this.clipboardSyncEnabled, false, true, () => {
           this.toggleClipboardSync();
         })
+        if (!this.isPeerAndroid) {
+          this.buildToolbarButton(this.privacyModeState === 2 ? '关闭隐私屏' : '隐私屏', 80,
+            this.privacyModeState === 2, false, this.privacyModeState !== 1, () => { this.togglePrivacyMode(); })
+        }
         this.buildToolbarButton('+', 80, false, false, true, () => {
           this.adjustZoom(0.25);
         })
         this.buildToolbarButton('-', 80, false, false, true, () => {
           this.adjustZoom(-0.25);
         })
-        this.buildToolbarButton('全屏', 80, false, false, true, () => {
-          this.enterFullScreen();
-        })
+        this.buildFullscreenButton(80)
         this.buildToolbarButton('断开', 80, false, true, true, () => {
           this.disconnectSession();
         })
@@ -2753,6 +2759,30 @@ struct RemotePage {
     .onHover((isHovering: boolean) => {
       this.handleNonRemoteHover(isHovering);
     });
+  }
+
+  @Builder
+  buildFullscreenButton(buttonWidth: number, orderKey: string = '') {
+    // Read state in the Button observer, not through @Builder value parameters.
+    Button(this.fullscreenTransitioning ? '切换中…' : (this.isFullScreen ? '退出全屏' : '全屏'))
+      .width(buttonWidth)
+      .height(40)
+      .padding({ left: 2, right: 2 })
+      .fontSize(12)
+      .fontWeight(this.isFullScreen ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
+      .fontColor(this.isFullScreen ? this.controlSelectedTextColor() : this.primaryTextColor())
+      .backgroundColor(this.isFullScreen ? this.controlSelectedBackgroundColor() : this.mutedSurfaceColor())
+      .border({ width: 1, color: this.isFullScreen ? this.controlSelectedBorderColor() : this.themeBorderColor() })
+      .borderRadius(8)
+      .enabled(!this.fullscreenTransitioning)
+      .opacity(this.fullscreenTransitioning ? 0.6 : 1)
+      .gesture(LongPressGesture({ repeat: false, duration: 550 }).onAction(() => {
+        if (orderKey.length > 0) this.openToolbarOrderEditor('control', orderKey);
+      }))
+      .onClick(() => {
+        if (this.isFullScreen) this.exitFullScreen(); else this.enterFullScreen();
+      })
+      .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
   }
 
   @Builder
@@ -2959,10 +2989,16 @@ struct RemotePage {
     this.virtualMouseX = this.clampVirtualMouseX(this.virtualMouseDragStartX + offsetX);
     this.virtualMouseY = this.clampVirtualMouseY(this.virtualMouseDragStartY + offsetY);
     if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) return;
-    const remotePoint: RemotePoint = this.relativeMouseEnabled ?
-      this.updatePointerFromDelta(deltaX, deltaY) : this.updatePointerFromVirtualMouse();
+    const follow: boolean = this.shouldFollowTouchMouse();
+    const remotePoint: RemotePoint = follow ? this.updateCenterFollowPointer(deltaX, deltaY, 1) :
+      (this.relativeMouseEnabled ? this.updatePointerFromDelta(deltaX, deltaY) : this.updatePointerFromVirtualMouse());
+    if (follow) {
+      this.alignVirtualMouseToRemotePosition(remotePoint.x, remotePoint.y);
+      this.virtualMouseDragStartX = this.virtualMouseX - offsetX;
+      this.virtualMouseDragStartY = this.virtualMouseY - offsetY;
+    }
     ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 0);
-    this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, true);
+    if (!follow) this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, true);
   }
 
   finishVirtualMouseMove(): void {
@@ -3331,13 +3367,13 @@ struct RemotePage {
 
         Row() {
           Column({ space: 3 }) {
-            Text('边缘自动平移')
+            Text('鼠标画面跟随')
               .fontSize(14)
               .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
               .fontColor(this.primaryTextColor())
               .width('100%')
             Text(this.inputMode === INPUT_MODE_MOUSE ?
-              '画面超出可视区域时，鼠标靠近边缘即可平滑跟随；越靠近边缘移动越快' : '仅在鼠标模式下生效')
+              '放大后，手指移动鼠标到可视区域中心附近，画面即随手势平移，停手即停；实体鼠标仍在边缘停留后自动平移' : '仅在鼠标模式下生效')
               .fontSize(11)
               .fontColor(this.secondaryTextColor())
               .width('100%')
@@ -3354,7 +3390,7 @@ struct RemotePage {
         .padding({ left: 2, right: 2, top: 2, bottom: 2 })
 
         if (this.inputMode === INPUT_MODE_MOUSE) {
-          Text('适合控制电脑：\n• 单指滑动：移动鼠标\n• 单击：左键\n• 轻点一次，第二次按住并移动：拖拽，松手结束\n• 长按或双指轻点：右键\n• 双指平行滑动：滚动\n• 双指捏合：缩放画面\n• 虚拟鼠标：左右键、中键和滚轮与实体鼠标一致，按住鼠标拖动区即可移动远端指针\n• 虚拟鼠标开启且画面放大后：单指拖动画面其他区域直接平移视野\n• 边缘跟随开启后：画面超出可视区域时，鼠标靠近边缘会自动平移，越靠边越快\n• 全屏三指上滑：调出系统键盘，输入直达远端')
+          Text('适合控制电脑：\n• 单指滑动：移动鼠标\n• 单击：左键\n• 轻点一次，第二次按住并移动：拖拽，松手结束\n• 长按或双指轻点：右键\n• 双指平行滑动：滚动\n• 双指捏合：缩放画面\n• 虚拟鼠标：左右键、中键和滚轮与实体鼠标一致，按住鼠标拖动区即可移动远端指针\n• 虚拟鼠标开启且画面放大后：单指拖动画面其他区域直接平移视野\n• 边缘跟随开启后：手机/平板放大画面，手指移动鼠标到可视区域中心附近，视野立即跟随；停手即停，抬手再滑无需等待\n• 虚拟鼠标拖动区同样支持中心跟随；到达远端桌面边界后，鼠标继续移动\n• 实体鼠标：靠近画面边缘并短暂停留后自动平移，越靠边越快\n• 全屏三指上滑：调出系统键盘，输入直达远端')
             .fontSize(14)
             .lineHeight(24)
             .fontColor(this.secondaryTextColor())
@@ -4054,40 +4090,57 @@ struct RemotePage {
   }
 
   enterFullScreen(): void {
-    if (this.isFullScreen) {
-      return;
-    }
+    if (this.isFullScreen || this.fullscreenTransitioning) return;
     this.showKeyboardPanel = false;
     this.restoreKeyboardAvoidMode();
     this.showGestureHelp = false;
-    this.isFullScreen = true;
-    this.applyFullscreenWindow(true);
-    this.scheduleSurfaceRebindIfSizeChanged();
+    this.requestFullscreen(true);
   }
 
   exitFullScreen(): void {
-    if (!this.isFullScreen) {
-      return;
-    }
+    if (!this.isFullScreen || this.fullscreenTransitioning) return;
     this.closeRemoteKeyboard();
-    this.isFullScreen = false;
-    this.applyFullscreenWindow(false);
-    this.scheduleSurfaceRebindIfSizeChanged();
+    this.requestFullscreen(false);
   }
 
-  applyFullscreenWindow(enabled: boolean): void {
-    try {
-      let context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      window.getLastWindow(context).then((mainWindow: window.Window) => {
-        let bars: Array<'status' | 'navigation'> = enabled ? [] : ['status', 'navigation'];
-        mainWindow.setWindowLayoutFullScreen(enabled).catch((_e: BusinessError) => {
-        });
-        mainWindow.setWindowSystemBarEnable(bars).catch((_e: BusinessError) => {
-        });
-      }).catch((_e: BusinessError) => {
-      });
-    } catch (_e) {
-    }
+  requestFullscreen(enabled: boolean): void {
+    if (this.fullscreenTransitioning || !this.remotePageVisible || this.isLeavingAfterDisconnect ||
+      this.isFullScreen === enabled) return;
+    const previous = this.isFullScreen;
+    const requestId = ++this.fullscreenRequestId;
+    const started = Date.now();
+    this.fullscreenTransitioning = true;
+    this.isFullScreen = enabled;
+    RustDeskNapi.appendDiagnosticLog('fullscreen',
+      `switch_requested id=${requestId} from=${previous} to=${enabled} viewport=${Math.round(this.componentWidth)}x${Math.round(this.componentHeight)}`);
+    RemoteFullscreenPolicy.apply(enabled).then(() => {
+      if (requestId !== this.fullscreenRequestId || !this.remotePageVisible || this.isLeavingAfterDisconnect) return;
+      RustDeskNapi.appendDiagnosticLog('fullscreen',
+        `switch_completed id=${requestId} enabled=${enabled} elapsed_ms=${Date.now() - started} surface=${Math.round(this.getDisplayWidth())}x${Math.round(this.getDisplayHeight())}`);
+      this.scheduleSurfaceRebindIfSizeChanged();
+    }).catch((error: BusinessError) => {
+      if (requestId !== this.fullscreenRequestId || !this.remotePageVisible || this.isLeavingAfterDisconnect) return;
+      this.isFullScreen = previous;
+      RustDeskNapi.appendDiagnosticLog('fullscreen',
+        `switch_failed id=${requestId} restored=${previous} code=${error.code ?? -1} elapsed_ms=${Date.now() - started}`);
+      this.showFileToast('全屏切换失败，请稍后重试');
+    }).finally(() => {
+      if (requestId === this.fullscreenRequestId) this.fullscreenTransitioning = false;
+    });
+  }
+
+  restoreFullscreenOnLeave(): void {
+    if (!this.isFullScreen && !this.fullscreenTransitioning) return;
+    ++this.fullscreenRequestId;
+    this.isFullScreen = false;
+    this.fullscreenTransitioning = false;
+    RustDeskNapi.appendDiagnosticLog('fullscreen', 'leave_restore_requested');
+    // Queued after any in-flight operation. Never roll cleanup back to fullscreen.
+    RemoteFullscreenPolicy.apply(false, false).then(() => {
+      RustDeskNapi.appendDiagnosticLog('fullscreen', 'leave_restore_completed');
+    }).catch((error: BusinessError) => {
+      RustDeskNapi.appendDiagnosticLog('fullscreen', `leave_restore_failed code=${error.code ?? -1}`);
+    });
   }
 
   @Builder
@@ -4317,6 +4370,19 @@ struct RemotePage {
       'remote-keyboard-toolbar-order', KEYBOARD_TOOLBAR_DEFAULT_ORDER);
     this.keyboardMoreOrder = this.readToolbarOrder(
       'remote-keyboard-more-order', KEYBOARD_MORE_DEFAULT_ORDER);
+  }
+
+  togglePrivacyMode(): void {
+    const enable: boolean = this.privacyModeState !== 2;
+    const result: number = RustDeskNapi.setPrivacyMode(enable);
+    RustDeskNapi.appendDiagnosticLog('remote-security',
+      `privacy_user_toggle on=${enable} result=${result}`);
+    if (result === 0) {
+      this.privacyModeState = 1;
+    } else {
+      this.showFileToast(result === -3 ? '请先切换到屏1再开启隐私屏' :
+        (result === -2 ? '被控端不支持或未允许隐私屏' : '隐私屏切换失败'));
+    }
   }
 
   readToolbarOrder(optionKey: string, defaults: string[]): string[] {
@@ -4557,9 +4623,9 @@ struct RemotePage {
       }
     }
 
-    if (Date.now() - this.lastPinchEndedAt < 90) {
-      return;
-    }
+    // touchSequenceDraining/ignoreTouchUntilNextDown already reject leftover
+    // pinch fingers. A genuinely new Down must initialize even immediately
+    // after a pinch; swallowing it leaves pan inactive for the entire stroke.
 
     // RustDesk-style virtual mouse owns pointer movement. Once the canvas is
     // enlarged, a one-finger drag anywhere outside the mouse pans the canvas.
@@ -4618,8 +4684,24 @@ struct RemotePage {
     event.stopPropagation();
   }
 
+  touchGesturePoint(touch: TouchObject): RemotePoint {
+    // Gesture distances/thresholds belong to the fixed window, not the
+    // transformed input component. Absolute remote hit testing still uses x/y.
+    if (Number.isFinite(touch.windowX) && Number.isFinite(touch.windowY)) {
+      return { x: touch.windowX, y: touch.windowY };
+    }
+    const centerX: number = this.componentWidth / 2;
+    const centerY: number = this.componentHeight / 2;
+    const baseX: number = touch.x + (this.inputMode === INPUT_MODE_MOUSE ? 0 : this.getDisplayLeft());
+    const baseY: number = touch.y + (this.inputMode === INPUT_MODE_MOUSE ? 0 : this.getDisplayTop());
+    return {
+      x: centerX + (baseX - centerX) * this.zoomScale + this.offsetX,
+      y: centerY + (baseY - centerY) * this.zoomScale + this.offsetY
+    };
+  }
+
   handleTouchpadTouch(event: TouchEvent): void {
-    let touch = event.touches[0];
+    const touch = this.touchGesturePoint(event.touches[0]);
 
     if (event.type === TouchType.Down) {
       this.edgePanTouchActive = true;
@@ -4635,7 +4717,8 @@ struct RemotePage {
       const secondTap: boolean = this.isSecondTapNear(touch.x, touch.y);
       this.touchpadDragCandidate = secondTap;
       RustDeskNapi.appendDiagnosticLog('input',
-        `touchpad_down second_tap=${secondTap ? 1 : 0} pending=${this.tapTimer !== -1 ? 1 : 0}`);
+        `touchpad_down second_tap=${secondTap ? 1 : 0} pending=${this.tapTimer !== -1 ? 1 : 0} ` +
+        `zoom=${this.zoomScale.toFixed(2)} distance_space=window_vp`);
       if (secondTap) {
         this.clearTapTimer();
       } else {
@@ -4659,8 +4742,12 @@ struct RemotePage {
       let deltaY: number = touch.y - this.lastTouchY;
       this.lastTouchX = touch.x;
       this.lastTouchY = touch.y;
-      let remotePoint: RemotePoint = this.updatePointerFromDelta(deltaX, deltaY);
-      this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, true);
+      const follow: boolean = this.shouldFollowTouchMouse();
+      let remotePoint: RemotePoint = follow ?
+        this.updateCenterFollowPointer(deltaX, deltaY, TOUCHPAD_POINTER_SPEED) :
+        this.updatePointerFromDelta(deltaX / Math.max(0.01, this.zoomScale),
+          deltaY / Math.max(0.01, this.zoomScale));
+      if (!follow) this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, true);
       let now: number = Date.now();
       if (now - this.lastMoveSentAt > 16) {
         this.lastMoveSentAt = now;
@@ -4674,8 +4761,9 @@ struct RemotePage {
   }
 
   handleDirectTouch(event: TouchEvent): void {
-    let touch = event.touches[0];
-    let remotePoint: RemotePoint = this.updatePointerFromLocal(touch.x, touch.y);
+    const localTouch = event.touches[0];
+    const touch = this.touchGesturePoint(localTouch);
+    let remotePoint: RemotePoint = this.updatePointerFromLocal(localTouch.x, localTouch.y);
 
     if (event.type === TouchType.Down) {
       this.beginLocalPointerGesture();
@@ -4726,6 +4814,11 @@ struct RemotePage {
     this.edgePanTouchActive = false;
     this.stopEdgeAutoPan();
     this.clearLongPressTimer();
+    if (!cancelled && this.touchMoved && this.shouldFollowTouchMouse()) {
+      // Flush the final sample that may have fallen inside the move throttle.
+      // The peer cursor must end at the same point as our followed viewport.
+      ConnectionService.sendMouseEvent(this.lastAbsX, this.lastAbsY, 0);
+    }
     if (this.leftButtonHeld) {
       this.sendLeftUp(this.lastAbsX, this.lastAbsY);
     } else if (wasDragCandidate && !cancelled && !this.longPressTriggered && !this.touchMoved) {
@@ -5159,6 +5252,37 @@ struct RemotePage {
     return { x: this.lastAbsX, y: this.lastAbsY };
   }
 
+  shouldFollowTouchMouse(): boolean {
+    return this.isHandheldDevice() && this.edgeAutoPanEnabled && this.inputMode === INPUT_MODE_MOUSE &&
+      !this.relativeMouseEnabled && !this.isPanMode && !this.showKeyboardPanel &&
+      this.connectionStatus === ConnectionStatus.CONNECTED && this.canPanViewport() &&
+      this.componentWidth > 0 && this.componentHeight > 0 && this.remoteWidth > 0 && this.remoteHeight > 0;
+  }
+
+  updateCenterFollowPointer(deltaX: number, deltaY: number, gain: number): RemotePoint {
+    // No dwell, inertia or timer-generated mouse packets on the touch path.
+    this.stopEdgeAutoPan();
+    this.markLocalPointerInput();
+    this.ensurePointerInitialized();
+    const origin: RemotePoint = this.remotePointToVisual(0, 0);
+    const scaleX: number = this.getDisplayWidth() * this.zoomScale / this.remoteWidth;
+    const scaleY: number = this.getDisplayHeight() * this.zoomScale / this.remoteHeight;
+    const x = followTouchMouseAxis(this.lastAbsX, deltaX * gain, scaleX, this.remoteWidth,
+      this.componentWidth, origin.x, this.offsetX, this.getHorizontalPanLimit(this.zoomScale));
+    const y = followTouchMouseAxis(this.lastAbsY, deltaY * gain, scaleY, this.remoteHeight,
+      this.componentHeight, origin.y, this.offsetY, this.getVerticalPanLimit(this.zoomScale));
+    // Pointer and viewport are updated in the same input callback; do not
+    // request a video refresh or feed viewport motion back as extra input.
+    this.offsetX = x.offset;
+    this.offsetY = y.offset;
+    this.lastAbsX = x.pointer;
+    this.lastAbsY = y.pointer;
+    this.remoteCursorAbsX = x.pointer;
+    this.remoteCursorAbsY = y.pointer;
+    this.updateCursorOverlayFromPosition(x.pointer, y.pointer);
+    return { x: x.pointer, y: y.pointer };
+  }
+
   updateCursorOverlayFromRemote(): void {
     this.updateCursorOverlayFromPosition(this.lastAbsX, this.lastAbsY);
   }
@@ -5427,8 +5551,8 @@ struct RemotePage {
   }
 
   handleMultiTouch(event: TouchEvent): void {
-    let first = event.touches[0];
-    let second = event.touches[1];
+    const first = this.touchGesturePoint(event.touches[0]);
+    const second = this.touchGesturePoint(event.touches[1]);
     let dx: number = first.x - second.x;
     let dy: number = first.y - second.y;
     let distance: number = Math.sqrt(dx * dx + dy * dy);
@@ -5449,7 +5573,8 @@ struct RemotePage {
       this.multiTouchLastCenterX = centerX;
       this.multiTouchLastCenterY = centerY;
       this.multiTouchMoved = false;
-      RustDeskNapi.appendDiagnosticLog('gesture', `multi_begin fingers=${this.touchSequenceMaxFingers}`);
+      RustDeskNapi.appendDiagnosticLog('gesture',
+        `multi_begin fingers=${this.touchSequenceMaxFingers} zoom=${this.zoomScale.toFixed(2)} distance_space=window_vp`);
       this.clearLongPressTimer();
       this.flushPendingTap();
       this.sendLeftUp(this.lastAbsX, this.lastAbsY);
@@ -5459,7 +5584,9 @@ struct RemotePage {
       this.lastPinchCenterY = centerY;
       this.lastPinchUpdateAt = Date.now();
       if (this.inputMode === INPUT_MODE_TOUCH) {
-        let remotePoint: RemotePoint = this.updatePointerFromLocal(centerX, centerY);
+        let remotePoint: RemotePoint = this.updatePointerFromLocal(
+          (event.touches[0].x + event.touches[1].x) / 2,
+          (event.touches[0].y + event.touches[1].y) / 2);
         this.multiTouchRemoteX = remotePoint.x;
         this.multiTouchRemoteY = remotePoint.y;
       } else {
@@ -5502,8 +5629,12 @@ struct RemotePage {
       if (this.multiTouchGesture === 2 && this.pinchStartDistance > 0) {
         let nextScale: number = Math.max(0.5,
           Math.min(5.0, this.pinchStartScale * distance / this.pinchStartDistance));
-        let displayLocalX: number = this.inputMode === INPUT_MODE_MOUSE ? centerX - this.getDisplayLeft() : centerX;
-        let displayLocalY: number = this.inputMode === INPUT_MODE_MOUSE ? centerY - this.getDisplayTop() : centerY;
+        // Anchor the previous centroid, then translate by the real window
+        // movement. Local coordinates are used only for this inverse mapping.
+        const localCenterX: number = (event.touches[0].x + event.touches[1].x) / 2 - deltaX / this.zoomScale;
+        const localCenterY: number = (event.touches[0].y + event.touches[1].y) / 2 - deltaY / this.zoomScale;
+        let displayLocalX: number = this.inputMode === INPUT_MODE_MOUSE ? localCenterX - this.getDisplayLeft() : localCenterX;
+        let displayLocalY: number = this.inputMode === INPUT_MODE_MOUSE ? localCenterY - this.getDisplayTop() : localCenterY;
         this.applyPinchTransform(displayLocalX, displayLocalY, nextScale, deltaX, deltaY);
       } else if (this.multiTouchGesture === 1) {
         this.sendTouchScroll(deltaX, deltaY);
@@ -5775,7 +5906,7 @@ struct RemotePage {
       this.finishViewportPan();
       return;
     }
-    let touch = event.touches[0];
+    const touch = this.touchGesturePoint(event.touches[0]);
     if (event.type === TouchType.Down) {
       this.clearLongPressTimer();
       this.clearTapTimer();
@@ -5784,6 +5915,8 @@ struct RemotePage {
       this.discardViewportPanFrame();
       this.viewportPanLastX = touch.x;
       this.viewportPanLastY = touch.y;
+      RustDeskNapi.appendDiagnosticLog('gesture',
+        `viewport_pan_begin zoom=${this.zoomScale.toFixed(2)} gain=${VIEWPORT_PAN_SPEED} distance_space=window_vp`);
       return;
     }
     if (event.type === TouchType.Move && this.viewportPanActive) {
@@ -6378,8 +6511,9 @@ struct RemotePage {
     let centerX: number = 0;
     let centerY: number = 0;
     for (let index: number = 0; index < count; index++) {
-      centerX += event.touches[index].x;
-      centerY += event.touches[index].y;
+      const point = this.touchGesturePoint(event.touches[index]);
+      centerX += point.x;
+      centerY += point.y;
     }
     centerX /= Math.max(1, count);
     centerY /= Math.max(1, count);
@@ -7412,10 +7546,7 @@ struct RemotePage {
     this.stopEdgeAutoPan();
     this.releaseHeldMouseButtons('disconnect');
     ConnectionService.releaseModifiers();
-    if (this.isFullScreen) {
-      this.isFullScreen = false;
-      this.applyFullscreenWindow(false);
-    }
+    this.restoreFullscreenOnLeave();
     if (this.statusTimer !== -1) {
       clearTimeout(this.statusTimer);
       this.statusTimer = -1;
@@ -7615,9 +7746,24 @@ struct RemotePage {
       }
     }
     if (this.surfaceId.length > 0) {
-      RustDeskNapi.setSurfaceId(this.surfaceId);
-      this.lastSurfaceWidth = this.componentWidth;
-      this.lastSurfaceHeight = this.componentHeight;
+      if (this.lastBoundSurfaceId.length > 0 && this.surfaceId !== this.lastBoundSurfaceId) {
+        // A genuinely new XComponent target must also redirect hardware output.
+        // Do not overwrite the previous target/size before the safe rebind.
+        this.scheduleSurfaceRebindIfSizeChanged(true);
+        return;
+      }
+      if (this.surfaceRebindTimer !== -1) return;
+      const result = RustDeskNapi.setSurfaceId(this.surfaceId);
+      if (result !== 0) {
+        RustDeskNapi.appendDiagnosticLog('surface', `bind_failed result=${result}`);
+        return;
+      }
+      if (this.lastBoundSurfaceId !== this.surfaceId || this.lastSurfaceWidth <= 0 || this.lastSurfaceHeight <= 0) {
+        this.lastSurfaceWidth = this.getDisplayWidth();
+        this.lastSurfaceHeight = this.getDisplayHeight();
+        this.lastBoundSurfaceId = this.surfaceId;
+      }
+      this.scheduleSurfaceRebindIfSizeChanged();
       this.requestVideoRefreshAfterSurfaceRebind();
     }
   }
@@ -7626,16 +7772,31 @@ struct RemotePage {
     if (this.componentWidth <= 0 || this.componentHeight <= 0 || this.connectionStatus !== ConnectionStatus.CONNECTED) {
       return;
     }
-    let widthDelta: number = Math.abs(this.componentWidth - this.lastSurfaceWidth);
-    let heightDelta: number = Math.abs(this.componentHeight - this.lastSurfaceHeight);
-    if (!force && this.lastSurfaceWidth > 0 && this.lastSurfaceHeight > 0 && widthDelta < 24 && heightDelta < 24) {
+    // Letterbox/container changes are not surface changes. For example,
+    // 1318x800 -> 1318x866 still displays 16:9 video at 1318x741.375.
+    const width = this.getDisplayWidth();
+    const height = this.getDisplayHeight();
+    const currentSurfaceId = this.readCurrentSurfaceId();
+    if (currentSurfaceId.length === 0 || this.lastBoundSurfaceId.length === 0) return;
+    const targetChanged = currentSurfaceId !== this.lastBoundSurfaceId;
+    const sizeChanged = Math.abs(width - this.lastSurfaceWidth) > 1 || Math.abs(height - this.lastSurfaceHeight) > 1;
+    const viewportChanged = Math.abs(this.componentWidth - this.lastLayoutViewportWidth) > 1 ||
+      Math.abs(this.componentHeight - this.lastLayoutViewportHeight) > 1;
+    this.lastLayoutViewportWidth = this.componentWidth;
+    this.lastLayoutViewportHeight = this.componentHeight;
+    if (!force && !targetChanged && !sizeChanged) {
+      if (viewportChanged) {
+        RustDeskNapi.appendDiagnosticLog('surface',
+          `layout_reused reason=viewport_only viewport=${Math.round(this.componentWidth)}x${Math.round(this.componentHeight)} surface=${Math.round(width)}x${Math.round(height)}`);
+      }
       return;
     }
+    this.surfaceRebindForced = this.surfaceRebindForced || force;
     if (this.surfaceRebindTimer !== -1) {
       clearTimeout(this.surfaceRebindTimer);
     } else {
       RustDeskNapi.appendDiagnosticLog('surface',
-        `layout_change_prepare width=${Math.round(this.componentWidth)} height=${Math.round(this.componentHeight)} force=${force}`)
+        `layout_change_prepare viewport=${Math.round(this.componentWidth)}x${Math.round(this.componentHeight)} surface=${Math.round(width)}x${Math.round(height)} target_changed=${targetChanged} force=${force}`)
       RustDeskNapi.prepareSurfaceRebind();
     }
     this.surfaceRebindTimer = setTimeout(() => {
@@ -7645,28 +7806,45 @@ struct RemotePage {
   }
 
   rebindSurfaceAfterLayoutChange(): void {
+    const force = this.surfaceRebindForced;
+    this.surfaceRebindForced = false;
     if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.componentWidth <= 0 || this.componentHeight <= 0) {
       return;
     }
-    let reboundSurfaceId: string = this.surfaceId;
-    try {
-      let currentSurfaceId: string = this.xComponentController.getXComponentSurfaceId();
-      if (currentSurfaceId.length > 0) {
-        reboundSurfaceId = currentSurfaceId;
-      }
-    } catch (_e) {
-      RustDeskNapi.appendDiagnosticLog('surface', 'layout_rebind_using_cached_surface_id')
-    }
+    const reboundSurfaceId = this.readCurrentSurfaceId();
     if (reboundSurfaceId.length <= 0) {
       RustDeskNapi.appendDiagnosticLog('surface', 'layout_rebind_empty_surface_id')
       RustDeskNapi.setSurfaceId('');
       return;
     }
+    const width = this.getDisplayWidth();
+    const height = this.getDisplayHeight();
+    // A rapid resize can settle back to the original target while the render
+    // writer is paused. Resume it without destroying the decoder/native window.
+    if (!force && reboundSurfaceId === this.lastBoundSurfaceId &&
+      Math.abs(width - this.lastSurfaceWidth) <= 1 && Math.abs(height - this.lastSurfaceHeight) <= 1) {
+      const result = RustDeskNapi.setSurfaceId(reboundSurfaceId);
+      RustDeskNapi.appendDiagnosticLog('surface', `layout_reused reason=settled_original result=${result}`);
+      return;
+    }
     this.surfaceId = reboundSurfaceId;
-    RustDeskNapi.rebindSurface(reboundSurfaceId);
-    this.lastSurfaceWidth = this.componentWidth;
-    this.lastSurfaceHeight = this.componentHeight;
+    const result = RustDeskNapi.rebindSurface(reboundSurfaceId);
+    RustDeskNapi.appendDiagnosticLog('surface',
+      `layout_rebind_completed result=${result} surface=${Math.round(width)}x${Math.round(height)} force=${force}`);
+    if (result === 0) {
+      this.lastBoundSurfaceId = reboundSurfaceId;
+      this.lastSurfaceWidth = width;
+      this.lastSurfaceHeight = height;
+    }
     this.requestVideoRefreshAfterSurfaceRebind();
+  }
+
+  readCurrentSurfaceId(): string {
+    try {
+      const current = this.xComponentController.getXComponentSurfaceId();
+      if (current.length > 0) return current;
+    } catch (_e) {}
+    return this.surfaceId;
   }
 
   requestVideoRefreshAfterSurfaceRebind(): void {

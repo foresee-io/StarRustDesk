@@ -275,6 +275,10 @@ void VideoRender::setSurfaceId(const std::string& surfaceId) {
         surfaceId_ = surfaceId;
     }
     if (unchanged && XComponentRender::instance().window() != nullptr) {
+        // A coalesced resize may settle back to its original surface. Resume
+        // the paused CPU writer via the same-target fast path (no window or
+        // decoder recreation), before flushing pending frames.
+        XComponentRender::instance().setSurface(surfaceId);
         flushPendingFramesAsync();
         return;
     }

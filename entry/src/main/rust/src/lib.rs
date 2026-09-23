@@ -35,7 +35,7 @@ use hbb_common::message_proto::{
     FileAction, FileTransfer, FileTransferCancel, FileTransferSendConfirmRequest, Hash, IdPk,
     KeyEvent, KeyboardMode, LoginRequest, Message as PeerMessage, Misc, MouseEvent,
     OSLogin, OptionMessage, PublicKey, ReadDir, SupportedDecoding, SwitchDisplay, TestDelay,
-    VideoFrame,
+    TogglePrivacyMode, VideoFrame,
 };
 use hbb_common::protobuf::MessageField;
 use hbb_common::rendezvous_proto::{
@@ -87,6 +87,15 @@ static CURRENT_PEER_PLATFORM: Mutex<String> = Mutex::new(String::new());
 static PEER_IS_ONE_KVM: AtomicBool = AtomicBool::new(false);
 static PEER_IS_WAYLAND: AtomicBool = AtomicBool::new(false);
 static FILE_ONLY_SESSION: AtomicBool = AtomicBool::new(false);
+static LOCK_AFTER_DISCONNECT: AtomicBool = AtomicBool::new(false);
+static PRIVACY_REQUESTED: AtomicBool = AtomicBool::new(false);
+static PRIVACY_REQUEST_SENT: AtomicBool = AtomicBool::new(false);
+static PRIVACY_ACTIVE: AtomicBool = AtomicBool::new(false);
+static PRIVACY_STATUS: AtomicI32 = AtomicI32::new(0);
+static PEER_PRIVACY_SUPPORTED: AtomicBool = AtomicBool::new(false);
+static PRIVACY_IMPL_KEY: Mutex<String> = Mutex::new(String::new());
+static PEER_E2EE: AtomicBool = AtomicBool::new(false);
+static AUTO_UNLOCK_SENT: AtomicBool = AtomicBool::new(false);
 // 0 = automatic, 1 = Map 1:1, 2 = Legacy. Configured before accepting local input.
 static INPUT_KEYBOARD_MODE: AtomicI32 = AtomicI32::new(0);
 static INPUT_RELATIVE_MOUSE: AtomicBool = AtomicBool::new(false);
@@ -105,6 +114,7 @@ static REMOTE_DIRECTORY_RESULT: Mutex<String> = Mutex::new(String::new());
 static FILE_TRANSFER_STATUS: Mutex<String> = Mutex::new(String::new());
 static PEER_ONLINE_RESULT: Mutex<String> = Mutex::new(String::new());
 static PEER_ONLINE_QUERY_ACTIVE: AtomicBool = AtomicBool::new(false);
+static PEER_ONLINE_QUERY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static NEXT_FILE_JOB_ID: AtomicI32 = AtomicI32::new(10_000);
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static PEER_MESSAGE_SENDER: Mutex<Option<(u64, tokio_mpsc::UnboundedSender<QueuedPeerCommand>)>> =
@@ -219,6 +229,7 @@ struct ConnectionConfig {
     key: String,
     client_hwid: Vec<u8>,
     client_id: String,
+    os_password: String,
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -450,6 +461,9 @@ pub extern "C" fn rust_connect(
     force_relay: i32,
     allow_insecure_fallback: i32,
     file_only: i32,
+    lock_after_disconnect: i32,
+    privacy_mode: i32,
+    os_password: *const c_char,
 ) -> i32 {
     if peer_id.is_null() {
         return -1;
@@ -481,6 +495,18 @@ pub extern "C" fn rust_connect(
     let _ = clear_connection_for_session(session_id);
     emit_event("previous connection cleared");
     FILE_ONLY_SESSION.store(file_only != 0, Ordering::SeqCst);
+    LOCK_AFTER_DISCONNECT.store(lock_after_disconnect != 0 && file_only == 0, Ordering::SeqCst);
+    PRIVACY_REQUESTED.store(privacy_mode != 0 && file_only == 0, Ordering::SeqCst);
+    PRIVACY_REQUEST_SENT.store(false, Ordering::SeqCst);
+    PRIVACY_ACTIVE.store(false, Ordering::SeqCst);
+    PRIVACY_STATUS.store(0, Ordering::SeqCst);
+    PEER_PRIVACY_SUPPORTED.store(false, Ordering::SeqCst);
+    if let Ok(mut key) = PRIVACY_IMPL_KEY.lock() { key.clear(); }
+    PEER_E2EE.store(false, Ordering::SeqCst);
+    AUTO_UNLOCK_SENT.store(false, Ordering::SeqCst);
+    let os_password = cstr_to_string(os_password).unwrap_or_default();
+    emit_event(&format!("remote security: requested lock={} privacy={} auto_unlock_configured={}",
+        lock_after_disconnect != 0, privacy_mode != 0, !os_password.is_empty()));
     let pass = cstr_to_string(password).unwrap_or_default();
     let rv = cstr_to_string(rendezvous_server).unwrap_or_default();
     let relay_override = cstr_to_string(relay_server).unwrap_or_default();
@@ -534,6 +560,7 @@ pub extern "C" fn rust_connect(
             key: key.clone(),
             client_hwid,
             client_id,
+            os_password,
         });
     }
     emit_event(&format!("connect start peer={peer} rendezvous={rendezvous_addr} relay_override={relay_override} key_set={}", !key.is_empty()));
@@ -555,7 +582,7 @@ pub extern "C" fn rust_connect(
         return 0;
     }
 
-    rt.block_on(async {
+    let result = rt.block_on(async {
       match await_connection_attempt(session_id, &SESSION_ID, CONNECTION_DEADLINE, async {
         if let Some(address) = direct_addr {
             // Upstream Client::_start selects the direct listener for literals,
@@ -954,13 +981,15 @@ pub extern "C" fn rust_connect(
             }
         };
 
-        if let Err(error) = secure_peer_connection(
+        let secure_result = secure_peer_connection(
             &peer,
             &signed_id_pk,
             &key,
             &mut selected.stream,
             allow_insecure_fallback != 0,
-        ).await {
+        ).await;
+        let mut peer_encrypted = secure_result.as_ref().copied().unwrap_or(false);
+        if let Err(error) = secure_result {
             if selected.stream.is_webrtc() && !relay_from_server.is_empty() {
                 emit_event(&format!("webrtc secure handshake failed: {error}; try relay"));
                 record_peer_direct_failure(&peer, now_ms());
@@ -979,16 +1008,19 @@ pub extern "C" fn rust_connect(
                         return -15;
                     }
                 };
-                if secure_peer_connection(
+                peer_encrypted = match secure_peer_connection(
                     &peer,
                     &signed_id_pk,
                     &key,
                     &mut relay,
                     allow_insecure_fallback != 0,
-                ).await.is_err() {
-                    emit_event("secure relay fallback failed");
-                    return -16;
-                }
+                ).await {
+                    Ok(encrypted) => encrypted,
+                    Err(_) => {
+                        emit_event("secure relay fallback failed");
+                        return -16;
+                    }
+                };
                 let transport = stream_transport_code(&relay);
                 selected = ConnectedTransport {
                     stream: relay,
@@ -1012,6 +1044,8 @@ pub extern "C" fn rust_connect(
             emit_event("connect session stale before store");
             return -19;
         }
+        PEER_E2EE.store(peer_encrypted, Ordering::SeqCst);
+        emit_event(&format!("remote security: e2ee={peer_encrypted}"));
         record_peer_route_success(&peer, selected.route, selected.transport, now_ms());
         selected.stream.set_send_timeout(5000);
         CONNECTION_ACTIVE.store(true, Ordering::SeqCst);
@@ -1032,7 +1066,11 @@ pub extern "C" fn rust_connect(
                 -20
             }
       }
-    })
+    });
+    if result != 0 && SESSION_ID.load(Ordering::SeqCst) == session_id {
+        if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() { *config = None; }
+    }
+    result
 }
 
 #[no_mangle]
@@ -1163,6 +1201,13 @@ pub extern "C" fn rust_disconnect() -> i32 {
     session_recording::stop();
     rust_cancel_file_operation();
     let closing_session_id = SESSION_ID.load(Ordering::SeqCst);
+    if LOCK_AFTER_DISCONNECT.load(Ordering::SeqCst) && CONNECTION_ACTIVE.load(Ordering::SeqCst) {
+        emit_event("remote security: lock_on_disconnect_requested");
+    }
+    if PRIVACY_ACTIVE.load(Ordering::SeqCst) {
+        let result = send_privacy_toggle(false);
+        emit_event(&format!("remote security: privacy_off_on_disconnect queued={}", result == 0));
+    }
     let graceful_close_completed = request_graceful_peer_close(closing_session_id);
     finish_peer_task(closing_session_id, graceful_close_completed);
     let session_id = SESSION_ID.fetch_add(1, Ordering::SeqCst) + 1;
@@ -1176,6 +1221,16 @@ pub extern "C" fn rust_disconnect() -> i32 {
     CONNECTION_DELAY_MS.store(0, Ordering::SeqCst);
     CONNECTION_TARGET_BITRATE_KB.store(0, Ordering::SeqCst);
     ALLOW_INSECURE_SESSION.store(false, Ordering::SeqCst);
+    LOCK_AFTER_DISCONNECT.store(false, Ordering::SeqCst);
+    PRIVACY_REQUESTED.store(false, Ordering::SeqCst);
+    PRIVACY_REQUEST_SENT.store(false, Ordering::SeqCst);
+    PRIVACY_ACTIVE.store(false, Ordering::SeqCst);
+    PRIVACY_STATUS.store(0, Ordering::SeqCst);
+    PEER_PRIVACY_SUPPORTED.store(false, Ordering::SeqCst);
+    if let Ok(mut key) = PRIVACY_IMPL_KEY.lock() { key.clear(); }
+    PEER_E2EE.store(false, Ordering::SeqCst);
+    AUTO_UNLOCK_SENT.store(false, Ordering::SeqCst);
+    if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() { *config = None; }
     reset_audio_async();
     reset_display_state();
     let _ = clear_connection_for_session(session_id);
@@ -2642,14 +2697,19 @@ pub extern "C" fn rust_query_peer_online_states(
 
     runtime().spawn(async move {
         let started = Instant::now();
+        let query_id = PEER_ONLINE_QUERY_SEQUENCE.fetch_add(1, Ordering::Relaxed) + 1;
+        online_query_phase(query_id, started, "begin");
         let result = match tokio::time::timeout(
             ONLINE_QUERY_DEADLINE,
-            query_peer_online_states(peers, rendezvous_addr, requester_id),
+            query_peer_online_states(peers, rendezvous_addr, requester_id, query_id, started),
         )
         .await
         {
             Ok(result) => result,
-            Err(_) => Err("online query deadline exceeded (including DNS)".to_string()),
+            Err(_) => {
+                online_query_phase(query_id, started, "deadline_including_dns");
+                Err("online query deadline exceeded (including DNS)".to_string())
+            }
         };
         let payload = match result {
             Ok(states) => {
@@ -2666,7 +2726,8 @@ pub extern "C" fn rust_query_peer_online_states(
                 }
             }
             Err(error) => {
-                emit_event(&format!("online state query failed: {error}"));
+                emit_event(&format!("online state query failed query_id={query_id} reason={}",
+                    online_query_error_kind(&error)));
                 PeerOnlineResult {
                     peers: Vec::new(),
                     error,
@@ -2680,6 +2741,7 @@ pub extern "C" fn rust_query_peer_online_states(
             }
         }
         PEER_ONLINE_QUERY_ACTIVE.store(false, Ordering::SeqCst);
+        online_query_phase(query_id, started, "finished");
     });
     0
 }
@@ -2688,6 +2750,8 @@ async fn query_peer_online_states(
     peers: Vec<String>,
     rendezvous_addr: String,
     requester_id: String,
+    query_id: u64,
+    started: Instant,
 ) -> Result<Vec<PeerOnlineState>, String> {
     // hbbs knows IDs, not IP listeners. Omit literals so callers retain an
     // unknown status instead of leaking local addresses or inventing offline.
@@ -2698,31 +2762,49 @@ async fn query_peer_online_states(
     if peers.is_empty() {
         return Ok(Vec::new());
     }
-    let mut connection = connect_transport_endpoint(
+    // Do not add a second DNS lookup just for diagnostics. Resolution and
+    // transport handshakes remain in the existing connector, under one deadline.
+    online_query_phase(query_id, started, "resolve_connect_start");
+    let endpoint_kind = match rendezvous_addr.parse::<SocketAddr>() {
+        Ok(addr) if addr.is_ipv6() => "ipv6_literal",
+        Ok(addr) => match addr.ip() {
+            std::net::IpAddr::V4(ip) if ip.is_private() || ip.is_loopback() => "ipv4_local",
+            _ => "ipv4_public",
+        },
+        Err(_) => "hostname_or_url",
+    };
+    emit_event(&format!("online query id={query_id} endpoint_kind={endpoint_kind}"));
+    let mut connection = connect_transport_endpoint_traced(
         rendezvous_addr,
         EndpointRole::Rendezvous,
         SERVER_CONNECT_TIMEOUT,
+        Some((query_id, started)),
     )
     .await
     .map_err(|error| format!("connect failed: {error}"))?;
+    online_query_phase(query_id, started, "resolve_connect_complete");
     let mut request = RendezvousMessage::new();
     request.set_online_request(OnlineRequest {
         id: requester_id,
         peers: peers.clone(),
         ..Default::default()
     });
+    online_query_phase(query_id, started, "send_start");
     connection
         .send(&request)
         .await
         .map_err(|error| format!("send failed: {error}"))?;
+    online_query_phase(query_id, started, "send_complete_wait_response");
     let response = next_rendezvous(&mut connection, RENDEZVOUS_REPLY_TIMEOUT)
         .await
         .ok_or_else(|| "response timeout".to_string())?;
+    online_query_phase(query_id, started, "response_decoded");
     let online = match response.union {
         Some(rendezvous_message::Union::OnlineResponse(value)) => value,
         _ => return Err("unexpected response".to_string()),
     };
     let states = online.states.as_ref();
+    emit_event(&format!("online query id={query_id} phase=validate_response state_bytes={} peers={}", states.len(), peers.len()));
     if states.len() < (peers.len() + 7) / 8 {
         return Err("truncated online response".to_string());
     }
@@ -2738,6 +2820,21 @@ async fn query_peer_online_states(
             }
         })
         .collect())
+}
+
+fn online_query_phase(id: u64, started: Instant, phase: &str) {
+    emit_event(&format!("online query id={id} phase={phase} elapsed_ms={}", started.elapsed().as_millis()));
+}
+
+fn online_query_error_kind(error: &str) -> &'static str {
+    let error = error.to_ascii_lowercase();
+    if error.contains("timeout") || error.contains("timed out") || error.contains("deadline") { "timeout" }
+    else if error.contains("truncated") { "truncated_response" }
+    else if error.contains("unexpected response") { "unexpected_response" }
+    else if error.contains("refused") { "connection_refused" }
+    else if error.contains("dns") || error.contains("resolve") || error.contains("lookup") { "resolution" }
+    else if error.contains("send failed") { "send" }
+    else { "transport" }
 }
 
 #[no_mangle]
@@ -2974,6 +3071,15 @@ async fn connect_transport_endpoint(
     role: EndpointRole,
     timeout_ms: u64,
 ) -> hbb_common::ResultType<Stream> {
+    connect_transport_endpoint_traced(endpoint, role, timeout_ms, None).await
+}
+
+async fn connect_transport_endpoint_traced(
+    endpoint: String,
+    role: EndpointRole,
+    timeout_ms: u64,
+    trace: Option<(u64, Instant)>,
+) -> hbb_common::ResultType<Stream> {
     let mut candidates = vec![endpoint.clone()];
     candidates.extend(websocket_fallback_candidates(&endpoint, role));
     let attempts: Vec<BoxFuture<'static, hbb_common::ResultType<(Stream, usize)>>> = candidates
@@ -2981,9 +3087,18 @@ async fn connect_transport_endpoint(
         .enumerate()
         .map(|(index, candidate)| {
             async move {
-                connect_tcp(candidate, timeout_ms)
-                    .await
-                    .map(|stream| (stream, index))
+                if let Some((id, started)) = trace {
+                    emit_event(&format!("online query id={id} phase=candidate_start candidate={index} elapsed_ms={}", started.elapsed().as_millis()));
+                }
+                let result = connect_tcp(candidate, timeout_ms).await;
+                if let Some((id, started)) = trace {
+                    let outcome = match &result {
+                        Ok(_) => "connected",
+                        Err(error) => online_query_error_kind(&error.to_string()),
+                    };
+                    emit_event(&format!("online query id={id} phase=candidate_result candidate={index} outcome={outcome} elapsed_ms={}", started.elapsed().as_millis()));
+                }
+                result.map(|stream| (stream, index))
             }
             .boxed()
         })
@@ -4145,13 +4260,13 @@ async fn secure_peer_connection(
     key: &str,
     conn: &mut Stream,
     allow_insecure_fallback: bool,
-) -> Result<(), hbb_common::anyhow::Error> {
+) -> Result<bool, hbb_common::anyhow::Error> {
     let rs_pk = get_rs_pk(if key.is_empty() { RS_PUB_KEY } else { key });
     if rs_pk.is_none() {
         if allow_insecure_fallback {
             emit_event("secure peer: invalid_server_key user_approved_insecure_once");
             conn.send(&PeerMessage::new()).await?;
-            return Ok(());
+            return Ok(false);
         }
         emit_event("secure peer: rejected reason=invalid_server_key");
         hbb_common::bail!("invalid server key");
@@ -4167,7 +4282,7 @@ async fn secure_peer_connection(
                 if allow_insecure_fallback {
                     emit_event("secure peer: rendezvous_id_mismatch user_approved_insecure_once");
                     conn.send(&PeerMessage::new()).await?;
-                    return Ok(());
+                    return Ok(false);
                 }
                 emit_event("secure peer: rejected reason=rendezvous_id_mismatch");
                 hbb_common::bail!("server key mismatch");
@@ -4178,7 +4293,7 @@ async fn secure_peer_connection(
                         "secure peer: invalid_rendezvous_signature user_approved_insecure_once",
                     );
                     conn.send(&PeerMessage::new()).await?;
-                    return Ok(());
+                    return Ok(false);
                 }
                 emit_event("secure peer: rejected reason=invalid_rendezvous_signature");
                 hbb_common::bail!("server key mismatch");
@@ -4191,7 +4306,7 @@ async fn secure_peer_connection(
         // Keep compatibility with peers that are waiting for the client's
         // first handshake message before continuing without encryption.
         conn.send(&PeerMessage::new()).await?;
-        return Ok(());
+        return Ok(false);
     };
 
     let Some(Ok(bytes)) = conn.next_timeout(READ_TIMEOUT).await else {
@@ -4233,7 +4348,7 @@ async fn secure_peer_connection(
             hbb_common::bail!("invalid peer signature");
         }
     }
-    Ok(())
+    Ok(true)
 }
 
 fn get_rs_pk(str_base64: &str) -> Option<sign::PublicKey> {
@@ -4544,6 +4659,26 @@ async fn handle_peer_bytes(
                     }
                 }
                 Some(login_response::Union::PeerInfo(info)) => {
+                    let advertised_impls = serde_json::from_str::<serde_json::Value>(&info.platform_additions).ok()
+                        .and_then(|additions| additions.get("supported_privacy_mode_impl").cloned());
+                    let privacy_impl = advertised_impls.as_ref().and_then(|value| value.as_array())
+                        .and_then(|list| list.iter().find_map(|entry| {
+                            let key = entry.as_array()?.first()?.as_str()?;
+                            if key == "privacy_mode_impl_mag" { Some(key.to_string()) } else { None }
+                        }).or_else(|| list.first().and_then(|entry| entry.as_array())
+                            .and_then(|entry| entry.first()).and_then(|key| key.as_str())
+                            .map(str::to_string)))
+                        .unwrap_or_else(|| "privacy_mode_impl_mag".to_string());
+                    if let Ok(mut key) = PRIVACY_IMPL_KEY.lock() { *key = privacy_impl; }
+                    let privacy_supported = info.features.as_ref().map(|features| features.privacy_mode).unwrap_or(false)
+                        && !info.version.trim().is_empty() && version_at_least(&info.version, [1, 2, 4])
+                        && advertised_impls.as_ref().and_then(|value| value.as_array()).map(|list| !list.is_empty()).unwrap_or(true);
+                    PEER_PRIVACY_SUPPORTED.store(privacy_supported, Ordering::SeqCst);
+                    if PRIVACY_REQUESTED.load(Ordering::SeqCst) && !privacy_supported {
+                        PRIVACY_REQUESTED.store(false, Ordering::SeqCst);
+                        PRIVACY_STATUS.store(-2, Ordering::SeqCst);
+                        emit_event("remote security: privacy_skipped unsupported_peer");
+                    }
                     let wayland = info.platform.eq_ignore_ascii_case("linux") &&
                         serde_json::from_str::<serde_json::Value>(&info.platform_additions).ok()
                             .and_then(|v| v.get("is_wayland").and_then(|v| v.as_bool())).unwrap_or(false);
@@ -4595,6 +4730,7 @@ async fn handle_peer_bytes(
                         info.current_display
                     ));
                     send_performance_options(true).await;
+                    schedule_auto_unlock(&info.platform);
                 }
                 _ => {
                     emit_event("login response: ok/peer info");
@@ -4993,6 +5129,25 @@ fn set_file_transfer_status_detail(
 
 fn handle_misc_message(misc_msg: Misc) -> &'static str {
     match misc_msg.union {
+        Some(misc::Union::PermissionInfo(permission)) => {
+            if permission.permission.value() == 8 && !permission.enabled {
+                PRIVACY_REQUESTED.store(false, Ordering::SeqCst);
+                PEER_PRIVACY_SUPPORTED.store(false, Ordering::SeqCst);
+                PRIVACY_STATUS.store(-2, Ordering::SeqCst);
+                emit_event("remote security: privacy_permission_denied");
+            }
+            "misc_permission"
+        }
+        Some(misc::Union::BackNotification(notification)) => {
+            if let Some(hbb_common::message_proto::back_notification::Union::PrivacyModeState(state)) =
+                notification.union {
+                let code = state.value();
+                PRIVACY_ACTIVE.store(code == 4, Ordering::SeqCst);
+                PRIVACY_STATUS.store(match code { 4 => 2, 8 | 9 | 11 => 0, _ => -2 }, Ordering::SeqCst);
+                emit_event(&format!("remote security: privacy_result state={code}"));
+            }
+            "misc_back_notification"
+        }
         Some(misc::Union::ChatMessage(chat)) => {
             communication::receive_chat(chat.text);
             "chat_message"
@@ -5184,6 +5339,11 @@ async fn send_login(hash: Hash) {
         my_name: "StarRustDesk HarmonyOS".to_string(),
         my_platform: "HarmonyOS".to_string(),
         option: MessageField::some(OptionMessage {
+            lock_after_session_end: if LOCK_AFTER_DISCONNECT.load(Ordering::SeqCst) {
+                hbb_common::message_proto::option_message::BoolOption::Yes
+            } else {
+                hbb_common::message_proto::option_message::BoolOption::NotSet
+            }.into(),
             supported_decoding: MessageField::some(supported_decoding_options(false)),
             image_quality: performance.quality.into(),
             custom_image_quality: performance.wire_quality(),
@@ -5213,7 +5373,11 @@ async fn send_login(hash: Hash) {
     let mut out = PeerMessage::new();
     out.set_login_request(login);
     match send_peer_message_async(out).await {
-        Ok(_) => emit_event("login request sent"),
+        Ok(_) => {
+            emit_event("login request sent");
+            emit_event(&format!("remote security: lock_option_sent enabled={}",
+                LOCK_AFTER_DISCONNECT.load(Ordering::SeqCst)));
+        }
         Err(e) => emit_event(&format!("login request send failed: {e}")),
     }
 }
@@ -5444,7 +5608,110 @@ fn forward_video_frame(frame: VideoFrame) {
         emit_event("video frame: empty data");
         return;
     }
+    if PRIVACY_REQUESTED.load(Ordering::SeqCst) && current_display == 0 &&
+        !PRIVACY_REQUEST_SENT.swap(true, Ordering::SeqCst) {
+        PRIVACY_STATUS.store(1, Ordering::SeqCst);
+        let result = send_privacy_toggle(true);
+        emit_event(&format!("remote security: privacy_on_request queued={}", result == 0));
+        if result != 0 {
+            PRIVACY_REQUEST_SENT.store(false, Ordering::SeqCst);
+            PRIVACY_STATUS.store(-2, Ordering::SeqCst);
+        }
+    }
     queue_video_received_if_due();
+}
+
+fn send_privacy_toggle(on: bool) -> i32 {
+    let mut misc = Misc::new();
+    let impl_key = PRIVACY_IMPL_KEY.lock().map(|key| key.clone()).unwrap_or_default();
+    misc.set_toggle_privacy_mode(TogglePrivacyMode {
+        impl_key, on, ..Default::default()
+    });
+    let mut msg = PeerMessage::new();
+    msg.set_misc(misc);
+    queue_peer_message(msg)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_set_privacy_mode(on: i32) -> i32 {
+    if !CONNECTION_ACTIVE.load(Ordering::SeqCst) || FILE_ONLY_SESSION.load(Ordering::SeqCst) { return -1; }
+    if on != 0 && !PEER_PRIVACY_SUPPORTED.load(Ordering::SeqCst) {
+        emit_event("remote security: privacy_toggle_rejected unsupported_or_denied");
+        return -2;
+    }
+    if on != 0 && CURRENT_DISPLAY.lock().map(|display| *display != 0).unwrap_or(true) {
+        emit_event("remote security: privacy_toggle_rejected switch_to_display_1");
+        return -3;
+    }
+    let result = send_privacy_toggle(on != 0);
+    if result == 0 {
+        PRIVACY_REQUESTED.store(on != 0, Ordering::SeqCst);
+        PRIVACY_REQUEST_SENT.store(on != 0, Ordering::SeqCst);
+        PRIVACY_STATUS.store(1, Ordering::SeqCst);
+    }
+    emit_event(&format!("remote security: privacy_toggle on={} queued={}", on != 0, result == 0));
+    result
+}
+
+#[no_mangle]
+pub extern "C" fn rust_get_privacy_mode_state() -> i32 {
+    PRIVACY_STATUS.load(Ordering::SeqCst)
+}
+
+fn schedule_auto_unlock(platform: &str) {
+    let configured = CURRENT_CONNECTION_CONFIG.lock().ok()
+        .and_then(|config| config.as_ref().map(|config| config.os_password.clone()))
+        .unwrap_or_default();
+    if configured.is_empty() { return; }
+    if !LOCK_AFTER_DISCONNECT.load(Ordering::SeqCst) {
+        emit_event("remote security: auto_unlock_skipped lock_after_disconnect_off");
+        return;
+    }
+    if !PEER_E2EE.load(Ordering::SeqCst) {
+        emit_event("remote security: auto_unlock_skipped e2ee_unavailable");
+        return;
+    }
+    if !["windows", "linux", "macos", "mac os"].iter().any(|name| platform.eq_ignore_ascii_case(name)) {
+        emit_event("remote security: auto_unlock_skipped unsupported_platform");
+        return;
+    }
+    if AUTO_UNLOCK_SENT.swap(true, Ordering::SeqCst) { return; }
+    let session_id = SESSION_ID.load(Ordering::SeqCst);
+    emit_event("remote security: auto_unlock_scheduled");
+    thread::spawn(move || {
+        if SESSION_ID.load(Ordering::SeqCst) != session_id { return; }
+        // Wake the remote OS sign-in screen, following the desktop client's activation sequence.
+        let _ = rust_send_mouse_event(0.0, 0.0, 2, 0);
+        thread::sleep(Duration::from_millis(50));
+        let _ = rust_send_mouse_event(0.0, 0.0, 0, 0);
+        thread::sleep(Duration::from_millis(50));
+        let _ = rust_send_mouse_event(3.0, 3.0, 0, 0);
+        thread::sleep(Duration::from_millis(50));
+        let _ = rust_send_mouse_event(0.0, 0.0, 1, 0);
+        let _ = rust_send_mouse_event(0.0, 0.0, 2, 0);
+        thread::sleep(Duration::from_millis(1200));
+        if SESSION_ID.load(Ordering::SeqCst) != session_id || !PEER_E2EE.load(Ordering::SeqCst) {
+            emit_event("remote security: auto_unlock_cancelled session_changed");
+            return;
+        }
+        let mut password_event = KeyEvent::new();
+        password_event.mode = KeyboardMode::Legacy.into();
+        password_event.press = true;
+        password_event.set_seq(configured);
+        let mut msg = PeerMessage::new();
+        msg.set_key_event(password_event);
+        if queue_peer_message(msg) != 0 {
+            emit_event("remote security: auto_unlock_failed password_queue");
+            return;
+        }
+        let mut enter = KeyEvent::new();
+        enter.mode = KeyboardMode::Legacy.into();
+        enter.press = true;
+        enter.set_control_key(ControlKey::Return);
+        let mut msg = PeerMessage::new();
+        msg.set_key_event(enter);
+        emit_event(&format!("remote security: auto_unlock_queued success={}", queue_peer_message(msg) == 0));
+    });
 }
 
 fn should_forward_video_display(
@@ -5628,6 +5895,8 @@ fn mark_connection_lost(session_id: u64, reason: &str) {
     reset_audio_async();
     reset_display_state();
     clear_peer_message_sender_for_session(session_id);
+    PEER_E2EE.store(false, Ordering::SeqCst);
+    if let Ok(mut config) = CURRENT_CONNECTION_CONFIG.lock() { *config = None; }
     if let Ok(mut guard) = CONNECTION.try_lock() {
         *guard = None;
     }

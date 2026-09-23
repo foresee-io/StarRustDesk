@@ -37,6 +37,10 @@ export class RemoteDisplayPolicy {
     RemoteDisplayPolicy.currentDisplayId = -1;
   }
 
+  static getMainWindow(): window.Window | undefined {
+    return RemoteDisplayPolicy.main;
+  }
+
   static refresh(): void {
     const main = RemoteDisplayPolicy.main;
     if (!main) return;

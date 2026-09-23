@@ -29,6 +29,7 @@
 #include <deque>
 #include <chrono>
 #include <algorithm>
+#include <utility>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <hilog/log.h>
@@ -587,6 +588,7 @@ static bool IsSafeRustLifecycleEvent(const std::string& text) {
         "login response: ok/",
         "login response: 2fa-",
         "performance options sent",
+        "remote security:",
         "refresh video sent",
         "initial video received ack",
         "switch display received",
@@ -794,8 +796,8 @@ static std::string ConnectionResultToMessage(int result) {
 }
 
 static napi_value Connect(napi_env env, napi_callback_info info) {
-    size_t argc = 7;
-    napi_value args[7] = {nullptr};
+    size_t argc = 10;
+    napi_value args[10] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
     bool forceRelay = false;
     bool allowInsecureFallback = false;
@@ -803,10 +805,15 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
     if (argc >= 6) napi_get_value_bool(env, args[5], &allowInsecureFallback);
     bool fileOnly = false;
     if (argc >= 7) napi_get_value_bool(env, args[6], &fileOnly);
+    bool lockAfterDisconnect = false;
+    bool privacyMode = false;
+    if (argc >= 8) napi_get_value_bool(env, args[7], &lockAfterDisconnect);
+    if (argc >= 9) napi_get_value_bool(env, args[8], &privacyMode);
 
     char peerId[128] = {0}, password[512] = {0};
     char rendezvousServer[256] = {0}, relayServer[256] = {0};
-    size_t peerIdLen = 0, passwordLen = 0, rendezvousLen = 0, relayLen = 0;
+    char osPassword[1024] = {0};
+    size_t peerIdLen = 0, passwordLen = 0, rendezvousLen = 0, relayLen = 0, osPasswordLen = 0;
 
     napi_get_value_string_utf8(env, args[0], peerId, sizeof(peerId), &peerIdLen);
     napi_get_value_string_utf8(env, args[1], password, sizeof(password), &passwordLen);
@@ -814,11 +821,15 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
         napi_get_value_string_utf8(env, args[2], rendezvousServer, sizeof(rendezvousServer), &rendezvousLen);
     if (argc >= 4)
         napi_get_value_string_utf8(env, args[3], relayServer, sizeof(relayServer), &relayLen);
+    if (argc >= 10)
+        napi_get_value_string_utf8(env, args[9], osPassword, sizeof(osPassword), &osPasswordLen);
 
     std::string peer = peerIdLen > 0 ? peerId : "";
     std::string pass = passwordLen > 0 ? password : "";
     std::string rendezvous = rendezvousLen > 0 ? rendezvousServer : "";
     std::string relay = relayLen > 0 ? relayServer : "";
+    std::string osPass = osPasswordLen > 0 ? osPassword : "";
+    std::fill(std::begin(osPassword), std::end(osPassword), 0);
     std::string serverKey = Config::instance().get("key");
     std::string clientHwid = Config::instance().get("trust-this-device") == "Y"
         ? GetOrCreateClientHwid() : "";
@@ -849,9 +860,13 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
         " rendezvous=" + std::string(rendezvous.empty() ? "default" : "custom") +
         " relay=" + std::string(relay.empty() ? "default" : "custom") +
         " key=" + std::string(serverKey.empty() ? "empty" : "set") +
-        " insecure_fallback=" + std::string(allowInsecureFallback ? "approved_once" : "denied"));
-    std::thread([peer, pass, rendezvous, relay, serverKey, clientHwid, clientId, generation,
-                 forceRelay, allowInsecureFallback, fileOnly]() {
+        " insecure_fallback=" + std::string(allowInsecureFallback ? "approved_once" : "denied") +
+        " lock_after_disconnect=" + std::string(lockAfterDisconnect ? "yes" : "no") +
+        " privacy_requested=" + std::string(privacyMode ? "yes" : "no") +
+        " os_password_configured=" + std::string(osPass.empty() ? "no" : "yes"));
+    std::thread([peer, pass, rendezvous, relay, serverKey, clientHwid, clientId,
+                 osPass = std::move(osPass), generation, forceRelay, allowInsecureFallback,
+                 fileOnly, lockAfterDisconnect, privacyMode]() mutable {
         {
             std::unique_lock<std::mutex> lock(g_connectionLifecycleMutex);
             g_disconnectFinished.wait(lock, []() { return !g_disconnectInProgress.load(); });
@@ -872,7 +887,10 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
             "rust_connect_started generation=" + std::to_string(generation));
         int result = rust_connect(peer.c_str(), pass.c_str(), rendezvous.c_str(), relay.c_str(),
                                   serverKey.c_str(), clientHwid.c_str(), clientId.c_str(), forceRelay ? 1 : 0,
-                                  allowInsecureFallback ? 1 : 0, fileOnly ? 1 : 0);
+                                  allowInsecureFallback ? 1 : 0, fileOnly ? 1 : 0,
+                                  lockAfterDisconnect ? 1 : 0, privacyMode ? 1 : 0, osPass.c_str());
+        std::fill(osPass.begin(), osPass.end(), '\0');
+        osPass.clear();
         OH_LOG_INFO(LOG_APP, "rust_connect finished result=%{public}d", result);
         DiagnosticLog::instance().append(result == 0 ? "I" : "E", "connection",
             "rust_connect_finished generation=" + std::to_string(generation) +
@@ -1371,6 +1389,24 @@ static napi_value SetRemoteAudioEnabled(napi_env env, napi_callback_info info) {
         std::string("remote_audio_enabled=") + (enabled ? "true" : "false"));
     napi_value ret;
     napi_create_int32(env, result, &ret);
+    return ret;
+}
+
+static napi_value SetPrivacyMode(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    bool enabled = false;
+    if (argc > 0 && args[0] != nullptr) napi_get_value_bool(env, args[0], &enabled);
+    int result = rust_set_privacy_mode(enabled ? 1 : 0);
+    napi_value ret;
+    napi_create_int32(env, result, &ret);
+    return ret;
+}
+
+static napi_value GetPrivacyModeState(napi_env env, napi_callback_info info) {
+    napi_value ret;
+    napi_create_int32(env, rust_get_privacy_mode_state(), &ret);
     return ret;
 }
 
@@ -2226,6 +2262,8 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"getDiagnosticLog", nullptr, GetDiagnosticLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"clearDiagnosticLog", nullptr, ClearDiagnosticLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setPerformancePreset", nullptr, SetPerformancePreset, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setPrivacyMode", nullptr, SetPrivacyMode, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getPrivacyModeState", nullptr, GetPrivacyModeState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKeyEvent", nullptr, SendKeyEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendCtrlAltDel", nullptr, SendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},

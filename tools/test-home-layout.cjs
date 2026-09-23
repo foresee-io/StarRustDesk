@@ -44,6 +44,8 @@ assert.match(saved, /Text\(`\$\{this\.savedConnections\.length\}`\)/,
   'saved connection count should sit beside the title');
 assert.match(saved, /this\.buildConnectionStatusLegend\(\)/,
   'compact list needs a status legend');
+assert.match(saved, /if \(this\.peerOnlineQueryEnabled && this\.savedConnections\.length > 0 &&[\s\S]*?this\.buildConnectionStatusLegend\(\)/,
+  'status legend should appear only when online querying is enabled');
 assert.match(saved, /toggleSavedConnectionsExpanded\(\)[\s\S]*duration: 240/,
   'saved connection section should animate while expanding and collapsing');
 
@@ -54,6 +56,8 @@ assert.match(group, /Button\('⋯'\)[\s\S]*value: '移动到分组'[\s\S]*value:
   'compact more menu must retain move, edit and delete');
 assert.doesNotMatch(group, /peerOnlineStateHint\(item\.remoteId\)/,
   'saved rows should stay at two text lines');
+assert.match(group, /if \(this\.peerOnlineQueryEnabled\) \{\s*Row\(\)[\s\S]*?peerOnlineStateColor\(item\.remoteId\)/,
+  'saved device status dot should appear only when online querying is enabled');
 assert.match(group, /TransitionEffect\.translate\(\{ y: -6 \}\)[\s\S]*duration: 210/,
   'saved connection groups should animate their rows');
 

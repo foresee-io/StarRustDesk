@@ -10,6 +10,7 @@ import {
   ReleaseNotesDialog,
 } from '../widget/ReleaseNotesDialog'
 import { RustDeskNapi } from '../service/RustDeskNapi'
+import { SystemFaultDiagnostic } from '../service/SystemFaultDiagnostic'
 import { common } from '@kit.AbilityKit'
 import { pasteboard } from '@kit.BasicServicesKit'
 import { promptAction } from '@kit.ArkUI'
@@ -31,6 +32,7 @@ export struct SettingsPage {
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @StorageLink('isDarkModeManual') isDarkModeManual: boolean = false
+  @StorageLink('peerOnlineQueryEnabled') peerOnlineQueryEnabled: boolean = false
   @State resolution: string = 'Auto'
   @State frameRate: number = 30
   @State showResolutionPicker: boolean = false
@@ -106,6 +108,7 @@ export struct SettingsPage {
     RustDeskNapi.setRemoteAudioEnabled(this.remoteAudioEnabled)
     this.diagnosticLogEnabled = RustDeskNapi.getOption('diagnostic-log-enabled') === '1'
     RustDeskNapi.setDiagnosticLogEnabled(this.diagnosticLogEnabled)
+    this.peerOnlineQueryEnabled = RustDeskNapi.getOption('peer-online-query-enabled') === '1'
     this.cloudSyncEnabled = CloudSyncService.isEnabled()
     this.cloudSyncIncludesSecrets = CloudSyncService.includesSecrets()
     this.updateCloudSyncStatus()
@@ -489,7 +492,7 @@ export struct SettingsPage {
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(this.cloudSyncIncludesSecrets ? '已使用 AES-256-GCM 加密后上传' : '默认不上传敏感信息')
+          Text(this.cloudSyncIncludesSecrets ? '同步时使用 AES-256-GCM 加密敏感信息' : '默认不上传敏感信息')
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -590,21 +593,25 @@ export struct SettingsPage {
   }
 
   async setCloudSecretsEnabled(enabled: boolean): Promise<void> {
-    if (!enabled) {
-      this.cloudSyncIncludesSecrets = false
-      CloudSyncService.setIncludesSecrets(false)
-      await CloudSyncService.upload(getContext(this) as common.UIAbilityContext)
-      this.updateCloudSyncStatus()
-      return
+    try {
+      if (!enabled) {
+        this.cloudSyncIncludesSecrets = false
+        CloudSyncService.setIncludesSecrets(false)
+        await this.syncCloudNow(false, false)
+        return
+      }
+      if (await CloudSyncService.hasCloudPassword()) {
+        this.cloudSyncIncludesSecrets = true
+        CloudSyncService.setIncludesSecrets(true)
+        await this.syncCloudNow(false, false)
+        return
+      }
+      this.cloudPasswordAction = 'enable-secrets'
+      this.cloudPasswordDialogController.open()
+    } catch (_error) {
+      this.cloudSyncStatus = '无法读取本机云备份密码，请稍后重试'
+      promptAction.showToast({ message: this.cloudSyncStatus })
     }
-    if (await CloudSyncService.hasCloudPassword()) {
-      this.cloudSyncIncludesSecrets = true
-      CloudSyncService.setIncludesSecrets(true)
-      await this.syncCloudNow(false, false)
-      return
-    }
-    this.cloudPasswordAction = 'enable-secrets'
-    this.cloudPasswordDialogController.open()
   }
 
   async saveCloudPassword(password: string): Promise<void> {
@@ -619,6 +626,8 @@ export struct SettingsPage {
         await this.syncCloudNow(false, false)
       } else if (action === 'restore') {
         await this.syncCloudNow(true, false)
+      } else if (action === 'sync') {
+        await this.syncCloudNow(false, false)
       }
     } catch (_error) {
       promptAction.showToast({ message: '备份密码保存失败' })
@@ -631,24 +640,34 @@ export struct SettingsPage {
     }
     this.cloudSyncBusy = true
     this.cloudSyncStatus = restoreOnly ? '正在从云端恢复…' : '正在同步…'
-    let result: CloudSyncResult = restoreOnly ?
-      await CloudSyncService.restore(getContext(this) as common.UIAbilityContext) :
-      await CloudSyncService.syncNow(getContext(this) as common.UIAbilityContext)
-    this.cloudSyncBusy = false
-    if (result.needsPassword) {
-      await CloudSyncService.clearCloudPassword()
-      this.cloudPasswordAction = 'restore'
-      this.cloudPasswordDialogController.open()
-      this.cloudSyncStatus = '需要云备份密码'
-      if (!quiet) {
+    try {
+      let result: CloudSyncResult = restoreOnly ?
+        await CloudSyncService.restore(getContext(this) as common.UIAbilityContext) :
+        await CloudSyncService.syncNow(getContext(this) as common.UIAbilityContext)
+      if (!this.cloudSyncEnabled || result.code === -1002) {
+        this.updateCloudSyncStatus()
+        return
+      }
+      if (result.needsPassword) {
+        this.cloudPasswordAction = result.passwordAction ?? (restoreOnly ? 'restore' : 'sync')
+        this.cloudPasswordDialogController.open()
+        this.cloudSyncStatus = '需要云备份密码'
+        if (!quiet) promptAction.showToast({ message: result.message })
+        return
+      }
+      if (result.success) this.updateCloudSyncStatus()
+      else this.cloudSyncStatus = result.message
+      this.cloudSyncIncludesSecrets = CloudSyncService.includesSecrets()
+      if (!quiet || !result.success) {
         promptAction.showToast({ message: result.message })
       }
-      return
-    }
-    this.updateCloudSyncStatus()
-    this.cloudSyncIncludesSecrets = CloudSyncService.includesSecrets()
-    if (!quiet || !result.success) {
-      promptAction.showToast({ message: result.message })
+    } catch (_error) {
+      if (this.cloudSyncEnabled) {
+        this.cloudSyncStatus = '云同步未完成，请开启诊断日志后重试'
+        if (!quiet) promptAction.showToast({ message: this.cloudSyncStatus })
+      }
+    } finally {
+      this.cloudSyncBusy = false
     }
   }
 
@@ -676,6 +695,11 @@ export struct SettingsPage {
   updateCloudSyncStatus(): void {
     if (!this.cloudSyncEnabled) {
       this.cloudSyncStatus = '未开启'
+      return
+    }
+    const lastResult = CloudSyncService.getLastResult()
+    if (lastResult !== undefined && !lastResult.success) {
+      this.cloudSyncStatus = lastResult.message
       return
     }
     let lastTime: number = CloudSyncService.getLastSuccessTime()
@@ -717,7 +741,7 @@ export struct SettingsPage {
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(this.diagnosticLogEnabled ? '正在记录，出现问题后可导出发送给开发者' : '已关闭，不会在后台写入诊断日志')
+          Text(this.diagnosticLogEnabled ? '本地记录运行及系统故障日志，不自动上传；关闭时清除已采集的系统故障记录' : '已关闭，不会在后台写入诊断日志')
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -747,7 +771,7 @@ export struct SettingsPage {
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('选择保存位置后，可将日志文件发送给开发者排查')
+          Text('包含已采集的崩溃/卡死记录；闪退后请重新打开应用，稍候再导出')
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -801,6 +825,7 @@ export struct SettingsPage {
     this.diagnosticLogEnabled = enabled
     RustDeskNapi.setOption('diagnostic-log-enabled', enabled ? '1' : '0')
     RustDeskNapi.setDiagnosticLogEnabled(enabled)
+    SystemFaultDiagnostic.setEnabled(enabled)
     if (enabled) {
       RustDeskNapi.appendDiagnosticLog('support', 'diagnostic_log_enabled_by_user')
     }
@@ -815,6 +840,7 @@ export struct SettingsPage {
     try {
       RustDeskNapi.appendDiagnosticLog('support', 'user_requested_log_export')
       let content: string = RustDeskNapi.getDiagnosticLog()
+      content += await SystemFaultDiagnostic.exportText()
       let context = getContext(this) as common.UIAbilityContext
       let documentPicker = new picker.DocumentViewPicker(context)
       let fileName: string = `StarRustDesk-diagnostic-${this.diagnosticTimestamp()}.txt`
@@ -851,7 +877,7 @@ export struct SettingsPage {
   confirmClearDiagnosticLog(): void {
     AlertDialog.show({
       title: '清除诊断日志',
-      message: '清除后，当前和上一份诊断日志都无法恢复。确定继续吗？',
+      message: '清除后，当前、上一份诊断日志和已采集的系统故障记录都无法恢复。确定继续吗？',
       autoCancel: true,
       alignment: DialogAlignment.Center,
       primaryButton: {
@@ -864,6 +890,7 @@ export struct SettingsPage {
         fontColor: RustDeskTheme.ERROR,
         action: () => {
           RustDeskNapi.clearDiagnosticLog()
+          SystemFaultDiagnostic.clear()
           promptAction.showToast({ message: '诊断日志已清除' })
         },
       },
@@ -1071,6 +1098,38 @@ export struct SettingsPage {
       .onClick(() => {
         this.serverConfigDialogController.open()
       })
+
+      Divider()
+        .height(1)
+        .color(this.isDarkMode ? RustDeskTheme.DIVIDER_DARK : RustDeskTheme.DIVIDER)
+        .margin({ top: 12, bottom: 12 })
+
+      Row() {
+        Column({ space: 3 }) {
+          Text('查询服务器/设备在线状态')
+            .fontSize(RustDeskTheme.FONT_SIZE_BODY)
+            .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+            .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+            .width('100%')
+          Text('默认关闭；开启后定期查询已保存设备，手动连接不受影响')
+            .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
+            .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+            .width('100%')
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Toggle({ type: ToggleType.Switch, isOn: this.peerOnlineQueryEnabled })
+          .id('peerOnlineQueryToggle')
+          .selectedColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG)
+          .switchPointColor(this.peerOnlineQueryEnabled ?
+            (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT) :
+            (this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : Color.White))
+          .onChange((isOn: boolean) => {
+            RustDeskNapi.setOption('peer-online-query-enabled', isOn ? '1' : '0')
+            this.peerOnlineQueryEnabled = isOn
+          })
+      }
+      .width('100%')
     }
     .padding(16)
     .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_CARD_DARK : RustDeskTheme.HOME_CARD)

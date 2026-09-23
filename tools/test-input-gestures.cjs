@@ -67,7 +67,7 @@ const gc=vm.createContext({Date:{now:()=>now},Math,TouchType,SourceType:{Mouse:9
  PINCH_DISTANCE_THRESHOLD:10,MULTI_TOUCH_MOVE_THRESHOLD:8,THREE_FINGER_SWIPE_THRESHOLD:40,
  THREE_FINGER_HORIZONTAL_LIMIT:80,THREE_FINGER_MAX_DURATION:1200,RustDeskNapi:napi,
  ConnectionService:{sendMouseEvent:(x,y,a)=>output.push(a===3?'right_down':'right_up')}});
-vm.runInContext(ts.transpile('class Gesture {'+['handleRemoteTouch','handleMultiTouch','finishMultiTouchGesture',
+vm.runInContext(ts.transpile('class Gesture {'+['touchGesturePoint','handleRemoteTouch','handleMultiTouch','finishMultiTouchGesture',
  'handleThreeFingerGesture','finishThreeFingerGesture'].map(method).join('\n')+'};globalThis.Gesture=Gesture;'),gc);
 function make(full=false){
   now=1000;output=[];
@@ -80,7 +80,7 @@ function make(full=false){
   p.openRemoteKeyboard=()=>output.push('keyboard');p.sendTouchScroll=()=>output.push('scroll');
   return p;
 }
-function send(p,type,n,y=20){now+=25;const touches=Array.from({length:n},(_,i)=>({id:i,x:20+i*30,y}));
+function send(p,type,n,y=20){now+=25;const touches=Array.from({length:n},(_,i)=>({id:i,x:20+i*30,y,windowX:20+i*30,windowY:y}));
   p.handleRemoteTouch({type,touches,changedTouches:touches.length?[touches.at(-1)]:[]});}
 function lift(p,n,y=20){for(let i=n;i>0;i--)send(p,TouchType.Up,i,y);}
 for(const count of [2,3])test(`${count}-finger scroll never adds a right-click on staggered lift`,()=>{

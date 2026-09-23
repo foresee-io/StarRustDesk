@@ -1,9 +1,9 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002006'
-export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}-r1`
+export const RELEASE_NOTES_VERSION: string = '1.2.13'
+export const RELEASE_NOTES_BUILD: string = '1002013'
+export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
@@ -46,6 +46,25 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.13（1002013）· 远端安全选项', [
+            '新增按设备配置断开后锁定远端、隐私屏幕和自动解锁远端系统；功能是否生效取决于被控端支持与授权。',
+            '自动解锁仅在符合条件的加密连接中发送本机安全保存的系统密码；密码不参与连接备份或云同步。',
+            '补充远端安全操作的脱敏诊断日志，记录请求、回执与跳过原因，不记录密码或验证码。',
+            '关闭在线状态查询后，已保存设备图标不再显示状态圆点和状态图例；开启后恢复显示。',
+            '改进个人云空间同步的完成确认、错误提示及云目录快照写入兼容性；真实跨设备恢复仍需在云服务上验证。'
+          ])
+          this.buildSection('1.2.12（1002012）· 在线状态查询开关', [
+            '设置中的“查询服务器/设备在线状态”默认关闭；关闭时首页不再定时向服务器查询已保存设备的在线状态。',
+            '需要在线状态提示时可手动开启；此开关不影响输入 ID 后连接远端。'
+          ])
+          this.buildSection('1.2.10（1002010）· 全屏、画面跟随与故障诊断', [
+            '修复全屏按钮文字与选中状态未及时更新的问题；切换中防止重复点击，失败时恢复状态并提示，退出远控时恢复系统栏。',
+            '全屏与普通模式复用视频显示组件，仅系统栏或黑边区域变化时不再重复重建解码器；保留实际旋转、换屏和显示目标变化时的安全重绑定，减少切换黑屏。',
+            '优化手机和平板放大后的鼠标画面跟随：开启边缘跟随后，手指将鼠标移到可视区域中心附近即可连续平移视野，停手即停，再次滑动无需等待；虚拟鼠标拖动区同步支持。',
+            '补充全屏切换、系统窗口调用、画面复用与恢复的阶段、耗时和失败码日志，方便排查设备兼容问题。',
+            '诊断模式新增系统崩溃、卡死及系统终止事件的本地脱敏采集，可随诊断日志导出；是否获得完整调用栈取决于系统投递，诊断默认关闭，不自动上传。',
+            '增强已保存设备在线查询的分阶段诊断与 Wi-Fi、蜂窝网络类型关联，辅助定位家庭 Wi-Fi 下保存连接或查询时的异常；这项增强不代表已确认修复相关闪退原因。'
+          ])
           this.buildSection('1.2.0（1002006）· 控制端功能与诊断修订', [
             '新增独立文件传输会话、批量和文件夹上传，以及远端新建文件夹、重命名和删除；文件夹上传暂不保留空文件夹。',
             '新增地址簿手动双向同步预览、冲突处理和设备标签管理，不同步本地连接密码与密钥。',

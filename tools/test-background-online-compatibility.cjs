@@ -218,10 +218,11 @@ test('failed stop retains ownership and retries, never logs stopped prematurely'
   assert.equal(f.task.state, 'stopped'); assert.equal(f.task.taskId, -1);
   f.emit('continuousTaskActive', { id: 7 }); assert.equal(f.task.state, 'stopped');
 });
-function pageFixture(ids = ['123', '192.168.1.2']) {
+function pageFixture(ids = ['123', '192.168.1.2'], onlineQueryEnabled = true) {
   let now = 1000, raw = '', queryReturn = 0;
   const queries = [];
   const context = vm.createContext({ Date: { now: () => now },
+    ConnectionService: { recordNetworkSnapshot: async source => { assert.equal(source, 'online_state'); } },
     RustDeskNapi: { appendDiagnosticLog() {}, queryPeerOnlineStates: (ids, server) => {
       queries.push([Array.from(ids), server]); return queryReturn;
     }, takePeerOnlineStates: () => { const result = raw; raw = ''; return result; } },
@@ -232,10 +233,29 @@ function pageFixture(ids = ['123', '192.168.1.2']) {
   vm.runInContext(pageJs, context);
   const page = Object.assign(new context.Page(), { savedConnections: ids.map(remoteId => ({ remoteId })),
     peerOnlineStates: {}, peerOnlineStatesVersion: 0, peerOnlineQueryInFlight: false,
+    peerOnlineQueryEnabled: onlineQueryEnabled,
     customServerHint: 'server', peerStateServer: 'server' });
   return { page, queries, setNow: value => { now = value; }, setRaw: value => { raw = value; },
     setQueryReturn: value => { queryReturn = value; } };
 }
+test('disabled online query makes no server request and does not report offline', () => {
+  const f = pageFixture(['123', 'abc'], false);
+  f.page.refreshSavedConnectionOnlineStates(true);
+  f.page.pollPeerOnlineStates();
+  assert.equal(f.queries.length, 0);
+  assert.equal(f.page.peerOnlineQueryInFlight, false);
+  assert.match(f.page.peerOnlineStateHint('123'), /查询已关闭/);
+  assert.equal(f.page.peerOnlineStateColor('123'), '#A5ADBA');
+  f.page.peerOnlineQueryEnabled = true;
+  f.page.refreshSavedConnectionOnlineStates(true);
+  assert.deepEqual(f.queries, [[['123', 'abc'], 'server']]);
+  f.page.peerOnlineQueryEnabled = false;
+  f.page.markAllPeerStatesUnknown();
+  f.setRaw(JSON.stringify({ server: 'server', error: '', peers: [{ id: '123', online: true }] }));
+  f.page.pollPeerOnlineStates();
+  assert.equal(f.page.peerOnlineQueryInFlight, false);
+  assert.equal(f.page.peerOnlineStates['123'], 3);
+});
 test('IPv4, port, IPv6, mapped and scoped endpoints are not IDs', () => {
   const f = pageFixture();
   for (const endpoint of ['192.168.1.2', '192.168.1.2:21118', '::1', '2001:db8::1',

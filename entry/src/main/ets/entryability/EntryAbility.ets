@@ -10,6 +10,7 @@ import { CloudSyncService } from '../service/CloudSyncService';
 import { CommunicationService } from '../service/CommunicationService';
 import { AccountSession } from '../service/RustDeskApiService';
 import { RemoteDisplayPolicy } from '../service/RemoteDisplayPolicy';
+import { SystemFaultDiagnostic } from '../service/SystemFaultDiagnostic';
 
 const DOMAIN = 0x0000;
 
@@ -20,6 +21,7 @@ export default class EntryAbility extends UIAbility {
       const diagnosticLogEnabled: boolean = RustDeskNapi.getOption('diagnostic-log-enabled') === '1'
       RustDeskNapi.setDiagnosticLogEnabled(diagnosticLogEnabled)
       RustDeskNapi.initializeDiagnosticLog(this.context.filesDir)
+      SystemFaultDiagnostic.initialize(this.context.filesDir, diagnosticLogEnabled)
       RustDeskNapi.appendDiagnosticLog('app',
         `startup version=${RELEASE_NOTES_VERSION} build=${RELEASE_NOTES_BUILD} ` +
         `device_type=${deviceInfo.deviceType} model=${deviceInfo.productModel} ` +
@@ -41,6 +43,7 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('appForegroundEpoch', 0);
     AppStorage.setOrCreate('serverConfigVersion', 0);
     AppStorage.setOrCreate('savedConnectionsCloudRevision', 0);
+    AppStorage.setOrCreate('peerOnlineQueryEnabled', RustDeskNapi.getOption('peer-online-query-enabled') === '1');
     // Validate only the locally remembered account; never log credentials or responses.
     AccountSession.getApi().restore().catch(() => {
       RustDeskNapi.appendDiagnosticLog('api-account', 'startup_restore_failed; retry_before_connection=true');
@@ -49,6 +52,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    SystemFaultDiagnostic.stop();
     CommunicationService.dispose();
     RemoteSessionBackgroundTask.shutdown()
     RustDeskNapi.appendDiagnosticLog('app', 'ability_destroy')

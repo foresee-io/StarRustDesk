@@ -5,6 +5,7 @@ import { RemoteSessionBackgroundTask } from './RemoteSessionBackgroundTask'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import { connection } from '@kit.NetworkKit'
 import { BusinessError } from '@kit.BasicServicesKit'
+import { RemoteSecurityOptions } from './RustDeskNapi'
 
 export class ConnectionService {
   private static keyboardMode: number = 0
@@ -62,6 +63,8 @@ export class ConnectionService {
   // Retry context lives only in memory and is cleared by an explicit disconnect.
   private static retryPeer: string = ''
   private static retryPassword: string = ''
+  private static retrySecurity: RemoteSecurityOptions = { lockAfterDisconnect: false, privacyMode: false, autoUnlock: false }
+  private static retryOsPassword: string = ''
   private static retryRendezvous: string = ''
   private static retryRelay: string = ''
   private static relayRetryUsed: boolean = false
@@ -136,7 +139,9 @@ export class ConnectionService {
     return true
   }
 
-  static async connect(remoteId: string, password: string, performancePreset: string = 'smooth', fileOnly: boolean = false): Promise<ConnectionStatus> {
+  static async connect(remoteId: string, password: string, performancePreset: string = 'smooth', fileOnly: boolean = false,
+    security: RemoteSecurityOptions = { lockAfterDisconnect: false, privacyMode: false, autoUnlock: false },
+    osPassword: string = ''): Promise<ConnectionStatus> {
     ConnectionService.cancelRecovery()
     ConnectionService.recoveryAttempts = 0
     ConnectionService.sessionAuthenticated = false
@@ -167,6 +172,8 @@ export class ConnectionService {
     let relayServer: string = RustDeskNapi.getOption('relay-server').trim()
     ConnectionService.retryPeer = peerId
     ConnectionService.retryPassword = password
+    ConnectionService.retrySecurity = security
+    ConnectionService.retryOsPassword = security.autoUnlock ? osPassword : ''
     ConnectionService.retryRendezvous = rendezvousServer
     ConnectionService.retryRelay = relayServer
     ConnectionService.relayRetryUsed = false
@@ -177,12 +184,16 @@ export class ConnectionService {
     ConnectionService.sessionAccountRevision = AccountSession.getApi().sessionRevision()
     ConnectionService.fileOnly = fileOnly
     RustDeskNapi.appendDiagnosticLog('connection', `session_mode=${fileOnly ? 'file_transfer_only' : 'remote_control'} generation=${generation}`)
+    RustDeskNapi.appendDiagnosticLog('remote-security',
+      `session_options lock=${security.lockAfterDisconnect} privacy=${security.privacyMode} ` +
+      `auto_unlock=${security.autoUnlock} os_password_configured=${ConnectionService.retryOsPassword.length > 0}`)
     RustDeskNapi.setPerformancePreset(performancePreset)
     let result: number
     if (rendezvousServer.length > 0) {
-      result = RustDeskNapi.connectWithServer(peerId, password, rendezvousServer, relayServer, false, false, fileOnly)
+      result = RustDeskNapi.connectWithServer(peerId, password, rendezvousServer, relayServer, false, false, fileOnly,
+        security, ConnectionService.retryOsPassword)
     } else {
-      result = RustDeskNapi.connect(peerId, password, false, fileOnly)
+      result = RustDeskNapi.connect(peerId, password, false, fileOnly, security, ConnectionService.retryOsPassword)
     }
     let status: ConnectionStatus = result === 0 ? ConnectionStatus.CONNECTING : ConnectionStatus.FAILED
     RemoteSessionBackgroundTask.syncForConnectionStatus(status)
@@ -199,7 +210,7 @@ export class ConnectionService {
     ConnectionService.preparationGeneration++
   }
 
-  static async recordNetworkSnapshot(): Promise<void> {
+  static async recordNetworkSnapshot(source: 'connect' | 'online_state' = 'connect'): Promise<void> {
     if (RustDeskNapi.getOption('diagnostic-log-enabled') !== '1') {
       return
     }
@@ -207,7 +218,7 @@ export class ConnectionService {
       const net: connection.NetHandle = await connection.getDefaultNet()
       const capabilities: connection.NetCapabilities = await connection.getNetCapabilities(net)
       RustDeskNapi.appendDiagnosticLog('network',
-        `connect_snapshot net=${net.netId} wifi=${capabilities.bearerTypes.includes(connection.NetBearType.BEARER_WIFI)} ` +
+        `${source === 'online_state' ? 'online_state_snapshot' : 'connect_snapshot'} net=${net.netId} wifi=${capabilities.bearerTypes.includes(connection.NetBearType.BEARER_WIFI)} ` +
         `cellular=${capabilities.bearerTypes.includes(connection.NetBearType.BEARER_CELLULAR)} ` +
         `ethernet=${capabilities.bearerTypes.includes(connection.NetBearType.BEARER_ETHERNET)}`)
     } catch (error) {
@@ -222,6 +233,8 @@ export class ConnectionService {
     ConnectionService.relativeMouse = false
     ConnectionService.retryPeer = ''
     ConnectionService.retryPassword = ''
+    ConnectionService.retryOsPassword = ''
+    ConnectionService.retrySecurity = { lockAfterDisconnect: false, privacyMode: false, autoUnlock: false }
     ConnectionService.relayRetryUsed = true
     ConnectionService.rendezvousRetryCount = 2
     ConnectionService.relayFailureRetryCount = 1
@@ -247,7 +260,8 @@ export class ConnectionService {
     RustDeskNapi.disconnect()
     ConnectionService.recordNetworkSnapshot()
     const result: number = RustDeskNapi.connectWithServer(ConnectionService.retryPeer,
-      ConnectionService.retryPassword, ConnectionService.retryRendezvous, ConnectionService.retryRelay, true)
+      ConnectionService.retryPassword, ConnectionService.retryRendezvous, ConnectionService.retryRelay, true,
+      false, false, ConnectionService.retrySecurity, ConnectionService.retryOsPassword)
     ConnectionService.resetTransientInputState()
     RemoteSessionBackgroundTask.syncForConnectionStatus(
       result === 0 ? ConnectionStatus.CONNECTING : ConnectionStatus.FAILED)
@@ -301,7 +315,8 @@ export class ConnectionService {
     RustDeskNapi.disconnect()
     ConnectionService.recordNetworkSnapshot()
     const result: number = RustDeskNapi.connectWithServer(ConnectionService.retryPeer,
-      ConnectionService.retryPassword, ConnectionService.retryRendezvous, ConnectionService.retryRelay, forceRelay)
+      ConnectionService.retryPassword, ConnectionService.retryRendezvous, ConnectionService.retryRelay, forceRelay,
+      false, false, ConnectionService.retrySecurity, ConnectionService.retryOsPassword)
     ConnectionService.resetTransientInputState()
     const status: ConnectionStatus = result === 0 ? ConnectionStatus.CONNECTING : ConnectionStatus.FAILED
     RemoteSessionBackgroundTask.syncForConnectionStatus(status)
@@ -333,9 +348,11 @@ export class ConnectionService {
     let result: number
     if (ConnectionService.retryRendezvous.length > 0) {
       result = RustDeskNapi.connectWithServer(ConnectionService.retryPeer, ConnectionService.retryPassword,
-        ConnectionService.retryRendezvous, ConnectionService.retryRelay, false, true, ConnectionService.fileOnly)
+        ConnectionService.retryRendezvous, ConnectionService.retryRelay, false, true, ConnectionService.fileOnly,
+        ConnectionService.retrySecurity, ConnectionService.retryOsPassword)
     } else {
-      result = RustDeskNapi.connect(ConnectionService.retryPeer, ConnectionService.retryPassword, true, ConnectionService.fileOnly)
+      result = RustDeskNapi.connect(ConnectionService.retryPeer, ConnectionService.retryPassword, true,
+        ConnectionService.fileOnly, ConnectionService.retrySecurity, ConnectionService.retryOsPassword)
     }
     ConnectionService.resetTransientInputState()
     RemoteSessionBackgroundTask.syncForConnectionStatus(

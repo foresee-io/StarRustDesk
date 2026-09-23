@@ -93,8 +93,11 @@ export const appendDiagnosticLog: (component: string, message: string) => number
 export const getDiagnosticLog: () => string;
 export const clearDiagnosticLog: () => number;
 export const connect: (peerId: string, password: string, rendezvousServer?: string, relayServer?: string,
-  forceRelay?: boolean, allowInsecureFallback?: boolean, fileOnly?: boolean) => number;
+  forceRelay?: boolean, allowInsecureFallback?: boolean, fileOnly?: boolean,
+  lockAfterDisconnect?: boolean, privacyMode?: boolean, osPassword?: string) => number;
 export const disconnect: () => number;
+export const setPrivacyMode: (enabled: boolean) => number;
+export const getPrivacyModeState: () => number;
 export const sendKeyEvent: (keyCode: number, action: number, modifierMask?: number) => number;
 export const sendCtrlAltDel: () => number;
 export const canSendCtrlAltDel: () => boolean;
