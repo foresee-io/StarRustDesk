@@ -67,7 +67,7 @@
 
 **Purpose**: 变更管理（用户要求用 git 管理变更）
 
-- [ ] T007 审查全部变更 diff（`git diff` + `git status`），确认仅涉及 `entry/src/main/ets/service/RustDeskApiService.ets`、`debug-util/ab_debug.py`、`.gitignore`（如 T001 有追加）与 `spec/` 工件；按仓库既有提交风格创建 git 提交（含 spec 工件），提交信息概述根因与修复（服务器忽略分页参数 + 行过滤导致 total 失配 → 分页语义对齐官方）
+- [X] T007 审查全部变更 diff（`git diff` + `git status`），确认仅涉及 `entry/src/main/ets/service/RustDeskApiService.ets`、`debug-util/ab_debug.py`、`.gitignore`（如 T001 有追加）与 `spec/` 工件；按仓库既有提交风格创建 git 提交（含 spec 工件），提交信息概述根因与修复（服务器忽略分页参数 + 行过滤导致 total 失配 → 分页语义对齐官方）
 
 ---
 
@@ -77,7 +77,7 @@
 
 **Purpose**: 构建与部署验证（真实服务器功能验证由用户以 debug-util 脚本与实机登录完成，不在本阶段范围）
 
-- [ ] T008 运行 `build_project` 构建 entry 模块并修复全部编译错误（迭代修复→重建直至成功，构建调用上限 10 次）
+- [X] T008 运行 `build_project` 构建 entry 模块并修复全部编译错误（迭代修复→重建直至成功，构建调用上限 10 次）
 - [ ] T009 经 `start_app` 部署到已连接设备或模拟器验证可安装启动（无可用设备时如实报告跳过原因）
 
 ---
