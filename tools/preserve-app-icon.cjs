@@ -20,7 +20,13 @@ function preserveAppIcon(modulePath) {
   }
   if (!source.equals(fs.readFileSync(entryPath))) throw new Error('AppScope and entry icons do not match.');
   const compiled = path.join(modulePath, 'build/default/intermediates/res/default/resources/base/media', name);
-  if (!fs.existsSync(compiled)) throw new Error('Compiled icon missing; resource processing must run first.');
+  if (!fs.existsSync(compiled)) {
+    // Some HarmonyOS SDK versions compile resources during HAP packaging and
+    // never materialize this intermediates path after ProcessResource. There is
+    // nothing to preserve in that layout, so skip instead of aborting.
+    console.warn('preserve-app-icon: compiled icon not found, skipping.');
+    return;
+  }
   if (!source.equals(fs.readFileSync(compiled))) fs.copyFileSync(sourcePath, compiled);
 }
 
