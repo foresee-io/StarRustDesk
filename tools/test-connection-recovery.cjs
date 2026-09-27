@@ -230,6 +230,7 @@ const Poller = subject(slice('entry/src/main/ets/pages/RemotePage.ets',
 });
 const poller=Object.assign(new Poller(),{framePollGeneration:0,videoSessionGeneration:-1,
   stopFramePolling(){this.framePollGeneration++;}, resetViewportTransform(){},
+  physicalMouseDeduplicator:{clear(){}},resetPointerDiagnostics(){},
   checkFirstVideoHealth(){},checkDecoderHealth(){},updateStats(){},
   scheduleSurfaceRebindIfSizeChanged(){}});
 test('new session resets old successful frame and statistics',()=>{

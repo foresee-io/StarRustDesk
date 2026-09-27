@@ -565,6 +565,15 @@ export class ConnectionService {
     return result
   }
 
+  static sendPrintableShortcutKey(keyCode: number, modifierMask: number): number {
+    // keyCode identifies the keyboard key, not an uppercase Unicode character.
+    // Keep this separate from control keys (for example lowercase q = F2's VK).
+    const result: number = RustDeskNapi.sendPrintableShortcutKey(keyCode, modifierMask)
+    RustDeskNapi.appendDiagnosticLog('input-shortcut',
+      `printable_key=${keyCode} modifiers=${modifierMask} result=${result}`)
+    return result
+  }
+
   static canSendCtrlAltDel(): boolean {
     return RustDeskNapi.canSendCtrlAltDel()
   }

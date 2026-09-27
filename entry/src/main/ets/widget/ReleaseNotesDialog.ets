@@ -1,8 +1,8 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.17'
-export const RELEASE_NOTES_BUILD: string = '1002017'
+export const RELEASE_NOTES_VERSION: string = '1.2.18'
+export const RELEASE_NOTES_BUILD: string = '1002018'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -46,6 +46,12 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.18（1002018）· 投屏鼠标与软键盘组合键', [
+            '修复应用单独投屏时，实体鼠标连续移动事件可能被误过滤的问题；按事件类型和坐标精准去重，保留点击、拖动及触控原有路径。',
+            '优化投屏窗口的远端指针显示与位置更新，切换显示设备时清理旧输入状态；补充鼠标移动、过滤原因及指针状态诊断，便于排查设备差异。',
+            '修复选中 Ctrl 后使用软键盘输入 Q 等字母时，远端可能多出 Shift 的问题；区分字母字符与功能键编码，保留明确选中的 Shift、普通文字及中文输入。',
+            '投屏输入日志仅在诊断开关开启时记录，并限制输出频率；具体有线投屏兼容性仍需结合设备实测。'
+          ])
           this.buildSection('1.2.17（1002017）· 方向键与翻页操作', [
             '“键 → 更多”新增 ←、↑、↓、→ 四个方向按钮，支持配合选中的 Ctrl、Shift 等修饰键操作；点击不主动弹出软键盘，长按可调整顺序。',
             '修复打开本地键盘后，外接键盘或 PC 键盘的方向键、翻页键未正确传递到远端的问题；补齐 PageUp、PageDown、Home、End 和 Insert 映射。',

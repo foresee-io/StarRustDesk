@@ -25,10 +25,15 @@ vm.runInContext(ts.transpile(source.replace(/^import .*$/gm, '').replace('export
 const p = context.Policy;
 (async () => {
   p.attach(main); p.setActive(true); await p.pending;
+  assert.equal(storage.get('remoteExternalDisplay'), false);
+  assert.equal(storage.get('remoteProjectionDisplayId'), 0);
   assert.equal(orientation, 4, 'phone keeps original local orientation');
   id = 1; listener(1); await p.pending;
+  assert.equal(storage.get('remoteExternalDisplay'), true);
+  assert.equal(storage.get('remoteProjectionDisplayId'), 1);
   assert.equal(orientation, 2, 'wide external display uses landscape');
   id = 0; listener(0); await p.pending;
+  assert.equal(storage.get('remoteExternalDisplay'), false);
   assert.equal(orientation, 4, 'return to local restores original');
   deviceInfo.deviceType = 'tablet';
   p.toggleLandscape(); await p.pending;
@@ -40,5 +45,7 @@ const p = context.Policy;
   p.setActive(false); await p.pending; assert.equal(orientation, 4);
   assert.equal(storage.get('remoteLandscapeLocked'), false);
   p.detach(); assert.equal(listener, undefined);
+  assert.equal(storage.get('remoteExternalDisplay'), false);
+  assert.equal(storage.get('remoteProjectionDisplayId'), -1);
   console.log('PASS display policy: phone/tablet, external wide/portrait, manual override, restore and listener cleanup');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -999,6 +999,21 @@ static napi_value SendKeyEvent(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+static napi_value SendPrintableShortcutKey(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int32_t keyCode = 0, modifierMask = 0;
+    int result = -3;
+    if (argc == 2 && napi_get_value_int32(env, args[0], &keyCode) == napi_ok &&
+        napi_get_value_int32(env, args[1], &modifierMask) == napi_ok) {
+        result = rust_send_printable_shortcut_key(keyCode, modifierMask);
+    }
+    napi_value ret;
+    napi_create_int32(env, result, &ret);
+    return ret;
+}
+
 static napi_value SendCtrlAltDel(napi_env env, napi_callback_info info) {
     int result = rust_send_ctrl_alt_del();
     DiagnosticLog::instance().append(result == 0 ? "I" : "E", "input-shortcut",
@@ -2287,6 +2302,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"getPrivacyModeState", nullptr, GetPrivacyModeState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKeyEvent", nullptr, SendKeyEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendPrintableShortcutKey", nullptr, SendPrintableShortcutKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendCtrlAltDel", nullptr, SendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"canSendCtrlAltDel", nullptr, CanSendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPhysicalKeyEvent", nullptr, SendPhysicalKeyEvent, nullptr, nullptr, nullptr, napi_default, nullptr},

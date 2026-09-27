@@ -1368,6 +1368,16 @@ pub extern "C" fn rust_send_key_event(key_code: i32, action: i32, modifier_mask:
 }
 
 #[no_mangle]
+pub extern "C" fn rust_send_printable_shortcut_key(key_code: i32, modifier_mask: i32) -> i32 {
+    let Some(event) = input_compat::printable_shortcut_key(key_code, modifier_mask) else {
+        return -3;
+    };
+    let mut msg = PeerMessage::new();
+    msg.set_key_event(event);
+    queue_peer_message(msg)
+}
+
+#[no_mangle]
 pub extern "C" fn rust_send_physical_key_event(
     usb_hid_code: i32,
     action: i32,

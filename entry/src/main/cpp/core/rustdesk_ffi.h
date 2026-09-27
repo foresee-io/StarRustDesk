@@ -40,6 +40,7 @@ int rust_send_mouse_wheel(double delta_x, double delta_y, int modifier_mask);
 int rust_send_mobile_action(int action);
 int rust_is_peer_android(void);
 int rust_send_key_event(int key_code, int action, int modifier_mask);
+int rust_send_printable_shortcut_key(int key_code, int modifier_mask);
 int rust_send_ctrl_alt_del(void);
 int rust_can_send_ctrl_alt_del(void);
 int rust_send_physical_key_event(int usb_hid_code, int action, int modifier_mask);

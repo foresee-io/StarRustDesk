@@ -1,5 +1,6 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { inputCompatibilityKey, selectedKeyboardMode, selectedCursorMode, shouldSuppressCursor } from '../model/InputCompatibility';
+import { PhysicalMouseDeduplicator, isTouchOnlyMouseEvent } from '../model/PhysicalMousePolicy';
 import { isNavigationControlKey, navigationKeyName, NAVIGATION_LOCAL, RemoteNavigationKeys } from '../model/RemoteNavigationKeys';
 ﻿import { router } from '@kit.ArkUI';
 import { RustDeskTheme } from '../theme/RustDeskTheme';
@@ -152,6 +153,8 @@ struct RemotePage {
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false;
   @StorageLink('remoteLandscapeLocked') remoteLandscapeLocked: boolean = false;
+  @StorageLink('remoteExternalDisplay') remoteExternalDisplay: boolean = false;
+  @StorageLink('remoteProjectionDisplayId') @Watch('onProjectionDisplayChanged') remoteProjectionDisplayId: number = -1;
   @StorageLink('appForegroundEpoch') @Watch('onAppForegroundEpochChanged') appForegroundEpoch: number = 0;
   @StorageLink('mobileActionsOffsetX') mobileActionsOffsetX: number = 0;
   @StorageLink('mobileActionsOffsetY') mobileActionsOffsetY: number = 0;
@@ -224,6 +227,7 @@ struct RemotePage {
   private keyboardComposing: boolean = false;
   private navigationKeys: RemoteNavigationKeys = new RemoteNavigationKeys();
   @State showCursor: boolean = false;
+  @State projectedPhysicalPointer: boolean = false;
   @State remoteCursorEmbedded: boolean = false;
   @State embeddedCursorOverlayFallback: boolean = false;
   @State cursorX: number = 0;
@@ -358,6 +362,17 @@ struct RemotePage {
   private lastMoveSentAt: number = 0;
   private lastMouseEventAt: number = 0;
   private lastNativeMouseEventAt: number = 0;
+  private physicalMouseDeduplicator: PhysicalMouseDeduplicator = new PhysicalMouseDeduplicator();
+  private pointerTraceAt: number = 0;
+  private pointerNativeMoves: number = 0;
+  private pointerArkMoves: number = 0;
+  private pointerTouchMoves: number = 0;
+  private pointerForwardedMoves: number = 0;
+  private pointerFilteredEvents: number = 0;
+  private pointerDuplicateEvents: number = 0;
+  private pointerFallbackClicks: number = 0;
+  private pointerLastSource: number = -1;
+  private pointerLastTool: number = -1;
   private lastTouchEventAt: number = 0;
   private lastMappedPhysicalLeftUpAt: number = 0;
   private lastLocalPointerInputAt: number = 0;
@@ -860,6 +875,9 @@ struct RemotePage {
 
   resetRemoteViewportForSession(): void {
     this.resetViewportTransform();
+    this.physicalMouseDeduplicator.clear();
+    this.projectedPhysicalPointer = false;
+    this.resetPointerDiagnostics();
     this.hasVideo = false;
     this.remoteWidth = 0;
     this.remoteHeight = 0;
@@ -1020,6 +1038,70 @@ struct RemotePage {
     this.lastDecodedFrames = decodedFrames;
   }
 
+  onProjectionDisplayChanged(): void {
+    this.physicalMouseDeduplicator.clear();
+    this.relativePointerSampleValid = false;
+    this.projectedPhysicalPointer = false;
+    this.resetPointerDiagnostics();
+    if (!this.remotePageVisible) return;
+    this.releaseHeldMouseButtons('projection_display_changed');
+    RustDeskNapi.appendDiagnosticLog('projection',
+      `input_display_changed display=${this.remoteProjectionDisplayId} external=${this.remoteExternalDisplay}`);
+  }
+
+  noteProjectedPhysicalPointer(): void {
+    if (this.remoteExternalDisplay) this.projectedPhysicalPointer = true;
+  }
+
+  shouldShowCursorOverlay(): boolean {
+    // The phone's OS pointer is not part of an independently projected app.
+    // Physical input needs our software cursor there even in direct-touch mode.
+    // Respect embedded/KVM preferences and real feedback in relative mode.
+    return !this.suppressCompatibilityCursor() && (!this.relativeMouseEnabled || this.hasAuthoritativeRemoteCursor) &&
+      this.showCursor && (!this.remoteCursorEmbedded || this.embeddedCursorOverlayFallback || this.isPanMode) &&
+      (this.inputMode === INPUT_MODE_MOUSE || (this.remoteExternalDisplay && this.projectedPhysicalPointer));
+  }
+
+  resetPointerDiagnostics(): void {
+    this.pointerTraceAt = 0;
+    this.pointerNativeMoves = 0;
+    this.pointerArkMoves = 0;
+    this.pointerTouchMoves = 0;
+    this.pointerForwardedMoves = 0;
+    this.pointerFilteredEvents = 0;
+    this.pointerDuplicateEvents = 0;
+    this.pointerFallbackClicks = 0;
+    this.pointerLastSource = -1;
+    this.pointerLastTool = -1;
+  }
+
+  flushPointerDiagnostics(): void {
+    const now: number = Date.now();
+    if (now - this.pointerTraceAt < 2000) return;
+    // Counters are per interval, not per event logs. Also sample idle intervals
+    // so a report can distinguish no movement delivery from invisible rendering.
+    try {
+      if (RustDeskNapi.getOption('diagnostic-log-enabled') === '1') {
+        RustDeskNapi.appendDiagnosticLog('projection-pointer',
+          `display=${this.remoteProjectionDisplayId} external=${this.remoteExternalDisplay} mode=${this.inputMode} ` +
+          `native_move=${this.pointerNativeMoves} ark_move=${this.pointerArkMoves} touch_move=${this.pointerTouchMoves} ` +
+          `physical_move_dispatch=${this.pointerForwardedMoves} filtered=${this.pointerFilteredEvents} ` +
+          `duplicate=${this.pointerDuplicateEvents} fallback_click=${this.pointerFallbackClicks} ` +
+          `source=${this.pointerLastSource} tool=${this.pointerLastTool} overlay=${this.shouldShowCursorOverlay()} ` +
+          `show=${this.showCursor} physical=${this.projectedPhysicalPointer} relative=${this.relativeMouseEnabled} ` +
+          `authoritative=${this.hasAuthoritativeRemoteCursor} embedded=${this.remoteCursorEmbedded} ` +
+          `embedded_fallback=${this.embeddedCursorOverlayFallback} suppressed=${this.suppressCompatibilityCursor()} ` +
+          `remote_x=${Math.round(this.lastAbsX)} remote_y=${Math.round(this.lastAbsY)} ` +
+          `overlay_x=${Math.round(this.cursorX)} overlay_y=${Math.round(this.cursorY)} ` +
+          `viewport=${Math.round(this.componentWidth)}x${Math.round(this.componentHeight)}`);
+      }
+    } catch (_e) {
+      // Diagnostics must never interrupt input or cursor polling.
+    }
+    this.resetPointerDiagnostics();
+    this.pointerTraceAt = now;
+  }
+
   startRemoteCursorPolling(): void {
     if (this.cursorTimer !== -1) {
       clearTimeout(this.cursorTimer);
@@ -1042,6 +1124,7 @@ struct RemotePage {
             this.showCursor = false;
           }
           this.pollRemoteCursorImage();
+          this.flushPointerDiagnostics();
         } catch (_e) {
         }
       } else {
@@ -1188,7 +1271,7 @@ struct RemotePage {
       this.handleRemoteHover(event.hover === 1);
       return;
     }
-    this.lastNativeMouseEventAt = Date.now();
+    if (event.action === NATIVE_MOUSE_ACTION_MOVE) this.pointerNativeMoves++;
     if (event.modifierValid) {
       ConnectionService.syncNativeModifierState(event.modifierMask);
     }
@@ -1196,6 +1279,19 @@ struct RemotePage {
       this.remoteWidth <= 0 || this.remoteHeight <= 0) {
       return;
     }
+    if (!Number.isFinite(event.x) || !Number.isFinite(event.y)) return;
+    this.lastNativeMouseEventAt = Date.now();
+    let pairedAction: number = -1;
+    if (event.action === NATIVE_MOUSE_ACTION_MOVE) pairedAction = 0;
+    else if (event.button === NATIVE_MOUSE_BUTTON_LEFT) {
+      if (event.action === NATIVE_MOUSE_ACTION_PRESS) pairedAction = 1;
+      else if (event.action === NATIVE_MOUSE_ACTION_RELEASE) pairedAction = 2;
+    } else if (event.button === NATIVE_MOUSE_BUTTON_RIGHT) {
+      if (event.action === NATIVE_MOUSE_ACTION_PRESS) pairedAction = 3;
+      else if (event.action === NATIVE_MOUSE_ACTION_RELEASE) pairedAction = 4;
+    }
+    this.physicalMouseDeduplicator.rememberNative(pairedAction, event.x, event.y, this.lastNativeMouseEventAt);
+    this.noteProjectedPhysicalPointer();
     this.handleRemoteHover(true);
     this.lastMouseEventAt = this.lastNativeMouseEventAt;
     this.clearLongPressTimer();
@@ -1209,6 +1305,7 @@ struct RemotePage {
       if (this.lastNativeMouseEventAt - this.lastMoveSentAt > 8) {
         this.lastMoveSentAt = this.lastNativeMouseEventAt;
         ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 0);
+        this.pointerForwardedMoves++;
       }
       return;
     }
@@ -2100,9 +2197,7 @@ struct RemotePage {
         .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       }
 
-      if (!this.suppressCompatibilityCursor() && (!this.relativeMouseEnabled || this.hasAuthoritativeRemoteCursor) &&
-        this.showCursor && (!this.remoteCursorEmbedded || this.embeddedCursorOverlayFallback || this.isPanMode) &&
-        this.inputMode === INPUT_MODE_MOUSE) {
+      if (this.shouldShowCursorOverlay()) {
         this.buildCursorOverlay();
       }
 
@@ -4191,6 +4286,7 @@ struct RemotePage {
     }
     .width(this.cursorImageWidth)
     .height(this.cursorImageHeight)
+    .zIndex(11)
     .hitTestBehavior(HitTestMode.None)
     .position({ x: this.cursorX, y: this.cursorY });
   }
@@ -4676,6 +4772,9 @@ struct RemotePage {
       return;
     }
 
+    if (event.type === TouchType.Down) this.projectedPhysicalPointer = false;
+    if (event.type === TouchType.Move) this.pointerTouchMoves++;
+
     // An Up may still contain the released finger. Never start another gesture
     // from the remaining fingers of a completed scroll/pinch/three-finger swipe.
     if (event.type === TouchType.Cancel) {
@@ -4764,6 +4863,7 @@ struct RemotePage {
   }
 
   handlePointerCompatibilityTouch(event: TouchEvent): void {
+    if (event.type === TouchType.Move) this.pointerTouchMoves++;
     if (event.type === TouchType.Down || event.type === TouchType.Up || event.type === TouchType.Cancel) {
       RustDeskNapi.appendDiagnosticLog('input',
         `pointer_touch type=${event.type} source=${event.source} tool=${event.sourceTool}`);
@@ -4784,6 +4884,7 @@ struct RemotePage {
     let y: number = touchCount > 0 ? event.touches[0].y : event.changedTouches[0].y;
     let localX: number = x - this.getDisplayLeft();
     let localY: number = y - this.getDisplayTop();
+    this.noteProjectedPhysicalPointer();
     let remotePoint: RemotePoint = this.updatePointerFromLocal(localX, localY);
     this.lastMouseEventAt = Date.now();
     this.handleRemoteHover(true);
@@ -4795,6 +4896,7 @@ struct RemotePage {
       if (this.lastMouseEventAt - this.lastMoveSentAt > 8) {
         this.lastMoveSentAt = this.lastMouseEventAt;
         ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, 0);
+        this.pointerForwardedMoves++;
       }
     } else if (event.type === TouchType.Up) {
       this.sendLeftUp(remotePoint.x, remotePoint.y, true);
@@ -5128,14 +5230,21 @@ struct RemotePage {
       event.x - this.getDisplayLeft() : event.x;
     let localY: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
       event.y - this.getDisplayTop() : event.y;
+    if (event.source === SourceType.Mouse || event.sourceTool === SourceTool.MOUSE ||
+      event.sourceTool === SourceTool.TOUCHPAD) this.noteProjectedPhysicalPointer();
     let remotePoint: RemotePoint = this.updatePointerFromLocal(localX, localY);
     this.sendLeftClick(remotePoint.x, remotePoint.y);
+    this.pointerFallbackClicks++;
     RustDeskNapi.appendDiagnosticLog('input',
       `physical_mouse_click_fallback origin=${coordinatesFromSurface ? 'surface' : 'overlay'} ` +
       `source=${event.source} tool=${event.sourceTool}`);
   }
 
   handleRemoteMouse(event: MouseEvent, coordinatesFromSurface: boolean = false): void {
+    const moving: boolean = event.action === MouseAction.Move || event.action === MouseAction.Hover;
+    if (moving) this.pointerArkMoves++;
+    this.pointerLastSource = event.source;
+    this.pointerLastTool = event.sourceTool;
     if (event.action !== MouseAction.Move && event.action !== MouseAction.Hover) {
       RustDeskNapi.appendDiagnosticLog('input',
         `raw_mouse origin=${coordinatesFromSurface ? 'surface' : 'overlay'} action=${event.action} ` +
@@ -5144,20 +5253,30 @@ struct RemotePage {
     // ArkUI can emit compatibility mouse events for finger/stylus input. Those
     // events must stay on the touch path, otherwise absolute mouse coordinates
     // fight with the relative touchpad coordinates and the cursor jumps.
-    if (event.source === SourceType.TouchScreen ||
-      (event.source !== SourceType.Mouse &&
-        (event.sourceTool === SourceTool.Finger || event.sourceTool === SourceTool.Pen))) {
+    if (isTouchOnlyMouseEvent(event.source === SourceType.TouchScreen, event.source === SourceType.Mouse,
+      event.sourceTool === SourceTool.MOUSE || event.sourceTool === SourceTool.TOUCHPAD,
+      event.sourceTool === SourceTool.Finger || event.sourceTool === SourceTool.Pen)) {
+      this.pointerFilteredEvents++;
       return;
     }
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED ||
+      this.remoteWidth <= 0 || this.remoteHeight <= 0) return;
     // Read the modifier state from the mouse event itself. This remains valid
     // even if ArkUI routes Ctrl/Shift key events to another focused component.
     this.syncModifiersFromPointerEvent(event);
-    // The Native XComponent callback is authoritative on HarmonyOS PC. Avoid
-    // forwarding the compatibility ArkUI event a second time when both paths
-    // report the same physical mouse input.
-    if (Date.now() - this.lastNativeMouseEventAt < 80) {
+    let action: number = this.mapMouseAction(event);
+    let localX: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
+      event.x - this.getDisplayLeft() : event.x;
+    let localY: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
+      event.y - this.getDisplayTop() : event.y;
+    if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
+    // Suppress only a matching native event. In projected windows native may
+    // deliver buttons while ArkUI alone delivers unpressed mouse movement.
+    if (this.physicalMouseDeduplicator.consumeDuplicate(action, localX, localY, Date.now())) {
+      this.pointerDuplicateEvents++;
       return;
     }
+    this.noteProjectedPhysicalPointer();
     this.lastMouseEventAt = Date.now();
     this.pointerOverRemoteViewport = true;
     this.updateSystemPointerVisibility();
@@ -5165,11 +5284,6 @@ struct RemotePage {
     this.clearTapTimer();
     this.requestRemoteInputFocus();
 
-    let action: number = this.mapMouseAction(event);
-    let localX: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
-      event.x - this.getDisplayLeft() : event.x;
-    let localY: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
-      event.y - this.getDisplayTop() : event.y;
     let remotePoint: RemotePoint = this.updatePointerFromLocal(localX, localY);
     this.edgePanTouchActive = false;
     if (event.action === MouseAction.Move || event.action === MouseAction.Hover) {
@@ -5200,6 +5314,7 @@ struct RemotePage {
       this.sendRightUp(remotePoint.x, remotePoint.y, true);
     } else {
       ConnectionService.sendMouseEvent(remotePoint.x, remotePoint.y, action);
+      if (action === 0) this.pointerForwardedMoves++;
     }
     if (action > 0) {
       RustDeskNapi.appendDiagnosticLog('input',
@@ -6255,7 +6370,7 @@ struct RemotePage {
       const modifierMask: number = this.getVirtualModifierMask();
       const keyCode: number = this.getPrintableShortcutKeyCode(text);
       if (modifierMask !== 0 && keyCode > 0) {
-        ConnectionService.sendShortcutKey(keyCode, modifierMask);
+        ConnectionService.sendPrintableShortcutKey(keyCode, modifierMask);
         RustDeskNapi.appendDiagnosticLog('input-shortcut',
           `soft_key key=${keyCode} modifiers=${modifierMask}`);
         return;
@@ -7861,6 +7976,7 @@ struct RemotePage {
 
   switchDisplay(display: number): void {
     this.relativePointerSampleValid = false;
+    this.physicalMouseDeduplicator.clear();
     if (display < 0 || display >= this.displayCount || display === this.currentDisplay) {
       return;
     }

@@ -206,6 +206,10 @@ export class RustDeskNapi {
     return rustdeskNapi.sendKeyEvent(keyCode, action, modifierMask)
   }
 
+  static sendPrintableShortcutKey(keyCode: number, modifierMask: number): number {
+    return rustdeskNapi.sendPrintableShortcutKey(keyCode, modifierMask)
+  }
+
   static sendCtrlAltDel(): number {
     return (rustdeskNapi as ESObject).sendCtrlAltDel()
   }

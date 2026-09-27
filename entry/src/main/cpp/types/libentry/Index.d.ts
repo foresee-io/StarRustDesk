@@ -99,6 +99,7 @@ export const disconnect: () => number;
 export const setPrivacyMode: (enabled: boolean) => number;
 export const getPrivacyModeState: () => number;
 export const sendKeyEvent: (keyCode: number, action: number, modifierMask?: number) => number;
+export const sendPrintableShortcutKey: (keyCode: number, modifierMask: number) => number;
 export const sendCtrlAltDel: () => number;
 export const canSendCtrlAltDel: () => boolean;
 export const sendPhysicalKeyEvent: (hidCode: number, action: number, modifierMask?: number) => number;

@@ -13,6 +13,7 @@ export class RemoteDisplayPolicy {
   private static pending: Promise<void> = Promise.resolve();
   private static changed = (id: number): void => {
     RemoteDisplayPolicy.currentDisplayId = id;
+    RemoteDisplayPolicy.publishDisplayState();
     RemoteDisplayPolicy.apply();
   };
 
@@ -35,6 +36,15 @@ export class RemoteDisplayPolicy {
     RemoteDisplayPolicy.main = undefined;
     RemoteDisplayPolicy.localDisplayId = -1;
     RemoteDisplayPolicy.currentDisplayId = -1;
+    RemoteDisplayPolicy.publishDisplayState();
+  }
+
+  private static publishDisplayState(): void {
+    const external: boolean = RemoteDisplayPolicy.localDisplayId >= 0 &&
+      RemoteDisplayPolicy.currentDisplayId >= 0 &&
+      RemoteDisplayPolicy.localDisplayId !== RemoteDisplayPolicy.currentDisplayId;
+    AppStorage.setOrCreate('remoteExternalDisplay', external);
+    AppStorage.setOrCreate('remoteProjectionDisplayId', RemoteDisplayPolicy.currentDisplayId);
   }
 
   static getMainWindow(): window.Window | undefined {
@@ -47,6 +57,7 @@ export class RemoteDisplayPolicy {
     try {
       RemoteDisplayPolicy.currentDisplayId = main.getWindowProperties().displayId ?? -1;
     } catch (_e) {}
+    RemoteDisplayPolicy.publishDisplayState();
     RemoteDisplayPolicy.apply();
   }
 
