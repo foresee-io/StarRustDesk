@@ -30,6 +30,7 @@ interface SettingItem {
 @Component
 export struct SettingsPage {
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
+  @StorageLink('uiFontScale') uiFontScale: number = 1
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @StorageLink('isDarkModeManual') isDarkModeManual: boolean = false
   @StorageLink('peerOnlineQueryEnabled') peerOnlineQueryEnabled: boolean = false
@@ -1155,9 +1156,11 @@ export struct SettingsPage {
         Button(this.roundedRectButtons ? '✓ 圆角长方形' : '圆角长方形', { type: ButtonType.Normal })
           .id('buttonShapeRectangle')
           .layoutWeight(1)
-          .height(44)
+          .height(this.buttonShapeOptionHeight())
           .borderRadius(12)
           .fontSize(14)
+          .labelStyle({ maxLines: 2, minFontSize: 11, maxFontSize: 14,
+            heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .backgroundColor(this.roundedRectButtons ?
             (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG) : Color.Transparent)
@@ -1167,8 +1170,10 @@ export struct SettingsPage {
         Button(this.roundedRectButtons ? '经典圆润' : '✓ 经典圆润', { type: ButtonType.Capsule })
           .id('buttonShapeClassic')
           .layoutWeight(1)
-          .height(44)
+          .height(this.buttonShapeOptionHeight())
           .fontSize(14)
+          .labelStyle({ maxLines: 2, minFontSize: 11, maxFontSize: 14,
+            heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .backgroundColor(!this.roundedRectButtons ?
             (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG) : Color.Transparent)
@@ -1187,6 +1192,10 @@ export struct SettingsPage {
   setButtonShape(rectangular: boolean): void {
     RustDeskNapi.setOption('button-shape', rectangular ? 'rectangle' : 'classic')
     this.roundedRectButtons = rectangular
+  }
+
+  buttonShapeOptionHeight(): number {
+    return Math.ceil(44 + Math.max(0, this.uiFontScale - 1) * 18)
   }
 
   @Builder

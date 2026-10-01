@@ -37,8 +37,8 @@ expect(remotePage, /selected \? this\.controlSelectedBackgroundColor\(\) : this\
   'general selected toolbar buttons must use the pale-blue selected style')
 expect(remotePage, /按钮变为淡蓝色/,
   'gesture help must describe the new selected state')
-expect(remotePage, /Button\(`屏\$\{display \+ 1\}`\)[\s\S]*?\.width\(vertical \? 80 : 44\)/,
-  'phone display buttons must stay compact enough to avoid a clipped keyboard button')
+expect(remotePage, /Button\(`屏\$\{display \+ 1\}`\)[\s\S]*?\.width\(this\.adaptiveToolbarButtonWidth\(vertical \? 80 : 44\)\)/,
+  'phone display buttons must keep their compact base width and adapt to large system fonts')
 expect(remotePage, /item === 'input'[\s\S]*buildInputModeButton\(vertical \? 80 : 56, vertical, item\)/,
   'the dynamic toolbar must preserve the compact phone input-mode button')
 expect(remotePage, /item === 'keyboard'[\s\S]*buildToolbarButton\('键盘', vertical \? 80 : 56/,

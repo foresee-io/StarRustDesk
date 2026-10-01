@@ -17,6 +17,7 @@ struct HomePage {
   @State pageWidth: number = 0
   @State tabBarWidth: number = 0
   @StorageLink('isDarkMode') isDarkMode: boolean = false
+  @StorageLink('uiFontScale') uiFontScale: number = 1
   private swiperController: SwiperController = new SwiperController()
   private releaseNotesScheduled: boolean = false
   private releaseNotesDialogController: CustomDialogController = new CustomDialogController({
@@ -106,7 +107,7 @@ struct HomePage {
       if (this.tabBarWidth > 18) {
         Row()
           .width((this.tabBarWidth - 18) / 2)
-          .height(44)
+          .height(this.tabItemHeight())
           .backgroundColor(this.isDarkMode ? '#2823466F' : '#18DCEBFF')
           .border({
             width: 1,
@@ -130,7 +131,7 @@ struct HomePage {
       .padding(6)
     }
     .width(this.pageWidth >= 820 ? 440 : '92%')
-    .height(58)
+    .height(this.tabItemHeight() + 14)
     .margin({ bottom: 12 })
     .border({
       width: 1,
@@ -154,6 +155,10 @@ struct HomePage {
     Row() {
       Text(label)
         .fontSize(14)
+        .maxLines(1)
+        .minFontSize(11)
+        .maxFontSize(14)
+        .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
         .fontWeight(index === this.currentTabIndex ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
         .fontColor(index === this.currentTabIndex ?
           (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT) :
@@ -161,7 +166,7 @@ struct HomePage {
         .textAlign(TextAlign.Center)
     }
     .layoutWeight(1)
-    .height(44)
+    .height(this.tabItemHeight())
     .justifyContent(FlexAlign.Center)
     .alignItems(VerticalAlign.Center)
     .backgroundColor(Color.Transparent)
@@ -178,5 +183,9 @@ struct HomePage {
       })
       this.swiperController.changeIndex(index, true)
     })
+  }
+
+  tabItemHeight(): number {
+    return Math.ceil(44 + Math.max(0, this.uiFontScale - 1) * 14)
   }
 }

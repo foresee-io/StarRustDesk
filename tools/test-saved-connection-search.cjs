@@ -16,10 +16,10 @@ assert.match(page, /Button\(this\.savedConnectionSearchExpanded \? '收起' : '�
   'The search toggle must stay in one stable action slot');
 assert.match(page, /placeholder: '搜索名称或远端 ID'[\s\S]*?\.layoutWeight\(1\)/,
   'Expanded search must use the free space to the left of fixed actions');
-assert.match(page, /Button\('备份'\)\s*\.width\(48\)/,
-  'Backup action must keep a fixed width while search expands');
-assert.match(page, /Button\('\+ 分组'\)\s*\.width\(56\)/,
-  'Group action must keep a fixed width while search expands');
+assert.match(page, /Button\('备份'\)\s*\.width\(this\.savedToolbarButtonWidth\(48\)\)/,
+  'Backup action must preserve its base width and grow for large system fonts');
+assert.match(page, /Button\('\+ 分组'\)\s*\.width\(this\.savedToolbarButtonWidth\(56\)\)/,
+  'Group action must preserve its base width and grow for large system fonts');
 assert.doesNotMatch(page, /Search\(\{ value: this\.savedConnectionSearch[^}]+\}\)\s*\.width\('100%'\)/s,
   'Search must not consume a full standalone row');
 assert.match(page, /matchesSavedConnectionSearch\(item\)/,

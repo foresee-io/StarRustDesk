@@ -1,8 +1,8 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.18'
-export const RELEASE_NOTES_BUILD: string = '1002018'
+export const RELEASE_NOTES_VERSION: string = '1.2.19'
+export const RELEASE_NOTES_BUILD: string = '1002019'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -46,6 +46,12 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.19（1002019）· 实体鼠标、画面跟随与大字体适配', [
+            '修复远端光标图层可能遮挡实体鼠标点击的问题；优化鼠标与触摸兼容事件的识别及点击去重，避免左右键被误拦截。',
+            '修复输入 Windows 登录密码后，本地键盘已收起但放大画面的鼠标跟随仍被阻止的问题；按实际键盘可见性和编辑状态恢复跟随，保留缩放比例与画面位置。',
+            '优化系统大字体下的按钮适配：常用按钮、键控快捷栏和底部导航随字体调整尺寸，已保存连接工具区支持换行，减少文字被截断。',
+            '补充键盘显示、焦点与画面跟随阻止原因的脱敏诊断，不记录输入内容；有线应用单独投屏的实体鼠标兼容问题仍待实机排查与验证。'
+          ])
           this.buildSection('1.2.18（1002018）· 投屏鼠标与软键盘组合键', [
             '修复应用单独投屏时，实体鼠标连续移动事件可能被误过滤的问题；按事件类型和坐标精准去重，保留点击、拖动及触控原有路径。',
             '优化投屏窗口的远端指针显示与位置更新，切换显示设备时清理旧输入状态；补充鼠标移动、过滤原因及指针状态诊断，便于排查设备差异。',

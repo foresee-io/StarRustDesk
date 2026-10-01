@@ -30,6 +30,7 @@ export default class EntryAbility extends UIAbility {
     }
     PersistentStorage.persistProp('isDarkModeManual', false);
     AppStorage.setOrCreate('roundedRectButtons', RustDeskNapi.getOption('button-shape') !== 'classic');
+    this.updateFontScale(this.context.config.fontSizeScale);
     PersistentStorage.persistProp('isDarkMode', this.isDarkColorMode(this.context.config.colorMode));
     PersistentStorage.persistProp('mobileActionsOffsetX', 0);
     PersistentStorage.persistProp('mobileActionsOffsetY', 0);
@@ -82,11 +83,13 @@ export default class EntryAbility extends UIAbility {
 
   onConfigurationUpdate(newConfig: Configuration): void {
     this.updateColorMode(newConfig.colorMode);
+    this.updateFontScale(newConfig.fontSizeScale);
   }
 
   onForeground(): void {
     RemoteDisplayPolicy.refresh();
     this.updateColorMode(this.context.config.colorMode);
+    this.updateFontScale(this.context.config.fontSizeScale);
     RemoteSessionBackgroundTask.setAppBackground(false)
     RemoteSessionBackgroundTask.syncForConnectionStatus(RustDeskNapi.getConnectionStatus() as ConnectionStatus)
     let foregroundEpoch: number = AppStorage.get<number>('appForegroundEpoch') ?? 0
@@ -117,6 +120,13 @@ export default class EntryAbility extends UIAbility {
 
   private isDarkColorMode(colorMode?: ConfigurationConstant.ColorMode): boolean {
     return colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+  }
+
+  private updateFontScale(fontSizeScale?: number): void {
+    const current: number = AppStorage.get<number>('uiFontScale') ?? 1;
+    const scale: number = fontSizeScale !== undefined && Number.isFinite(fontSizeScale) && fontSizeScale > 0 ?
+      fontSizeScale : current;
+    AppStorage.setOrCreate('uiFontScale', Math.max(1, Math.min(3, scale)));
   }
 
   private updateColorMode(colorMode?: ConfigurationConstant.ColorMode): void {

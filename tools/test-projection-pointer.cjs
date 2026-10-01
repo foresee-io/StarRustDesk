@@ -33,6 +33,7 @@ class Page {${[
   'updatePointerFromLocal', 'updateCursorOverlayFromPosition', 'markLocalPointerInput',
   'noteProjectedPhysicalPointer', 'shouldShowCursorOverlay',
   'resetPointerDiagnostics', 'flushPointerDiagnostics', 'onProjectionDisplayChanged',
+  'touchMouseFollowBlockReason', 'isRemoteKeyboardBlockingPointer',
   'handleRemoteClickFallback'
 ].map(method).join('\n')}}
 globalThis.Page = Page;`), context);
@@ -70,6 +71,8 @@ function page(overrides = {}) {
   const p = Object.assign(new context.Page(), {
     connectionStatus: 2, remoteWidth: 1000, remoteHeight: 500,
     componentWidth: 600, componentHeight: 400, inputMode: 'mouse',
+    zoomScale: 1, offsetX: 0, offsetY: 0, showKeyboardPanel: false,
+    remoteKeyboardVisible: false, remoteKeyboardEditing: false, remoteKeyboardVisibilityKnown: true,
     remoteExternalDisplay: true, remoteProjectionDisplayId: 8, projectedPhysicalPointer: false,
     showCursor: false, relativeMouseEnabled: false, hasAuthoritativeRemoteCursor: false,
     remoteCursorEmbedded: false, embeddedCursorOverlayFallback: false,
@@ -83,6 +86,8 @@ function page(overrides = {}) {
     handleRemoteHover() {}, syncModifiersFromPointerEvent() {}, updateSystemPointerVisibility() {},
     clearLongPressTimer() {}, clearTapTimer() {}, requestRemoteInputFocus() {},
     reconcilePhysicalMouseButtons() {}, updateEdgeAutoPan() {}, stopEdgeAutoPan() {},
+    isHandheldDevice() { return false; },
+    startRemoteKeyboardTracking() { this.keyboardTrackingRestarts = (this.keyboardTrackingRestarts || 0) + 1; },
     sendLeftDown(x,y) { sent.push([x,y,1]); }, sendLeftUp(x,y) { sent.push([x,y,2]); },
     sendRightDown(x,y) { sent.push([x,y,3]); }, sendRightUp(x,y) { sent.push([x,y,4]); },
     sendLeftClick(x,y) { sent.push([x,y,'click']); },
@@ -165,6 +170,11 @@ test('cursor overlay does not intercept input and is explicitly above the surfac
   const start=source.indexOf('\n  buildCursorOverlay()');
   const overlay=source.slice(start,source.indexOf('\n  }',start)+4);
   assert.match(overlay,/\.zIndex\(11\)/);
-  assert.match(overlay,/\.hitTestBehavior\(HitTestMode.None\)/);
+  // None on the parent does not disable child hit testing. Check both branches.
+  const image=overlay.slice(overlay.indexOf('Image('),overlay.indexOf('} else {'));
+  const arrow=overlay.slice(overlay.indexOf('Path()'),overlay.indexOf('\n    }'));
+  assert.match(image,/\.hitTestBehavior\(HitTestMode.None\)/);
+  assert.match(arrow,/\.hitTestBehavior\(HitTestMode.None\)/);
+  assert.equal((overlay.match(/\.hitTestBehavior\(HitTestMode.None\)/g)||[]).length,3);
 });
 console.log(`${checks} projection pointer regression checks passed`);

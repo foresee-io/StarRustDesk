@@ -35,6 +35,7 @@ function Button(label) {
 const context = vm.createContext({ exports: {}, RustDeskNapi: native,
   hilog: { info() {}, warn() {} }, Button,
   ButtonType: { Capsule: 1 }, ButtonShapeModifier: class {},
+  TextHeightAdaptivePolicy: { MAX_LINES_FIRST: 0 },
   LongPressGesture: options => ({ onAction: callback => ({ ...options, callback }) }),
   RustDeskTheme: { FONT_WEIGHT_SEMI_BOLD: 600 }
 });
@@ -45,6 +46,7 @@ const constants = [...page.matchAll(/^const (?:VIRTUAL_MODIFIER_\w+|MODIFIER_MAS
   .map(m => m[0]).join('\n');
 const order = page.match(/const KEYBOARD_MORE_DEFAULT_ORDER: string\[\] = \[[\s\S]*?\];/)[0];
 const methods = ['buildKeyboardMoreItem', 'buildKeyboardToolButton', 'keyboardToolSelected',
+  'adaptiveToolbarButtonWidth', 'getKeyboardToolbarButtonHeight',
   'sendVirtualControlKey', 'toggleVirtualModifier', 'isVirtualModifierSelected',
   'setVirtualModifierSelected', 'releaseVirtualModifiers', 'toolbarOrderLabel',
   'openToolbarOrderEditor', 'readToolbarOrder', 'moveToolbarOrderItem', 'saveToolbarOrder']
@@ -55,6 +57,7 @@ const p = new context.Probe();
 let focusRequests = 0;
 Object.assign(p, { virtualCtrlSelected: false, virtualShiftSelected: false,
   virtualAltSelected: false, virtualMetaSelected: false, roundedRectButtons: true,
+  uiFontScale: 1,
   primaryTextColor: () => '#111111', themeBorderColor: () => '#CCCCCC',
   refocusRemoteKeyboard: () => { focusRequests++; }
 });

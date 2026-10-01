@@ -152,6 +152,7 @@ struct ConnectionQualityRow {
 struct RemotePage {
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false;
+  @StorageLink('uiFontScale') uiFontScale: number = 1;
   @StorageLink('remoteLandscapeLocked') remoteLandscapeLocked: boolean = false;
   @StorageLink('remoteExternalDisplay') remoteExternalDisplay: boolean = false;
   @StorageLink('remoteProjectionDisplayId') @Watch('onProjectionDisplayChanged') remoteProjectionDisplayId: number = -1;
@@ -175,6 +176,13 @@ struct RemotePage {
   @State lastAbsX: number = 0;
   @State lastAbsY: number = 0;
   @State showKeyboardPanel: boolean = false;
+  @State remoteKeyboardVisible: boolean = false;
+  private remoteKeyboardEditing: boolean = false;
+  private remoteKeyboardVisibilityKnown: boolean = false;
+  private remoteKeyboardWindow: window.Window | undefined;
+  private remoteKeyboardHeightListener: ((height: number) => void) | undefined;
+  private remoteKeyboardFocusGeneration: number = 0;
+  private remoteKeyboardCloseTimer: number = -1;
   @State keyboardViewportHeight: number = 0;
   private keyboardLayoutWidth: number = 0;
   private keyboardLayoutHeight: number = 0;
@@ -527,6 +535,7 @@ struct RemotePage {
     }
     this.startPolling();
     if (this.fileOnly) { this.showGestureHelp = false; return; }
+    this.startRemoteKeyboardTracking();
     this.startRemoteCursorPolling();
     this.startNativeMousePolling();
     CommunicationService.start(() => {
@@ -537,6 +546,10 @@ struct RemotePage {
 
   aboutToDisappear(): void {
     this.remotePageVisible = false;
+    this.remoteKeyboardFocusGeneration++;
+    this.stopRemoteKeyboardTracking();
+    this.showKeyboardPanel = false;
+    this.remoteKeyboardEditing = false;
     this.waylandPermissionEpoch++;
     this.uploadGeneration++;
     SessionRecording.stop(1);
@@ -1044,6 +1057,7 @@ struct RemotePage {
     this.projectedPhysicalPointer = false;
     this.resetPointerDiagnostics();
     if (!this.remotePageVisible) return;
+    if (!this.fileOnly) this.startRemoteKeyboardTracking();
     this.releaseHeldMouseButtons('projection_display_changed');
     RustDeskNapi.appendDiagnosticLog('projection',
       `input_display_changed display=${this.remoteProjectionDisplayId} external=${this.remoteExternalDisplay}`);
@@ -1093,7 +1107,10 @@ struct RemotePage {
           `embedded_fallback=${this.embeddedCursorOverlayFallback} suppressed=${this.suppressCompatibilityCursor()} ` +
           `remote_x=${Math.round(this.lastAbsX)} remote_y=${Math.round(this.lastAbsY)} ` +
           `overlay_x=${Math.round(this.cursorX)} overlay_y=${Math.round(this.cursorY)} ` +
-          `viewport=${Math.round(this.componentWidth)}x${Math.round(this.componentHeight)}`);
+          `viewport=${Math.round(this.componentWidth)}x${Math.round(this.componentHeight)} ` +
+          `zoom=${this.zoomScale.toFixed(2)} pan_x=${Math.round(this.offsetX)} pan_y=${Math.round(this.offsetY)} ` +
+          `keyboard_capture=${this.showKeyboardPanel} keyboard_visible=${this.remoteKeyboardVisible} ` +
+          `keyboard_editing=${this.remoteKeyboardEditing} follow_reason=${this.touchMouseFollowBlockReason()}`);
       }
     } catch (_e) {
       // Diagnostics must never interrupt input or cursor polling.
@@ -1275,7 +1292,7 @@ struct RemotePage {
     if (event.modifierValid) {
       ConnectionService.syncNativeModifierState(event.modifierMask);
     }
-    if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel ||
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED ||
       this.remoteWidth <= 0 || this.remoteHeight <= 0) {
       return;
     }
@@ -1321,8 +1338,9 @@ struct RemotePage {
         this.sendLeftDown(remotePoint.x, remotePoint.y);
         forwardedAction = 1;
       } else if (event.action === NATIVE_MOUSE_ACTION_RELEASE) {
+        const hadLeftDown: boolean = this.leftButtonHeld;
         this.sendLeftUp(remotePoint.x, remotePoint.y, true);
-        this.lastMappedPhysicalLeftUpAt = this.lastNativeMouseEventAt;
+        if (hadLeftDown) this.lastMappedPhysicalLeftUpAt = this.lastNativeMouseEventAt;
         forwardedAction = 2;
       }
     } else if (event.button === NATIVE_MOUSE_BUTTON_RIGHT) {
@@ -2207,10 +2225,12 @@ struct RemotePage {
             .width(8)
             .height(8)
             .backgroundColor(Color.White)
+            .hitTestBehavior(HitTestMode.None)
           Text('左键按住')
             .fontSize(12)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(Color.White)
+            .hitTestBehavior(HitTestMode.None)
         }
         .padding({ left: 11, right: 11, top: 7, bottom: 7 })
         .borderRadius(16)
@@ -2337,8 +2357,8 @@ struct RemotePage {
     if (item === 'displays' && this.displayCount > 1) {
       ForEach(this.makeDisplayIndexes(), (display: number) => {
         Button(`屏${display + 1}`)
-          .width(vertical ? 80 : 44)
-          .height(40)
+          .width(this.adaptiveToolbarButtonWidth(vertical ? 80 : 44))
+          .height(this.getRemoteToolbarButtonHeight())
           .padding({ left: 2, right: 2 })
           .fontSize(12)
           .fontWeight(display === this.currentDisplay ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
@@ -2690,11 +2710,11 @@ struct RemotePage {
             Row({ space: 6 }) {
               this.buildControlToolbarItems(false)
             }
-            .height(40)
+            .height(this.getRemoteToolbarButtonHeight())
             .alignItems(VerticalAlign.Center)
           }
           .layoutWeight(1)
-          .height(40)
+          .height(this.getRemoteToolbarButtonHeight())
           .scrollable(ScrollDirection.Horizontal)
           .scrollBar(BarState.Off)
           this.buildFloatingCollapseButton(false)
@@ -2823,10 +2843,12 @@ struct RemotePage {
   buildFullscreenButton(buttonWidth: number, orderKey: string = '') {
     // Read state in the Button observer, not through @Builder value parameters.
     Button(this.fullscreenTransitioning ? '切换中…' : (this.isFullScreen ? '退出全屏' : '全屏'))
-      .width(buttonWidth)
-      .height(40)
+      .width(this.adaptiveToolbarButtonWidth(buttonWidth))
+      .height(this.getRemoteToolbarButtonHeight())
       .padding({ left: 2, right: 2 })
       .fontSize(12)
+      .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
+        heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
       .fontWeight(this.isFullScreen ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
       .fontColor(this.isFullScreen ? this.controlSelectedTextColor() : this.primaryTextColor())
       .backgroundColor(this.isFullScreen ? this.controlSelectedBackgroundColor() : this.mutedSurfaceColor())
@@ -2847,10 +2869,13 @@ struct RemotePage {
   buildToolbarButton(label: string, buttonWidth: number, selected: boolean, danger: boolean,
     enabled: boolean, onClick: () => void, orderKey: string = '') {
     Button(label)
-      .width(buttonWidth)
-      .height(40)
+      .width(this.adaptiveToolbarButtonWidth(buttonWidth))
+      .height(this.getRemoteToolbarButtonHeight())
       .padding({ left: 2, right: 2 })
       .fontSize(label === '+' || label === '-' ? 18 : (buttonWidth <= 40 ? 11 : 12))
+      .labelStyle({ maxLines: 2, minFontSize: label === '+' || label === '-' ? 14 : 10,
+        maxFontSize: label === '+' || label === '-' ? 18 : (buttonWidth <= 40 ? 11 : 12),
+        heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
       .fontWeight(selected ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
       .fontColor(danger ? RustDeskTheme.ERROR :
         (selected ? this.controlSelectedTextColor() : this.primaryTextColor()))
@@ -2875,10 +2900,12 @@ struct RemotePage {
   @Builder
   buildEdgeAutoPanButton(buttonWidth: number, orderKey: string = '') {
     Button(this.edgeAutoPanEnabled ? '边缘跟随开' : '边缘跟随')
-      .width(buttonWidth)
-      .height(40)
+      .width(this.adaptiveToolbarButtonWidth(buttonWidth))
+      .height(this.getRemoteToolbarButtonHeight())
       .padding({ left: 2, right: 2 })
       .fontSize(12)
+      .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
+        heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
       .fontWeight(this.edgeAutoPanEnabled ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
       .fontColor(this.edgeAutoPanEnabled ? this.controlSelectedTextColor() : this.primaryTextColor())
       .backgroundColor(this.edgeAutoPanEnabled ? this.controlSelectedBackgroundColor() : this.mutedSurfaceColor())
@@ -2942,8 +2969,8 @@ struct RemotePage {
           .textAlign(TextAlign.Center)
       }
     }
-    .width(buttonWidth)
-    .height(vertical ? 48 : 40)
+    .width(this.adaptiveToolbarButtonWidth(buttonWidth))
+    .height(vertical ? this.getRemoteToolbarButtonHeight() + 8 : this.getRemoteToolbarButtonHeight())
     .padding({ left: 4, right: 4, top: 2, bottom: 2 })
     .backgroundColor(this.controlSelectedBackgroundColor())
     .border({ width: 1, color: this.controlSelectedBorderColor() })
@@ -3651,7 +3678,7 @@ struct RemotePage {
   }
 
   getMobileActionsHeight(): number {
-    return 54;
+    return this.getRemoteToolbarButtonHeight() + 14;
   }
 
   getMobileActionsBottomInset(): number {
@@ -3697,9 +3724,11 @@ struct RemotePage {
   buildMobileActionButton(label: string, action: number, danger: boolean = false) {
     Button(label)
       .layoutWeight(1)
-      .height(40)
+      .height(this.getRemoteToolbarButtonHeight())
       .padding({ left: 1, right: 1 })
       .fontSize(11)
+      .labelStyle({ maxLines: 2, minFontSize: 9, maxFontSize: 11,
+        heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
       .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
       .fontColor(danger ? RustDeskTheme.ERROR : this.primaryTextColor())
       .backgroundColor(danger ? (this.isDarkMode ? RustDeskTheme.DANGER_SOFT_DARK : '#FFF3F3') :
@@ -3727,7 +3756,7 @@ struct RemotePage {
       this.buildMobileActionButton('电源', MOBILE_ACTION_POWER, true)
       Button('⌄')
         .width(34)
-        .height(40)
+        .height(this.getRemoteToolbarButtonHeight())
         .padding(0)
         .fontSize(20)
         .fontColor(this.primaryTextColor())
@@ -3795,11 +3824,16 @@ struct RemotePage {
     danger: boolean, enabled: boolean, onClick: () => void, refocusAfterClick: boolean = true,
     orderKey: string = '', orderKind: string = 'keyboard') {
     Button(label)
-      .width(buttonWidth)
-      .height(38)
+      .width(this.adaptiveToolbarButtonWidth(buttonWidth))
+      .height(this.getKeyboardToolbarButtonHeight())
       .padding({ left: 3, right: 3 })
       .fontSize(label === '←' || label === '↑' || label === '↓' || label === '→' ? 20 :
         (label === '释放' ? 11 : (label.length > 10 ? 10 : 12)))
+      .labelStyle({ maxLines: 2,
+        minFontSize: label.length > 10 ? 9 : 10,
+        maxFontSize: label === '←' || label === '↑' || label === '↓' || label === '→' ? 20 :
+          (label.length > 10 ? 10 : 12),
+        heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
       .fontWeight(this.keyboardToolSelected(label, selected) ? RustDeskTheme.FONT_WEIGHT_SEMI_BOLD : 500)
       .fontColor(danger ? RustDeskTheme.ERROR : (this.keyboardToolSelected(label, selected) ?
         this.controlSelectedTextColor() : this.primaryTextColor()))
@@ -3891,9 +3925,10 @@ struct RemotePage {
               })
             }, (code: number) => `function-${code}`)
           }
-          .height(38)
+          .height(this.getKeyboardToolbarButtonHeight())
         }
-        .width('100%').height(38).scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+        .width('100%').height(this.getKeyboardToolbarButtonHeight())
+        .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
       }
     }
     if (this.showKeyboardMoreKeys) {
@@ -3902,9 +3937,10 @@ struct RemotePage {
       } else {
         Scroll() {
           Row({ space: 6 }) { this.buildKeyboardMoreItems(false) }
-          .height(38)
+          .height(this.getKeyboardToolbarButtonHeight())
         }
-        .width('100%').height(38).scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+        .width('100%').height(this.getKeyboardToolbarButtonHeight())
+        .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
       }
     }
   }
@@ -4052,17 +4088,17 @@ struct RemotePage {
               Row({ space: 6 }) {
                 this.buildKeyboardToolbarItems(false)
               }
-              .height(38)
+              .height(this.getKeyboardToolbarButtonHeight())
               .alignItems(VerticalAlign.Center)
             }
             .layoutWeight(1)
-            .height(38)
+            .height(this.getKeyboardToolbarButtonHeight())
             .scrollable(ScrollDirection.Horizontal)
             .scrollBar(BarState.Off)
             this.buildFloatingCollapseButton(true)
           }
           .width('100%')
-          .height(38)
+          .height(this.getKeyboardToolbarButtonHeight())
           .alignItems(VerticalAlign.Center)
           this.buildKeyboardSupplementalItems(false)
         }
@@ -4099,6 +4135,9 @@ struct RemotePage {
       .focusable(true)
       .defaultFocus(true)
       .enablePreviewText(true)
+      .onEditChange((editing: boolean) => {
+        this.handleRemoteKeyboardEditingChange(editing);
+      })
       .onKeyPreIme((event: KeyEvent) => {
         // Only navigation bypasses the hidden text field. Letters, Enter and
         // Backspace retain the IME's composition/commit path.
@@ -4108,6 +4147,7 @@ struct RemotePage {
       .onBlur(() => {
         this.releaseRemoteNavigationKeys('keyboard_blur');
         this.keyboardComposing = false;
+        this.handleRemoteKeyboardEditingChange(false);
       })
       .onChange((value: string, previewText?: PreviewText) => {
         this.handleDirectKeyboardChange(value, previewText);
@@ -4115,6 +4155,7 @@ struct RemotePage {
       .onSubmit(() => {
         this.sendControlKey(13);
         this.resetKeyboardCaptureBuffer();
+        this.traceRemoteKeyboardState('submit');
       })
       .position({ x: 0, y: 0 })
   }
@@ -4276,12 +4317,14 @@ struct RemotePage {
           .height('100%')
           .objectFit(ImageFit.Fill)
           .interpolation(ImageInterpolation.None)
+          .hitTestBehavior(HitTestMode.None)
       } else {
         Path()
           .commands('M 1 1 L 1 21 L 6.5 15.5 L 10.5 24 L 14 22.2 L 10 14.5 L 18 14.5 Z')
           .fill(Color.White)
           .stroke('#E6000000')
           .strokeWidth(1.4)
+          .hitTestBehavior(HitTestMode.None)
       }
     }
     .width(this.cursorImageWidth)
@@ -4764,13 +4807,15 @@ struct RemotePage {
   }
 
   handleRemoteTouch(event: TouchEvent): void {
-    this.lastTouchEventAt = Date.now();
     const pointerCompatibilityEvent: boolean = event.source === SourceType.Mouse ||
       event.sourceTool === SourceTool.MOUSE || event.sourceTool === SourceTool.TOUCHPAD;
     if (pointerCompatibilityEvent) {
       this.handlePointerCompatibilityTouch(event);
       return;
     }
+    // Mouse-to-touch compatibility events are not finger gestures. Counting
+    // them here would suppress the physical onClick fallback for 320ms.
+    this.lastTouchEventAt = Date.now();
 
     if (event.type === TouchType.Down) this.projectedPhysicalPointer = false;
     if (event.type === TouchType.Move) this.pointerTouchMoves++;
@@ -4868,7 +4913,7 @@ struct RemotePage {
       RustDeskNapi.appendDiagnosticLog('input',
         `pointer_touch type=${event.type} source=${event.source} tool=${event.sourceTool}`);
     }
-    if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel ||
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED ||
       this.remoteWidth <= 0 || this.remoteHeight <= 0) {
       return;
     }
@@ -4876,7 +4921,9 @@ struct RemotePage {
     let changedCount: number = event.changedTouches.length;
     if (touchCount <= 0 && changedCount <= 0) {
       if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        const hadLeftDown: boolean = this.leftButtonHeld;
         this.sendLeftUp(this.lastAbsX, this.lastAbsY, true);
+        if (hadLeftDown && event.type === TouchType.Up) this.lastMappedPhysicalLeftUpAt = Date.now();
       }
       return;
     }
@@ -4899,8 +4946,9 @@ struct RemotePage {
         this.pointerForwardedMoves++;
       }
     } else if (event.type === TouchType.Up) {
+      const hadLeftDown: boolean = this.leftButtonHeld;
       this.sendLeftUp(remotePoint.x, remotePoint.y, true);
-      this.lastMappedPhysicalLeftUpAt = this.lastMouseEventAt;
+      if (hadLeftDown) this.lastMappedPhysicalLeftUpAt = this.lastMouseEventAt;
       RustDeskNapi.appendDiagnosticLog('input', 'pointer_touch_forwarded action=2');
     } else if (event.type === TouchType.Cancel) {
       this.releaseHeldMouseButtons('pointer_touch_cancel');
@@ -4942,7 +4990,9 @@ struct RemotePage {
       this.touchpadDragCandidate = secondTap;
       RustDeskNapi.appendDiagnosticLog('input',
         `touchpad_down second_tap=${secondTap ? 1 : 0} pending=${this.tapTimer !== -1 ? 1 : 0} ` +
-        `zoom=${this.zoomScale.toFixed(2)} distance_space=window_vp`);
+        `zoom=${this.zoomScale.toFixed(2)} distance_space=window_vp ` +
+        `follow_reason=${this.touchMouseFollowBlockReason()} keyboard_capture=${this.showKeyboardPanel} ` +
+        `keyboard_visible=${this.remoteKeyboardVisible}`);
       if (secondTap) {
         this.clearTapTimer();
       } else {
@@ -5207,6 +5257,7 @@ struct RemotePage {
       RustDeskNapi.appendDiagnosticLog('input', 'mouse_left_down recovered_from_move');
     } else if (this.leftButtonHeld && !leftPressed) {
       this.sendLeftUp(remoteX, remoteY, true);
+      this.lastMappedPhysicalLeftUpAt = Date.now();
       RustDeskNapi.appendDiagnosticLog('input', 'mouse_left_up recovered_from_move');
     }
     if (!this.rightButtonHeld && rightPressed) {
@@ -5220,8 +5271,10 @@ struct RemotePage {
 
   handleRemoteClickFallback(event: ClickEvent, coordinatesFromSurface: boolean = false): void {
     let now: number = Date.now();
-    if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel || this.isPanMode ||
-      now - this.lastTouchEventAt < 320 || now - this.lastMappedPhysicalLeftUpAt < 160 ||
+    const physicalPointer: boolean = event.sourceTool === SourceTool.MOUSE || event.sourceTool === SourceTool.TOUCHPAD ||
+      (event.source === SourceType.Mouse && event.sourceTool !== SourceTool.Finger && event.sourceTool !== SourceTool.Pen);
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED || (!physicalPointer && this.showKeyboardPanel) || this.isPanMode ||
+      (!physicalPointer && now - this.lastTouchEventAt < 320) || now - this.lastMappedPhysicalLeftUpAt < 160 ||
       this.remoteWidth <= 0 || this.remoteHeight <= 0) {
       return;
     }
@@ -5306,8 +5359,9 @@ struct RemotePage {
     if (action === 1) {
       this.sendLeftDown(remotePoint.x, remotePoint.y);
     } else if (action === 2) {
+      const hadLeftDown: boolean = this.leftButtonHeld;
       this.sendLeftUp(remotePoint.x, remotePoint.y, true);
-      this.lastMappedPhysicalLeftUpAt = now;
+      if (hadLeftDown) this.lastMappedPhysicalLeftUpAt = now;
     } else if (action === 3) {
       this.sendRightDown(remotePoint.x, remotePoint.y);
     } else if (action === 4) {
@@ -5490,10 +5544,21 @@ struct RemotePage {
   }
 
   shouldFollowTouchMouse(): boolean {
-    return this.isHandheldDevice() && this.edgeAutoPanEnabled && this.inputMode === INPUT_MODE_MOUSE &&
-      !this.relativeMouseEnabled && !this.isPanMode && !this.showKeyboardPanel &&
-      this.connectionStatus === ConnectionStatus.CONNECTED && this.canPanViewport() &&
-      this.componentWidth > 0 && this.componentHeight > 0 && this.remoteWidth > 0 && this.remoteHeight > 0;
+    return this.touchMouseFollowBlockReason() === 'enabled';
+  }
+
+  touchMouseFollowBlockReason(): string {
+    if (!this.isHandheldDevice()) return 'not_handheld';
+    if (!this.edgeAutoPanEnabled) return 'disabled';
+    if (this.inputMode !== INPUT_MODE_MOUSE) return 'not_mouse_mode';
+    if (this.relativeMouseEnabled) return 'relative_mouse';
+    if (this.isPanMode) return 'manual_pan';
+    if (this.isRemoteKeyboardBlockingPointer()) return 'keyboard_visible';
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED) return 'not_connected';
+    if (this.componentWidth <= 0 || this.componentHeight <= 0 || this.remoteWidth <= 0 || this.remoteHeight <= 0) {
+      return 'invalid_viewport';
+    }
+    return this.canPanViewport() ? 'enabled' : 'no_overflow';
   }
 
   updateCenterFollowPointer(deltaX: number, deltaY: number, gain: number): RemotePoint {
@@ -5962,7 +6027,7 @@ struct RemotePage {
   updateEdgeAutoPan(remoteX: number, remoteY: number, fromTouch: boolean): void {
     if (this.relativeMouseEnabled) { this.stopEdgeAutoPan(); return; }
     if (!this.edgeAutoPanEnabled || this.inputMode !== INPUT_MODE_MOUSE || !this.canPanViewport() ||
-      this.isPanMode || this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel ||
+      this.isPanMode || this.connectionStatus !== ConnectionStatus.CONNECTED || this.isRemoteKeyboardBlockingPointer() ||
       this.componentWidth <= 0 || this.componentHeight <= 0) {
       this.stopEdgeAutoPan();
       return;
@@ -6067,7 +6132,7 @@ struct RemotePage {
 
   runEdgeAutoPanFrame(): void {
     if (!this.edgeAutoPanEnabled || this.inputMode !== INPUT_MODE_MOUSE || !this.canPanViewport() ||
-      this.isPanMode || this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel ||
+      this.isPanMode || this.connectionStatus !== ConnectionStatus.CONNECTED || this.isRemoteKeyboardBlockingPointer() ||
       (this.edgePanFromTouch && !this.edgePanTouchActive) ||
       (this.edgePanVectorX === 0 && this.edgePanVectorY === 0)) {
       this.stopEdgeAutoPan();
@@ -6387,11 +6452,120 @@ struct RemotePage {
     }
   }
 
+  startRemoteKeyboardTracking(): void {
+    this.stopRemoteKeyboardTracking();
+    try {
+      // Bind to this UI's window, including an independently projected page.
+      const name = this.getUIContext().getWindowName();
+      const target = name ? window.findWindow(name) : RemoteDisplayPolicy.getMainWindow();
+      if (!target) return;
+      const listener = (height: number): void => {
+        if (this.remotePageVisible && this.remoteKeyboardWindow === target) {
+          this.handleRemoteKeyboardHeightChange(height);
+        }
+      };
+      target.on('keyboardHeightChange', listener);
+      this.remoteKeyboardWindow = target;
+      this.remoteKeyboardHeightListener = listener;
+      try {
+        const area = target.getWindowAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD);
+        this.handleRemoteKeyboardHeightChange(area.bottomRect.height);
+      } catch (_e) {
+        // Editing callbacks are the fallback when visibility cannot be queried.
+      }
+    } catch (error) {
+      const code: number = (error as BusinessError).code ?? -1;
+      RustDeskNapi.appendDiagnosticLog('input-keyboard', `visibility_listener_unavailable code=${code}`);
+    }
+  }
+
+  stopRemoteKeyboardTracking(): void {
+    this.cancelRemoteKeyboardClose();
+    const target = this.remoteKeyboardWindow;
+    const listener = this.remoteKeyboardHeightListener;
+    this.remoteKeyboardWindow = undefined;
+    this.remoteKeyboardHeightListener = undefined;
+    if (target && listener) {
+      try { target.off('keyboardHeightChange', listener); } catch (_e) {}
+    }
+    this.remoteKeyboardVisibilityKnown = false;
+    this.remoteKeyboardVisible = false;
+  }
+
+  handleRemoteKeyboardHeightChange(height: number): void {
+    if (!this.remotePageVisible || !Number.isFinite(height) || height < 0) return;
+    const wasVisible: boolean = this.remoteKeyboardVisible;
+    const wasKnown: boolean = this.remoteKeyboardVisibilityKnown;
+    this.remoteKeyboardVisibilityKnown = true;
+    this.remoteKeyboardVisible = height > 0;
+    if (this.remoteKeyboardVisible) {
+      this.cancelRemoteKeyboardClose();
+      this.stopEdgeAutoPan();
+    }
+    if (!wasKnown || wasVisible !== this.remoteKeyboardVisible) {
+      this.traceRemoteKeyboardState('height_changed');
+    }
+    // A zero-height seed or a hardware keyboard must not cancel a new request.
+    // Only a real visible -> hidden transition ends the input capture session.
+    if (wasKnown && wasVisible && !this.remoteKeyboardVisible && this.showKeyboardPanel) {
+      this.scheduleRemoteKeyboardClose();
+    }
+  }
+
+  handleRemoteKeyboardEditingChange(editing: boolean): void {
+    if (!this.remotePageVisible) return;
+    const wasEditing: boolean = this.remoteKeyboardEditing;
+    this.remoteKeyboardEditing = editing && this.showKeyboardPanel;
+    if (this.remoteKeyboardEditing) this.cancelRemoteKeyboardClose();
+    if (!this.remoteKeyboardVisibilityKnown) this.remoteKeyboardVisible = this.remoteKeyboardEditing;
+    if (wasEditing !== this.remoteKeyboardEditing) this.traceRemoteKeyboardState('editing_changed');
+    if (wasEditing && !editing && this.showKeyboardPanel) {
+      this.scheduleRemoteKeyboardClose();
+    }
+  }
+
+  cancelRemoteKeyboardClose(): void {
+    if (this.remoteKeyboardCloseTimer !== -1) {
+      clearTimeout(this.remoteKeyboardCloseTimer);
+      this.remoteKeyboardCloseTimer = -1;
+    }
+  }
+
+  scheduleRemoteKeyboardClose(): void {
+    this.cancelRemoteKeyboardClose();
+    const generation: number = this.remoteKeyboardFocusGeneration;
+    // Toolbar actions can briefly move focus before refocusing the IME. Follow
+    // resumes immediately on hide; only capture cleanup waits for that handoff.
+    this.remoteKeyboardCloseTimer = setTimeout(() => {
+      this.remoteKeyboardCloseTimer = -1;
+      if (generation !== this.remoteKeyboardFocusGeneration || !this.remotePageVisible ||
+        !this.showKeyboardPanel || this.isRemoteKeyboardBlockingPointer()) return;
+      this.closeRemoteKeyboard();
+    }, 120);
+  }
+
+  isRemoteKeyboardBlockingPointer(): boolean {
+    // Input capture being mounted is not proof that the system keyboard is up.
+    // Lost editing focus also releases the guard, even if the window's hide
+    // notification is delayed or missing. A toolbar refocus will restore it.
+    return this.showKeyboardPanel && this.remoteKeyboardEditing &&
+      (!this.remoteKeyboardVisibilityKnown || this.remoteKeyboardVisible);
+  }
+
+  traceRemoteKeyboardState(reason: string): void {
+    RustDeskNapi.appendDiagnosticLog('input-keyboard',
+      `state reason=${reason} capture=${this.showKeyboardPanel} visible=${this.remoteKeyboardVisible} ` +
+      `editing=${this.remoteKeyboardEditing} visibility_known=${this.remoteKeyboardVisibilityKnown} ` +
+      `follow_reason=${this.touchMouseFollowBlockReason()} zoom=${this.zoomScale.toFixed(2)} ` +
+      `pan_x=${Math.round(this.offsetX)} pan_y=${Math.round(this.offsetY)}`);
+  }
+
   openRemoteKeyboard(): void {
     if (!this.allowWaylandText(() => { this.openRemoteKeyboard(); })) return;
     if (this.connectionStatus !== ConnectionStatus.CONNECTED) {
       return;
     }
+    if (!this.remoteKeyboardWindow) this.startRemoteKeyboardTracking();
     this.releaseRemoteNavigationKeys('keyboard_open');
     if (!this.showKeyboardPanel) {
       this.keyboardLayoutWidth = this.pageWidth;
@@ -6401,7 +6575,11 @@ struct RemotePage {
     this.resetKeyboardCaptureBuffer();
     this.applyKeyboardResizeMode();
     this.showKeyboardPanel = true;
+    const generation: number = ++this.remoteKeyboardFocusGeneration;
+    this.traceRemoteKeyboardState('open');
     setTimeout(() => {
+      if (generation !== this.remoteKeyboardFocusGeneration || !this.remotePageVisible ||
+        !this.showKeyboardPanel || this.connectionStatus !== ConnectionStatus.CONNECTED) return;
       try {
         this.getUIContext()?.getFocusController().requestFocus('remoteKeyboardCapture');
       } catch (_e) {
@@ -6410,15 +6588,21 @@ struct RemotePage {
   }
 
   closeRemoteKeyboard(): void {
+    const generation: number = ++this.remoteKeyboardFocusGeneration;
+    this.cancelRemoteKeyboardClose();
     this.releaseRemoteNavigationKeys('keyboard_close');
     this.releaseVirtualModifiers();
     this.keyboardToolsCollapsed = !this.isHandheldLandscape();
     this.showKeyboardPanel = false;
+    this.remoteKeyboardEditing = false;
     this.showKeyboardFunctionKeys = false;
     this.showKeyboardMoreKeys = false;
     this.resetKeyboardCaptureBuffer();
     this.restoreKeyboardAvoidMode();
+    this.traceRemoteKeyboardState('close');
     setTimeout(() => {
+      if (generation !== this.remoteKeyboardFocusGeneration || !this.remotePageVisible || this.showKeyboardPanel ||
+        this.connectionStatus !== ConnectionStatus.CONNECTED) return;
       this.requestRemoteInputFocus();
     }, 60);
   }
@@ -6452,8 +6636,24 @@ struct RemotePage {
     this.keyboardAvoidModeChanged = false;
   }
 
+  adaptiveToolbarButtonWidth(baseWidth: number): number {
+    return Math.ceil(baseWidth + Math.max(0, this.uiFontScale - 1) * Math.min(baseWidth, 80));
+  }
+
+  getRemoteToolbarButtonHeight(): number {
+    return Math.ceil(40 + Math.max(0, this.uiFontScale - 1) * 20);
+  }
+
+  getKeyboardToolbarButtonHeight(): number {
+    return Math.ceil(38 + Math.max(0, this.uiFontScale - 1) * 20);
+  }
+
   getRemoteToolbarWidth(): number {
-    if (this.isHandheldLandscape() || (this.isFullScreen && !this.isHandheldDevice())) return 104;
+    if (this.isHandheldLandscape() || (this.isFullScreen && !this.isHandheldDevice())) {
+      if (this.uiFontScale <= 1) return 104;
+      return Math.min((this.pageWidth > 0 ? this.pageWidth : 360) - 16,
+        this.adaptiveToolbarButtonWidth(96) + 16);
+    }
     const available: number = Math.max(280, (this.pageWidth > 0 ? this.pageWidth : 360) - 16);
     return Math.min(720, available);
   }
@@ -6462,7 +6662,7 @@ struct RemotePage {
     if (this.isHandheldLandscape() || (this.isFullScreen && !this.isHandheldDevice())) {
       return Math.max(150, Math.min(520, (this.pageHeight > 0 ? this.pageHeight : 360) - 16));
     }
-    return 54;
+    return this.getRemoteToolbarButtonHeight() + 14;
   }
 
   getRemoteToolbarCollapsedSize(): number {
@@ -6529,7 +6729,10 @@ struct RemotePage {
   }
 
   getKeyboardToolsWidth(): number {
-    if (this.isHandheldLandscape()) return 112;
+    if (this.isHandheldLandscape()) {
+      return Math.min((this.pageWidth > 0 ? this.pageWidth : 360) - 16,
+        this.adaptiveToolbarButtonWidth(96) + 16);
+    }
     const available: number = Math.max(272, (this.pageWidth > 0 ? this.pageWidth : 360) - 12);
     return Math.min(this.isLargeLayout() ? 720 : 520, available);
   }
@@ -6542,7 +6745,9 @@ struct RemotePage {
     if (this.isHandheldLandscape()) {
       return Math.max(150, Math.min(540, (this.pageHeight > 0 ? this.pageHeight : 360) - 16));
     }
-    return this.showKeyboardFunctionKeys || this.showKeyboardMoreKeys ? 98 : 54;
+    const rowHeight: number = this.getKeyboardToolbarButtonHeight();
+    const rows: number = 1 + (this.showKeyboardFunctionKeys ? 1 : 0) + (this.showKeyboardMoreKeys ? 1 : 0);
+    return rows * rowHeight + (rows - 1) * 6 + 16;
   }
 
   getKeyboardToolsCollapsedSize(): number {

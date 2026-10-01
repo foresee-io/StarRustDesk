@@ -26,7 +26,8 @@ const context = vm.createContext({ exports: {}, deviceInfo, TouchType, Date: { n
 vm.runInContext(ts.transpile(read('entry/src/main/ets/utils/TouchMouseFollow.ets')), context);
 const follow = context.exports.followTouchMouseAxis;
 context.followTouchMouseAxis = follow;
-const names = ['touchGesturePoint', 'isHandheldDevice', 'shouldFollowTouchMouse', 'updateCenterFollowPointer',
+const names = ['touchGesturePoint', 'isHandheldDevice', 'shouldFollowTouchMouse',
+  'touchMouseFollowBlockReason', 'isRemoteKeyboardBlockingPointer', 'updateCenterFollowPointer',
   'handleTouchpadTouch', 'finishTouchpadTouch', 'remotePointToVisual', 'visualPointToRemote',
   'getDisplayWidth', 'getDisplayHeight', 'getDisplayLeft', 'getDisplayTop',
   'getHorizontalPanLimit', 'getVerticalPanLimit', 'getPanLimit', 'canPanViewport',
@@ -49,7 +50,8 @@ function make(overrides = {}) {
     componentWidth: 400, componentHeight: 400, remoteWidth: 1000, remoteHeight: 1000,
     zoomScale: 2, offsetX: 0, offsetY: 0, lastAbsX: 500, lastAbsY: 500,
     pointerInitialized: true, edgeAutoPanEnabled: true, inputMode: 0, relativeMouseEnabled: false,
-    isPanMode: false, showKeyboardPanel: false, connectionStatus: 2, showVirtualMouse: false,
+    isPanMode: false, showKeyboardPanel: false, remoteKeyboardVisible: false,
+    remoteKeyboardEditing: false, remoteKeyboardVisibilityKnown: true, connectionStatus: 2, showVirtualMouse: false,
     leftButtonHeld: false, touchpadDragCandidate: false, tapTimer: -1, lastMoveSentAt: 0,
     virtualMouseDragActive: false, hasAuthoritativeRemoteCursor: false,
     stopEdgeAutoPan() { this.stops = (this.stops || 0) + 1; },
@@ -158,7 +160,8 @@ test('only connected handheld absolute mouse follow is enabled', () => {
     assert.equal(p.shouldFollowTouchMouse(), type === 'phone' || type === 'tablet');
   }
   for (const override of [{ edgeAutoPanEnabled: false }, { inputMode: 1 }, { relativeMouseEnabled: true },
-    { isPanMode: true }, { showKeyboardPanel: true }, { connectionStatus: 1 }, { zoomScale: 1 },
+    { isPanMode: true }, { showKeyboardPanel: true, remoteKeyboardVisible: true, remoteKeyboardEditing: true },
+    { connectionStatus: 1 }, { zoomScale: 1 },
     { componentWidth: 0 }, { remoteWidth: 0 }]) assert(!make(override).shouldFollowTouchMouse());
 });
 test('disabled follow keeps legacy movement path', () => {
@@ -179,6 +182,13 @@ test('virtual mouse and arrow move together to the edge, then pan without an arr
     assert.deepEqual(calls.at(-1), [p.lastAbsX, p.lastAbsY, 0]);
   }
   assert.equal(p.edgeCalls || 0, 0); p.finishVirtualMouseMove();
+});
+
+test('hidden keyboard capture does not disable center follow after Windows login', () => {
+  const p = make({ showKeyboardPanel: true, hasAuthoritativeRemoteCursor: true });
+  assert(p.shouldFollowTouchMouse()); touch(p, 0, 100); touch(p, 1, 120);
+  near(p.offsetX, -25);
+  near(p.remotePointToVisual(p.lastAbsX, p.lastAbsY).x, 200);
 });
 test('virtual mouse release/restart and disabling follow do not jump', () => {
   const p = make({ showVirtualMouse: true }); p.beginVirtualMouseMove();

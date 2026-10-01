@@ -67,6 +67,7 @@ const PEER_STATE_QUERY_TIMEOUT_MS: number = 12000
 @Component
 export struct ConnectionPage {
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
+  @StorageLink('uiFontScale') uiFontScale: number = 1
   @State connectionName: string = ''
   @State remoteId: string = ''
   @State focusedConnectionField: string = ''
@@ -882,13 +883,13 @@ export struct ConnectionPage {
       }
       .width(this.isWideDeviceLayout() ? '35%' : '100%')
       .flexShrink(0)
-      .height(46)
+      .height(Math.ceil(46 + Math.max(0, this.uiFontScale - 1) * 18))
 
-      Row() {
+      Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
         if (this.savedConnectionSearchExpanded) {
           Search({ value: this.savedConnectionSearch, placeholder: '搜索名称或远端 ID' })
             .layoutWeight(1)
-            .height(30)
+            .height(this.savedToolbarButtonHeight())
             .textFont({ size: 12 })
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .placeholderColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
@@ -905,8 +906,10 @@ export struct ConnectionPage {
         } else {
           Button(`排序：${this.savedConnectionSort === 'name' ? '名称' :
             this.savedConnectionSort === 'online' ? '在线' : 'ID'}`)
-            .height(30)
+            .height(this.savedToolbarButtonHeight())
             .fontSize(12)
+            .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
+              heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
             .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.TEXT_SECONDARY)
             .backgroundColor(Color.Transparent)
             .padding({ left: 0, right: 2 })
@@ -925,19 +928,23 @@ export struct ConnectionPage {
               .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.TEXT_SECONDARY)
           }
             .width(28)
-            .height(30)
+            .height(this.savedToolbarButtonHeight())
             .padding(0)
             .backgroundColor(Color.Transparent)
             .onClick(() => {
               this.toggleSavedConnectionSortDirection()
             })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
-          Blank()
+          if (this.uiFontScale <= 1.3) {
+            Blank()
+          }
         }
         Button('备份')
-          .width(48)
-          .height(30)
+          .width(this.savedToolbarButtonWidth(48))
+          .height(this.savedToolbarButtonHeight())
           .fontSize(12)
+          .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
+            heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.ACCENT_SOFT)
           .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
@@ -968,9 +975,11 @@ export struct ConnectionPage {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button('+ 分组')
-          .width(56)
-          .height(30)
+          .width(this.savedToolbarButtonWidth(56))
+          .height(this.savedToolbarButtonHeight())
           .fontSize(12)
+          .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
+            heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.ACCENT_SOFT)
           .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
@@ -981,9 +990,11 @@ export struct ConnectionPage {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
         Button(this.savedConnectionSearchExpanded ? '收起' : '搜索')
-          .width(48)
-          .height(30)
+          .width(this.savedToolbarButtonWidth(48))
+          .height(this.savedToolbarButtonHeight())
           .fontSize(12)
+          .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
+            heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
           .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.ACCENT)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.ACCENT_SOFT)
           .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
@@ -1788,9 +1799,11 @@ export struct ConnectionPage {
     Row({ space: 10 }) {
       Button(this.selectedConnectionId.length > 0 ? '保存修改' : '保存连接')
         .enabled(!this.savingConnection && this.remoteId.trim().length > 0)
-        .height(40)
+        .height(this.connectionEditButtonHeight())
         .layoutWeight(1)
         .fontSize(14)
+        .labelStyle({ maxLines: 2, minFontSize: 11, maxFontSize: 14,
+          heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
         .fontColor(Color.White)
         .backgroundColor(this.remoteId.trim().length > 0 ? RustDeskTheme.ACCENT : RustDeskTheme.DARK_GRAY)
         .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
@@ -1800,8 +1813,10 @@ export struct ConnectionPage {
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
 
       Button('新建')
-        .height(40)
+        .height(this.connectionEditButtonHeight())
         .fontSize(14)
+        .labelStyle({ maxLines: 2, minFontSize: 11, maxFontSize: 14,
+          heightAdaptivePolicy: TextHeightAdaptivePolicy.MAX_LINES_FIRST })
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE)
         .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
@@ -1882,6 +1897,18 @@ export struct ConnectionPage {
       }
     }
     .width('100%')
+  }
+
+  savedToolbarButtonWidth(baseWidth: number): number {
+    return Math.ceil(baseWidth + Math.max(0, this.uiFontScale - 1) * baseWidth * 0.55)
+  }
+
+  savedToolbarButtonHeight(): number {
+    return Math.ceil(30 + Math.max(0, this.uiFontScale - 1) * 15)
+  }
+
+  connectionEditButtonHeight(): number {
+    return Math.ceil(40 + Math.max(0, this.uiFontScale - 1) * 18)
   }
 
   @Builder
