@@ -4,7 +4,7 @@ import { RustDeskTheme } from '../theme/RustDeskTheme'
 
 export const RELEASE_NOTES_VERSION: string = '1.2.21'
 export const RELEASE_NOTES_BUILD: string = '1002021'
-export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
+export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}-r1`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
@@ -48,7 +48,11 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
-          this.buildSection('1.2.21（1002021）· 系统旋转锁定与屏幕方向', [
+          this.buildSection('1.2.21（1002021）· 键盘输入、投屏鼠标与屏幕方向', [
+            '新增独立键盘悬浮按钮，手机和平板不用展开“控”即可打开或收起软键盘，支持拖动调整位置。',
+            '新增连续输入：打开软键盘后，点击远端其他输入框仍保持键盘开启，输入直接传给远端；用户主动收起后结束。保留全屏三指上滑，实体键盘和完整组合键不自动弹出软键盘。',
+            '优化应用单独投屏的实体鼠标接收通路、电视与本屏坐标换算及跨通路去重，避免兼容触摸事件提前松键后补发重复点击；有线投屏效果仍需真机验证。',
+            '补充投屏鼠标各接收层、目标显示设备、输入焦点与画面尺寸的诊断日志，不记录输入文字或密码。',
             '修复应用忽略系统旋转锁定的问题，手机和平板默认跟随系统旋转设置，不再强制自动切换横竖屏。',
             '“控”中的屏幕方向按钮改为选择菜单，支持跟随系统、固定竖屏和固定横屏；手动选择仅对本次远控生效。',
             '单独投屏使用独立方向策略：默认适配横向外接屏，也可手动固定方向；返回手机或平板后恢复本屏选择，不改变远端分辨率。',

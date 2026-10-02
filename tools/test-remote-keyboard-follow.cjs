@@ -58,6 +58,8 @@ const names = ['isHandheldDevice', 'shouldFollowTouchMouse', 'touchMouseFollowBl
   'isRemoteKeyboardBlockingPointer', 'startRemoteKeyboardTracking', 'stopRemoteKeyboardTracking',
   'handleRemoteKeyboardHeightChange', 'handleRemoteKeyboardEditingChange',
   'scheduleRemoteKeyboardClose', 'cancelRemoteKeyboardClose', 'traceRemoteKeyboardState',
+  'canKeepRemoteKeyboardForPointer', 'keepRemoteKeyboardForPointer', 'refocusRemoteKeyboard',
+  'cancelRemoteKeyboardRefocus', 'requestRemoteInputFocus',
   'toggleRemoteKeyboard', 'openRemoteKeyboard', 'closeRemoteKeyboard',
   'snapshotRemoteKeyboardViewport', 'getKeyboardCanvasShiftY',
   'applyKeyboardResizeMode', 'restoreKeyboardAvoidMode', 'buildKeyboardCapture',
@@ -75,6 +77,7 @@ function page({ queryFails = false } = {}) {
     remotePageVisible: true, connectionStatus: 2, showKeyboardPanel: false,
     remoteKeyboardVisible: false, remoteKeyboardEditing: false, remoteKeyboardVisibilityKnown: false,
     remoteKeyboardFocusGeneration: 0, remoteKeyboardCloseTimer: -1,
+    remoteKeyboardRefocusTimer: -1, remoteKeyboardPointerHandoffUntil: 0,
     keyboardAvoidModeChanged: false, keyboardLayoutWidth: 0, keyboardLayoutHeight: 0, keyboardViewportHeight: 0,
     keyboardFocusAvailable: false, pointerInitialized: false, qualityViewportHeight: 400,
     pageWidth: 800, pageHeight: 450, componentWidth: 400, componentHeight: 400,
@@ -85,7 +88,7 @@ function page({ queryFails = false } = {}) {
     releaseRemoteNavigationKeys() {}, releaseVirtualModifiers() {}, resetKeyboardCaptureBuffer() {},
     stopEdgeAutoPan() { this.panStops = (this.panStops || 0) + 1; },
     markLocalPointerInput() {}, ensurePointerInitialized() {}, updateCursorOverlayFromPosition() {},
-    requestRemoteInputFocus() { focused.push('remote'); }, sendControlKey: key => sent.push(key),
+    sendControlKey: key => sent.push(key),
   });
   p.startRemoteKeyboardTracking(); p.buildKeyboardCapture();
   return { p, owner, ui };
@@ -137,6 +140,80 @@ test('transient toolbar blur and refocus keep the IME capture active', () => {
   const { p, owner } = page(); p.openRemoteKeyboard(); callbacks.onEditChange(true); owner.emit(300);
   callbacks.onBlur(); owner.emit(0); advance(30); callbacks.onEditChange(true); owner.emit(300);
   advance(200); assert(p.showKeyboardPanel); assert(!p.shouldFollowTouchMouse());
+});
+
+test('remote pointer click retains hidden capture focus and recovers a transient IME hide', () => {
+  const { p, owner } = page(); p.openRemoteKeyboard(); advance(80);
+  callbacks.onEditChange(true); owner.emit(300); focused.length = 0;
+  p.requestRemoteInputFocus(); assert.deepEqual(focused, []);
+  assert(p.showKeyboardPanel); callbacks.onBlur(); owner.emit(0);
+  advance(150); assert.deepEqual(focused, ['remoteKeyboardCapture']);
+  callbacks.onEditChange(true); owner.emit(300); advance(300);
+  assert(p.showKeyboardPanel); assert(!p.shouldFollowTouchMouse());
+});
+
+test('repeated remote field changes preserve viewport, zoom and text capture buffer', () => {
+  const { p, owner } = page(); p.openRemoteKeyboard(); advance(80);
+  p.keyboardInput = 'COMPOSING_BUFFER'; p.resetKeyboardCaptureBuffer = () => { throw Error('must not reset on pointer'); };
+  callbacks.onEditChange(true); owner.emit(300);
+  const canvas = p.keyboardViewportHeight; p.offsetX = -70; p.offsetY = 35; p.zoomScale = 3;
+  for (let i = 0; i < 5; i++) {
+    p.requestRemoteInputFocus(); callbacks.onBlur(); owner.emit(0); advance(150);
+    callbacks.onEditChange(true); owner.emit(300); advance(30);
+    assert(p.showKeyboardPanel); assert.equal(p.keyboardViewportHeight, canvas);
+    assert.equal(p.zoomScale, 3); assert.equal(p.offsetX, -70); assert.equal(p.offsetY, 35);
+    assert.equal(p.keyboardInput, 'COMPOSING_BUFFER');
+  }
+});
+
+test('explicit close during pointer recovery cancels every pending keyboard refocus', () => {
+  const { p, owner } = page(); p.openRemoteKeyboard(); advance(80);
+  callbacks.onEditChange(true); owner.emit(300); focused.length = 0;
+  p.requestRemoteInputFocus(); callbacks.onBlur(); owner.emit(0); advance(120);
+  p.closeRemoteKeyboard(); advance(400);
+  assert(!p.showKeyboardPanel); assert.equal(p.remoteKeyboardPointerHandoffUntil, 0);
+  assert(!focused.includes('remoteKeyboardCapture'));
+});
+
+test('system hide after pointer handoff ends is respected without keyboard resurrection', () => {
+  const { p, owner } = page(); p.openRemoteKeyboard(); advance(80);
+  callbacks.onEditChange(true); owner.emit(300); p.requestRemoteInputFocus();
+  advance(310); focused.length = 0; owner.emit(0); callbacks.onEditChange(false); advance(200);
+  assert(!p.showKeyboardPanel); assert(!focused.includes('remoteKeyboardCapture'));
+});
+
+test('failed focus recovery is bounded rather than repeatedly reopening the IME', () => {
+  const { p, owner, ui } = page(); p.openRemoteKeyboard(); advance(80);
+  callbacks.onEditChange(true); owner.emit(300); p.requestRemoteInputFocus();
+  callbacks.onBlur(); owner.emit(0); let attempts = 0;
+  ui.getFocusController = () => ({ requestFocus(id) {
+    if (id === 'remoteKeyboardCapture') { attempts++; throw Error('unavailable'); }
+  } });
+  advance(650); assert(!p.showKeyboardPanel); assert(attempts <= 3);
+  assert(logs.some(([, message]) => message.includes('reason=refocus_failed')));
+});
+
+test('modal, disconnected and disposed windows cannot refocus continuous remote input', () => {
+  for (const flag of ['showCommunicationPanel', 'showRemoteFileBrowser', 'showToolbarOrderEditor',
+    'showGestureHelp', 'showMobileActions']) {
+    const { p } = page(); p.openRemoteKeyboard(); advance(80); focused.length = 0;
+    p[flag] = true; p.requestRemoteInputFocus(); p.refocusRemoteKeyboard(); advance(150);
+    assert(!focused.includes('remoteKeyboardCapture'), flag);
+  }
+  for (const leave of [p => { p.connectionStatus = 0; }, p => { p.remotePageVisible = false; }]) {
+    const { p } = page(); p.openRemoteKeyboard(); advance(80); focused.length = 0;
+    p.keepRemoteKeyboardForPointer(); leave(p); advance(150);
+    assert.deepEqual(focused, []);
+  }
+});
+
+test('physical/default focus never opens soft keyboard without an explicit user request', () => {
+  const { p } = page(); p.requestRemoteInputFocus(); advance(400);
+  assert(!p.showKeyboardPanel); assert.deepEqual(focused, ['remoteNativeInputCapture']);
+  focused.length = 0; p.refocusRemoteKeyboard(); p.keepRemoteKeyboardForPointer(); advance(400);
+  assert(!p.showKeyboardPanel); assert.deepEqual(focused, []);
+  assert(!method('handleNativeKeyInput').includes('openRemoteKeyboard'));
+  assert(!method('handleRemoteKey').includes('openRemoteKeyboard'));
 });
 test('close cancels delayed open focus; old close cannot steal reopened focus', () => {
   const { p } = page(); p.openRemoteKeyboard(); p.closeRemoteKeyboard(); advance(100);

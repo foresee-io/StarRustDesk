@@ -65,6 +65,8 @@ export interface NativeMouseInputEvent {
   timestamp: number
   modifierMask: number
   modifierValid: boolean
+  surfaceWidth?: number
+  surfaceHeight?: number
 }
 
 export interface NativeKeyInputEvent {

@@ -11,13 +11,13 @@ const method = name => {
 };
 let now = 1000, enabled = false;
 const sent = [], logs = [];
-const MouseAction = { Move: 1, Hover: 2, Press: 3, Release: 4 };
+const MouseAction = { Press: 1, Release: 2, Move: 3, Hover: 4 };
 const MouseButton = { Left: 1, Right: 2 };
-const SourceType = { TouchScreen: 1, Mouse: 2 };
-const SourceTool = { Finger: 1, Pen: 2, MOUSE: 3, TOUCHPAD: 4 };
+const SourceType = { Mouse: 1, TouchScreen: 2 };
+const SourceTool = { Finger: 1, Pen: 2, MOUSE: 7, TOUCHPAD: 9 };
 const context = vm.createContext({
   Date: { now: () => now }, Math, Number, MouseAction, MouseButton, SourceType, SourceTool,
-  TouchType: { Down: 0, Move: 1, Up: 2, Cancel: 3 },
+  TouchType: { Down: 0, Up: 1, Move: 2, Cancel: 3 },
   INPUT_MODE_MOUSE: 'mouse', ConnectionStatus: { CONNECTED: 2 },
   NATIVE_MOUSE_ACTION_MOVE: 3, NATIVE_MOUSE_ACTION_PRESS: 1,
   NATIVE_MOUSE_ACTION_RELEASE: 2, NATIVE_MOUSE_ACTION_CANCEL: 13,
@@ -60,6 +60,28 @@ test('expired, invalid and reset samples never suppress new input', () => {
   assert.equal(d.consumeDuplicate(0, 50, 60, 1010), false);
   d.rememberNative(0, 50, 60, 1000); d.clear();
   assert.equal(d.consumeDuplicate(0, 50, 60, 1010), false);
+});
+
+test('projected delivery pairs work in either order and across three paths', () => {
+  for (const order of [[1,2,4], [2,4,1], [4,1,2], [8,1,2]]) {
+    d.clear();
+    assert.equal(d.consumeProjectedDuplicate(0,50,60,1000,order[0]),false);
+    assert.equal(d.consumeProjectedDuplicate(0,50.2,60.1,1010,order[1]),true);
+    assert.equal(d.consumeProjectedDuplicate(0,50,60,1020,order[2]),true);
+    assert.equal(d.consumeProjectedDuplicate(0,51,60,1021,order[0]),false);
+    assert.equal(d.consumeProjectedDuplicate(2,51,60,1022,order[1]),false);
+  }
+});
+
+test('same-origin events and real fast double-clicks are never suppressed', () => {
+  d.clear();
+  for (let i=0;i<2;i++) {
+    assert.equal(d.consumeProjectedDuplicate(1,50,60,1000+i*20,2),false);
+    assert.equal(d.consumeProjectedDuplicate(2,50,60,1005+i*20,2),false);
+  }
+  for (const action of [1,2,1,2]) assert.equal(d.consumeProjectedDuplicate(action,50,60,1050,1),true);
+  assert.equal(d.consumeProjectedDuplicate(0,50,60,1200,1),false);
+  d.clear(); assert.equal(d.consumeProjectedDuplicate(2,50,60,1201,2),false);
 });
 test('explicit mouse/touchpad survives touch wrapper; real finger/pen stays filtered', () => {
   assert.equal(context.isTouchOnly(true, false, true, false), false);
@@ -119,6 +141,33 @@ test('same native/ArkUI move forwards once; different next move still works', ()
   now += 16; ark(p, 160, 175);
   assert.equal(sent.length, 2); assert.deepEqual(sent.at(-1), [220,200,0]);
 });
+
+test('ArkUI before delayed native delivery forwards once, without losing next move', () => {
+  const p=page(); now=1000; ark(p,150,175);
+  now+=16; native(p,100,100);
+  assert.equal(sent.length,1); assert.equal(p.pointerDuplicateEvents,1);
+  now+=16; native(p,101,100);
+  assert.deepEqual(sent.at(-1),[202,200,0]);
+});
+
+test('native TV pixels normalize to ArkUI vp and deduplicate at non-phone density', () => {
+  const p=page(); now=1000;
+  p.handleNativeMouseInput({x:200,y:200,action:3,button:0,hover:-1,modifierValid:false,
+    surfaceWidth:1000,surfaceHeight:500});
+  assert.deepEqual(sent.at(-1),[200,200,0]);
+  now+=16; ark(p,150,175);
+  assert.equal(sent.length,1); assert.equal(p.pointerDuplicateEvents,1);
+});
+
+test('projected root fallback maps direct-touch letterboxes and keeps matching paths single', () => {
+  const p=page({inputMode:'touch'}); now=1000;
+  p.handleRemoteMouse({action:3,button:0,x:150,y:175,source:1,sourceTool:7,
+    targetDisplayId:8,stopPropagation(){}},false,true);
+  assert.deepEqual(sent.at(-1),[200,200,0]);
+  assert.equal(p.pointerTargetDisplayId,8);
+  now+=16; native(p,100,100);
+  assert.equal(sent.length,1);
+});
 test('matching native buttons do not double-click or drop the next release', () => {
   const p = page(); now = 1000; native(p, 100,100,1,1);
   now += 10; ark(p,150,175,{action:MouseAction.Press,button:MouseButton.Left});
@@ -176,5 +225,14 @@ test('cursor overlay does not intercept input and is explicitly above the surfac
   assert.match(image,/\.hitTestBehavior\(HitTestMode.None\)/);
   assert.match(arrow,/\.hitTestBehavior\(HitTestMode.None\)/);
   assert.equal((overlay.match(/\.hitTestBehavior\(HitTestMode.None\)/g)||[]).length,3);
+});
+test('projected hit-test fallback is scoped, real native input only uses C callbacks', () => {
+  const viewport=method('buildRemoteViewport');
+  assert(viewport.includes('this.remoteExternalDisplay ? HitTestMode.Transparent : HitTestMode.Block'));
+  assert(viewport.includes('this.remoteExternalDisplay ? HitTestMode.Default : HitTestMode.None'));
+  assert(viewport.includes('this.handleRemoteMouse(event, false, true)'));
+  const nativeLayer=viewport.slice(viewport.indexOf('XComponent({'),viewport.indexOf('if (!this.hasVideo)'));
+  assert(!nativeLayer.includes('.onMouse('),'libraryname XComponent delivers mouse to C, not ArkTS');
+  assert.match(viewport,/\.onMouse\(\(event: MouseEvent\) => \{\s+if \(!this.remoteExternalDisplay\) return;/);
 });
 console.log(`${checks} projection pointer regression checks passed`);

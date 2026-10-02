@@ -188,6 +188,12 @@ struct RemotePage {
   private remoteKeyboardHeightListener: ((height: number) => void) | undefined;
   private remoteKeyboardFocusGeneration: number = 0;
   private remoteKeyboardCloseTimer: number = -1;
+  private remoteKeyboardRefocusTimer: number = -1;
+  private remoteKeyboardPointerHandoffUntil: number = 0;
+  @State keyboardLauncherOffsetX: number = 0;
+  @State keyboardLauncherOffsetY: number = 0;
+  private keyboardLauncherDragStartX: number = 0;
+  private keyboardLauncherDragStartY: number = 0;
   @State keyboardViewportHeight: number = 0;
   private keyboardLayoutWidth: number = 0;
   private keyboardLayoutHeight: number = 0;
@@ -385,6 +391,10 @@ struct RemotePage {
   private pointerTraceAt: number = 0;
   private pointerNativeMoves: number = 0;
   private pointerArkMoves: number = 0;
+  private pointerViewportMoves: number = 0;
+  private pointerTargetDisplayId: number = -1;
+  private pointerCaptureFocused: boolean = false;
+  private compatibilityLeftSequence: boolean = false;
   private pointerTouchMoves: number = 0;
   private pointerForwardedMoves: number = 0;
   private pointerFilteredEvents: number = 0;
@@ -754,6 +764,7 @@ struct RemotePage {
         this.pollFileTransferStatus();
       }
       if (status !== ConnectionStatus.CONNECTED) {
+        if (this.showKeyboardPanel) this.closeRemoteKeyboard();
         this.navigationKeys.reset();
         this.keyboardComposing = false;
         this.displayStateInitialized = false;
@@ -900,6 +911,8 @@ struct RemotePage {
   resetRemoteViewportForSession(): void {
     this.resetViewportTransform();
     this.physicalMouseDeduplicator.clear();
+    this.compatibilityLeftSequence = false;
+    this.lastMappedPhysicalLeftUpAt = 0;
     this.projectedPhysicalPointer = false;
     this.resetPointerDiagnostics();
     this.hasVideo = false;
@@ -1065,6 +1078,7 @@ struct RemotePage {
 
   onProjectionDisplayChanged(): void {
     this.physicalMouseDeduplicator.clear();
+    this.compatibilityLeftSequence = false;
     this.relativePointerSampleValid = false;
     this.projectedPhysicalPointer = false;
     this.resetPointerDiagnostics();
@@ -1072,7 +1086,8 @@ struct RemotePage {
     if (!this.fileOnly) this.startRemoteKeyboardTracking();
     this.releaseHeldMouseButtons('projection_display_changed');
     RustDeskNapi.appendDiagnosticLog('projection',
-      `input_display_changed display=${this.remoteProjectionDisplayId} external=${this.remoteExternalDisplay}`);
+      `input_display_changed display=${this.remoteProjectionDisplayId} external=${this.remoteExternalDisplay} ` +
+      `input_route=${this.remoteExternalDisplay ? 'ark_native_viewport' : 'ark_overlay'}`);
   }
 
   noteProjectedPhysicalPointer(): void {
@@ -1092,6 +1107,8 @@ struct RemotePage {
     this.pointerTraceAt = 0;
     this.pointerNativeMoves = 0;
     this.pointerArkMoves = 0;
+    this.pointerViewportMoves = 0;
+    this.pointerTargetDisplayId = -1;
     this.pointerTouchMoves = 0;
     this.pointerForwardedMoves = 0;
     this.pointerFilteredEvents = 0;
@@ -1111,6 +1128,8 @@ struct RemotePage {
         RustDeskNapi.appendDiagnosticLog('projection-pointer',
           `display=${this.remoteProjectionDisplayId} external=${this.remoteExternalDisplay} mode=${this.inputMode} ` +
           `native_move=${this.pointerNativeMoves} ark_move=${this.pointerArkMoves} touch_move=${this.pointerTouchMoves} ` +
+          `viewport_move=${this.pointerViewportMoves} target_display=${this.pointerTargetDisplayId} ` +
+          `capture_focused=${this.pointerCaptureFocused} native_hit=${this.remoteExternalDisplay} ` +
           `physical_move_dispatch=${this.pointerForwardedMoves} filtered=${this.pointerFilteredEvents} ` +
           `duplicate=${this.pointerDuplicateEvents} fallback_click=${this.pointerFallbackClicks} ` +
           `source=${this.pointerLastSource} tool=${this.pointerLastTool} overlay=${this.shouldShowCursorOverlay()} ` +
@@ -1309,6 +1328,12 @@ struct RemotePage {
       return;
     }
     if (!Number.isFinite(event.x) || !Number.isFinite(event.y)) return;
+    // Native component pixels must be normalized against the projected
+    // surface's own size; the TV can have a different density from the phone.
+    const localX: number = this.remoteExternalDisplay && (event.surfaceWidth ?? 0) > 0 ?
+      event.x * this.getDisplayWidth() / event.surfaceWidth! : event.x;
+    const localY: number = this.remoteExternalDisplay && (event.surfaceHeight ?? 0) > 0 ?
+      event.y * this.getDisplayHeight() / event.surfaceHeight! : event.y;
     this.lastNativeMouseEventAt = Date.now();
     let pairedAction: number = -1;
     if (event.action === NATIVE_MOUSE_ACTION_MOVE) pairedAction = 0;
@@ -1319,7 +1344,15 @@ struct RemotePage {
       if (event.action === NATIVE_MOUSE_ACTION_PRESS) pairedAction = 3;
       else if (event.action === NATIVE_MOUSE_ACTION_RELEASE) pairedAction = 4;
     }
-    this.physicalMouseDeduplicator.rememberNative(pairedAction, event.x, event.y, this.lastNativeMouseEventAt);
+    if (this.remoteExternalDisplay) {
+      if (this.physicalMouseDeduplicator.consumeProjectedDuplicate(
+        pairedAction, localX, localY, this.lastNativeMouseEventAt, 1)) {
+        this.pointerDuplicateEvents++;
+        return;
+      }
+    } else {
+      this.physicalMouseDeduplicator.rememberNative(pairedAction, localX, localY, this.lastNativeMouseEventAt);
+    }
     this.noteProjectedPhysicalPointer();
     this.handleRemoteHover(true);
     this.lastMouseEventAt = this.lastNativeMouseEventAt;
@@ -1327,7 +1360,7 @@ struct RemotePage {
     this.clearTapTimer();
     this.requestRemoteInputFocus();
 
-    let remotePoint: RemotePoint = this.updatePointerFromLocal(event.x, event.y);
+    let remotePoint: RemotePoint = this.updatePointerFromLocal(localX, localY);
     this.edgePanTouchActive = false;
     if (event.action === NATIVE_MOUSE_ACTION_MOVE) {
       this.updateEdgeAutoPan(remotePoint.x, remotePoint.y, false);
@@ -1548,6 +1581,11 @@ struct RemotePage {
         (this.isHandheldDevice() || this.isFullScreen || !this.isLargeLayout())) {
         this.buildFloatingToolbar();
       }
+      if (this.connectionStatus === ConnectionStatus.CONNECTED && !this.fileOnly && this.isHandheldDevice() &&
+        !this.showGestureHelp && !this.showRemoteFileBrowser && !this.showMobileActions &&
+        !this.showToolbarOrderEditor && !this.showCommunicationPanel) {
+        this.buildKeyboardLauncher();
+      }
       if (this.connectionStatus === ConnectionStatus.CONNECTED && !this.fileOnly &&
         this.isFullScreen && !this.isHandheldDevice()) {
         this.buildPcFullscreenExitButton();
@@ -1580,6 +1618,8 @@ struct RemotePage {
       this.keyboardToolsOffsetY = this.clampKeyboardToolsOffsetY(this.keyboardToolsOffsetY);
       this.remoteToolbarOffsetX = this.clampRemoteToolbarOffsetX(this.remoteToolbarOffsetX);
       this.remoteToolbarOffsetY = this.clampRemoteToolbarOffsetY(this.remoteToolbarOffsetY);
+      this.keyboardLauncherOffsetX = this.clampKeyboardLauncherOffset(this.keyboardLauncherOffsetX, true);
+      this.keyboardLauncherOffsetY = this.clampKeyboardLauncherOffset(this.keyboardLauncherOffsetY, false);
       this.scheduleSurfaceRebindIfSizeChanged();
     });
   }
@@ -2155,11 +2195,13 @@ struct RemotePage {
         .backgroundColor('#01000000')
         .opacity(0.001)
         .zIndex(10)
-        .hitTestBehavior(HitTestMode.Block)
+        // Keep touch capture, but let the native projected surface receive
+        // unpressed mouse movement instead of starving its registered callback.
+        .hitTestBehavior(this.remoteExternalDisplay ? HitTestMode.Transparent : HitTestMode.Block)
         .mouseResponseRegion({ x: 0, y: 0, width: '100%', height: '100%' })
-        .focusable(true)
-        .defaultFocus(true)
-        .focusOnTouch(true)
+        .focusable(!this.showKeyboardPanel)
+        .defaultFocus(!this.showKeyboardPanel)
+        .focusOnTouch(!this.showKeyboardPanel)
         .onClick((event: ClickEvent) => {
           this.requestRemoteInputFocus();
           this.handleRemoteClickFallback(event);
@@ -2173,7 +2215,9 @@ struct RemotePage {
         .onHover((isHovering: boolean) => {
           this.handleRemoteHover(isHovering);
         })
+        .onFocus(() => { this.pointerCaptureFocused = true; })
         .onBlur(() => {
+          this.pointerCaptureFocused = false;
           if (this.localPointerGestureActive) {
             RustDeskNapi.appendDiagnosticLog('input', 'input_blur ignored_during_touch_gesture');
             return;
@@ -2200,9 +2244,9 @@ struct RemotePage {
         })
           .width(this.getDisplayWidth())
           .height(this.getDisplayHeight())
-          .hitTestBehavior(HitTestMode.None)
+          .hitTestBehavior(this.remoteExternalDisplay ? HitTestMode.Default : HitTestMode.None)
           .id('remoteNativeInputCapture')
-          .focusable(true)
+          .focusable(!this.showKeyboardPanel)
           .onBlur(() => { this.releaseRemoteNavigationKeys('native_input_blur'); })
           .onLoad(() => {
             this.onSurfaceReady();
@@ -2262,6 +2306,12 @@ struct RemotePage {
     .height('100%')
     .clip(true)
     .backgroundColor('#090D14')
+    .onMouse((event: MouseEvent) => {
+      if (!this.remoteExternalDisplay) return;
+      // Bubble fallback for the projected viewport, including letterboxing.
+      if (event.action === MouseAction.Move || event.action === MouseAction.Hover) this.pointerViewportMoves++;
+      this.handleRemoteMouse(event, false, true);
+    })
     .onAreaChange((oldValue: Area, newValue: Area) => {
       let previousWidth: number = this.componentWidth;
       let previousHeight: number = this.componentHeight;
@@ -3629,7 +3679,9 @@ struct RemotePage {
         this.buildGestureHelpSection('拖拽与框选',
           '鼠标模式：先将远端指针移到起点，轻点一次，第二次按住并拖动，松手结束。框选文件时请从文件列表或桌面的空白处开始；从文件上开始通常是拖动文件。\n触摸模式：在目标位置按住并移动，松手结束。')
         this.buildGestureHelpSection('组合键与本地键盘',
-          '连接后默认显示折叠的“键”按钮，点击展开；“键”和“控”及其拖动柄均可移动到屏幕任意位置。\n横屏时“键”默认位于左上角，“控”默认位于右上角，两个面板都向下展开。长按任意功能按钮可调整排序。\nCtrl、Alt、Shift、Win/Cmd：点一下选中，相当于按住；再点一下释放，不需要手指一直按着。可以同时选中多个。\n例如 Ctrl+C：点亮 Ctrl，再输入 C，最后再次点击 Ctrl 取消选中。Mac 常用 Cmd+C。Ctrl/Shift 也可配合鼠标多选文件，用完记得释放。\nCtrl+Shift+Esc 等完整组合键按钮：点一次发送整组按键，不会自动弹出本地键盘。\n横屏打开键盘时画面会随可用区域上移和缩放，避免被键盘遮挡。')
+          '连接后默认显示折叠的“键”按钮，点击展开；“键”和“控”及其拖动柄均可移动到屏幕任意位置。\n横屏时“键”默认位于左上角，“控”默认位于右上角，两个面板都向下展开。长按任意功能按钮可调整排序。\nCtrl、Alt、Shift、Win/Cmd：点一下选中，相当于按住；再点一下释放，不需要手指一直按着。可以同时选中多个。\n例如 Ctrl+C：点亮 Ctrl，再输入 C，最后再次点击 Ctrl 取消选中。Mac 常用 Cmd+C。Ctrl/Shift 也可配合鼠标多选文件，用完记得释放。\nCtrl+Shift+Esc 等完整组合键按钮：点一次发送整组按键，不会自动弹出本地键盘。\n打开软键盘时保留画面当前比例，按可见区域上移，不会整体缩小。')
+        this.buildGestureHelpSection('连续输入与键盘悬浮按钮',
+          '手机和平板连接后显示独立键盘悬浮按钮，不用展开“控”；可拖到顺手的位置。点一下打开本地键盘，再点一下收起。\n键盘开启后可继续点击远端其他输入框，输入仍直接传给远端，不因点按画面而收起；点击收起按钮、系统返回或输入法收起即可结束。\n全屏三指上滑仍可打开键盘。实体键盘和完整组合键不会自动唤起软键盘。远端输入框没有可靠的焦点通知，需要用户主动打开键盘。')
         this.buildGestureHelpSection('悬浮功能栏与移动画面',
           '竖屏时“控”保持底部横向工具栏；横屏时默认移动到右上角并向下展开。点击收起后保留“控”按钮。\n未开启虚拟鼠标时，画面放大后可使用“移动画面”模式；开启虚拟鼠标后，直接单指拖动画面空白区域即可平移，鼠标本体专门控制远端指针。\n全屏三指上滑用于打开本地键盘，不是滚动手势；滚动请使用双指平行滑动。')
           }
@@ -4147,6 +4199,61 @@ struct RemotePage {
   }
 
   @Builder
+  buildKeyboardLauncher() {
+    Button({ type: ButtonType.Normal }) {
+      Image($r('app.media.keyboard_launcher'))
+        .width(26).height(26)
+        .fillColor(this.showKeyboardPanel ? this.controlSelectedTextColor() :
+          (this.isDarkMode ? '#DCE8F8' : '#4A607E'))
+        .hitTestBehavior(HitTestMode.None)
+    }
+    .id('remoteKeyboardLauncher')
+    .width(52).height(46).padding(0)
+    .borderRadius(16)
+    .backgroundColor(this.showKeyboardPanel ? this.controlSelectedBackgroundColor() :
+      (this.isDarkMode ? '#D91B2638' : '#D9FFFFFF'))
+    .border({ width: 1, color: this.showKeyboardPanel ? this.controlSelectedBorderColor() :
+      (this.isDarkMode ? '#805C93E6' : '#80518BDD') })
+    .shadow({ radius: 10, color: '#26000000', offsetX: 0, offsetY: 3 })
+    .focusable(false)
+    .accessibilityText(translate(this.showKeyboardPanel ? '收起键盘' : '打开键盘', this.uiLanguage))
+    .position({ x: this.getKeyboardLauncherBase(true) +
+      this.clampKeyboardLauncherOffset(this.keyboardLauncherOffsetX, true),
+      y: this.getKeyboardLauncherBase(false) +
+      this.clampKeyboardLauncherOffset(this.keyboardLauncherOffsetY, false) })
+    .zIndex(70)
+    .gesture(PanGesture({ fingers: 1, direction: PanDirection.All, distance: 6 })
+      .onActionStart(() => {
+        this.keyboardLauncherDragStartX = this.clampKeyboardLauncherOffset(this.keyboardLauncherOffsetX, true);
+        this.keyboardLauncherDragStartY = this.clampKeyboardLauncherOffset(this.keyboardLauncherOffsetY, false);
+      })
+      .onActionUpdate((event: GestureEvent) => {
+        this.keyboardLauncherOffsetX = this.clampKeyboardLauncherOffset(
+          this.keyboardLauncherDragStartX + event.offsetX, true);
+        this.keyboardLauncherOffsetY = this.clampKeyboardLauncherOffset(
+          this.keyboardLauncherDragStartY + event.offsetY, false);
+      }))
+    .onClick(() => { this.toggleRemoteKeyboard(); })
+    .onHover((isHovering: boolean) => { this.handleNonRemoteHover(isHovering); })
+    .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 16, ButtonType.Capsule))
+  }
+
+  getKeyboardLauncherBase(horizontal: boolean): number {
+    const width: number = this.pageWidth > 0 ? this.pageWidth : 360;
+    const height: number = this.pageHeight > 0 ? this.pageHeight : 640;
+    if (horizontal) return this.isHandheldLandscape() ? Math.max(8, (width - 52) / 2) : Math.max(8, width - 64);
+    return Math.max(8, height - (this.isHandheldLandscape() ? 62 : this.getRemoteToolbarHeight() + 78));
+  }
+
+  clampKeyboardLauncherOffset(offset: number, horizontal: boolean): number {
+    const dimension: number = horizontal ? (this.pageWidth > 0 ? this.pageWidth : 360) :
+      (this.pageHeight > 0 ? this.pageHeight : 640);
+    const size: number = horizontal ? 52 : 46;
+    const base: number = this.getKeyboardLauncherBase(horizontal);
+    return Math.max(8 - base, Math.min(Math.max(8, dimension - size - 8) - base, offset));
+  }
+
+  @Builder
   buildKeyboardCapture() {
     TextInput({ text: this.keyboardInput })
       .id('remoteKeyboardCapture')
@@ -4550,6 +4657,8 @@ struct RemotePage {
       if (landscape) this.remoteToolbarCollapsed = false;
       this.keyboardToolsOffsetX = 0;
       this.keyboardToolsOffsetY = 0;
+      this.keyboardLauncherOffsetX = 0;
+      this.keyboardLauncherOffsetY = 0;
       this.remoteToolbarOffsetX = 0;
       this.remoteToolbarOffsetY = 0;
       this.virtualMouseInitialized = false;
@@ -4995,6 +5104,9 @@ struct RemotePage {
 
   handlePointerCompatibilityTouch(event: TouchEvent): void {
     if (event.type === TouchType.Move) this.pointerTouchMoves++;
+    this.pointerLastSource = event.source;
+    this.pointerLastTool = event.sourceTool;
+    this.pointerTargetDisplayId = event.targetDisplayId ?? -1;
     if (event.type === TouchType.Down || event.type === TouchType.Up || event.type === TouchType.Cancel) {
       RustDeskNapi.appendDiagnosticLog('input',
         `pointer_touch type=${event.type} source=${event.source} tool=${event.sourceTool}`);
@@ -5005,6 +5117,14 @@ struct RemotePage {
     }
     let touchCount: number = event.touches.length;
     let changedCount: number = event.changedTouches.length;
+    if (event.type === TouchType.Down && (touchCount > 0 || changedCount > 0)) {
+      this.compatibilityLeftSequence = true;
+    }
+    const completedSequence: boolean = this.compatibilityLeftSequence && event.type === TouchType.Up;
+    if (event.type === TouchType.Up || event.type === TouchType.Cancel) this.compatibilityLeftSequence = false;
+    // Blur/hover cleanup may release early, but a matching Down still happened.
+    // Its following onClick must not manufacture a second click.
+    if (completedSequence) this.lastMappedPhysicalLeftUpAt = Date.now();
     if (touchCount <= 0 && changedCount <= 0) {
       if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
         const hadLeftDown: boolean = this.leftButtonHeld;
@@ -5017,6 +5137,14 @@ struct RemotePage {
     let y: number = touchCount > 0 ? event.touches[0].y : event.changedTouches[0].y;
     let localX: number = x - this.getDisplayLeft();
     let localY: number = y - this.getDisplayTop();
+    const pairedAction: number = event.type === TouchType.Down ? 1 :
+      event.type === TouchType.Up ? 2 : event.type === TouchType.Move ? 0 : -1;
+    if (this.remoteExternalDisplay && this.physicalMouseDeduplicator.consumeProjectedDuplicate(
+      pairedAction, localX, localY, Date.now(), 8)) {
+      this.pointerDuplicateEvents++;
+      event.stopPropagation();
+      return;
+    }
     this.noteProjectedPhysicalPointer();
     let remotePoint: RemotePoint = this.updatePointerFromLocal(localX, localY);
     this.lastMouseEventAt = Date.now();
@@ -5359,7 +5487,7 @@ struct RemotePage {
     let now: number = Date.now();
     const physicalPointer: boolean = event.sourceTool === SourceTool.MOUSE || event.sourceTool === SourceTool.TOUCHPAD ||
       (event.source === SourceType.Mouse && event.sourceTool !== SourceTool.Finger && event.sourceTool !== SourceTool.Pen);
-    if (this.connectionStatus !== ConnectionStatus.CONNECTED || (!physicalPointer && this.showKeyboardPanel) || this.isPanMode ||
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.isPanMode ||
       (!physicalPointer && now - this.lastTouchEventAt < 320) || now - this.lastMappedPhysicalLeftUpAt < 160 ||
       this.remoteWidth <= 0 || this.remoteHeight <= 0) {
       return;
@@ -5379,14 +5507,16 @@ struct RemotePage {
       `source=${event.source} tool=${event.sourceTool}`);
   }
 
-  handleRemoteMouse(event: MouseEvent, coordinatesFromSurface: boolean = false): void {
+  handleRemoteMouse(event: MouseEvent, coordinatesFromSurface: boolean = false,
+    coordinatesFromViewport: boolean = false): void {
     const moving: boolean = event.action === MouseAction.Move || event.action === MouseAction.Hover;
     if (moving) this.pointerArkMoves++;
     this.pointerLastSource = event.source;
     this.pointerLastTool = event.sourceTool;
+    this.pointerTargetDisplayId = event.targetDisplayId ?? -1;
     if (event.action !== MouseAction.Move && event.action !== MouseAction.Hover) {
       RustDeskNapi.appendDiagnosticLog('input',
-        `raw_mouse origin=${coordinatesFromSurface ? 'surface' : 'overlay'} action=${event.action} ` +
+        `raw_mouse origin=${coordinatesFromViewport ? 'viewport' : coordinatesFromSurface ? 'surface' : 'overlay'} action=${event.action} ` +
         `button=${event.button} source=${event.source} tool=${event.sourceTool}`);
     }
     // ArkUI can emit compatibility mouse events for finger/stylus input. Those
@@ -5404,15 +5534,20 @@ struct RemotePage {
     // even if ArkUI routes Ctrl/Shift key events to another focused component.
     this.syncModifiersFromPointerEvent(event);
     let action: number = this.mapMouseAction(event);
-    let localX: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
+    let localX: number = coordinatesFromViewport || (this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface) ?
       event.x - this.getDisplayLeft() : event.x;
-    let localY: number = this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface ?
+    let localY: number = coordinatesFromViewport || (this.inputMode === INPUT_MODE_MOUSE && !coordinatesFromSurface) ?
       event.y - this.getDisplayTop() : event.y;
     if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
     // Suppress only a matching native event. In projected windows native may
     // deliver buttons while ArkUI alone delivers unpressed mouse movement.
-    if (this.physicalMouseDeduplicator.consumeDuplicate(action, localX, localY, Date.now())) {
+    const duplicate: boolean = this.remoteExternalDisplay ?
+      this.physicalMouseDeduplicator.consumeProjectedDuplicate(action, localX, localY, Date.now(),
+        coordinatesFromViewport ? 4 : 2) :
+      this.physicalMouseDeduplicator.consumeDuplicate(action, localX, localY, Date.now());
+    if (duplicate) {
       this.pointerDuplicateEvents++;
+      event.stopPropagation();
       return;
     }
     this.noteProjectedPhysicalPointer();
@@ -5464,7 +5599,7 @@ struct RemotePage {
   }
 
   handleRemoteAxis(event: AxisEvent): void {
-    if (this.connectionStatus !== ConnectionStatus.CONNECTED || this.showKeyboardPanel) {
+    if (this.connectionStatus !== ConnectionStatus.CONNECTED) {
       return;
     }
     if (event.action !== AxisAction.UPDATE && event.action !== AxisAction.BEGIN) {
@@ -5838,6 +5973,10 @@ struct RemotePage {
 
   requestRemoteInputFocus(): void {
     if (this.showCommunicationPanel) return;
+    if (this.showKeyboardPanel) {
+      this.keepRemoteKeyboardForPointer();
+      return;
+    }
     try {
       this.getUIContext()?.getFocusController().requestFocus('remoteNativeInputCapture');
     } catch (_e) {
@@ -6601,6 +6740,8 @@ struct RemotePage {
 
   stopRemoteKeyboardTracking(): void {
     this.cancelRemoteKeyboardClose();
+    this.cancelRemoteKeyboardRefocus();
+    this.remoteKeyboardPointerHandoffUntil = 0;
     const target = this.remoteKeyboardWindow;
     const listener = this.remoteKeyboardHeightListener;
     this.remoteKeyboardWindow = undefined;
@@ -6654,14 +6795,38 @@ struct RemotePage {
   scheduleRemoteKeyboardClose(): void {
     this.cancelRemoteKeyboardClose();
     const generation: number = this.remoteKeyboardFocusGeneration;
-    // Toolbar actions can briefly move focus before refocusing the IME. Follow
-    // resumes immediately on hide; only capture cleanup waits for that handoff.
+    // A remote click must not end continuous input. Recover only an explicitly
+    // opened capture and only during the bounded pointer handoff, never on keys.
     this.remoteKeyboardCloseTimer = setTimeout(() => {
       this.remoteKeyboardCloseTimer = -1;
       if (generation !== this.remoteKeyboardFocusGeneration || !this.remotePageVisible ||
         !this.showKeyboardPanel || this.isRemoteKeyboardBlockingPointer()) return;
+      if (this.canKeepRemoteKeyboardForPointer() && Date.now() < this.remoteKeyboardPointerHandoffUntil) {
+        this.refocusRemoteKeyboard();
+        return;
+      }
       this.closeRemoteKeyboard();
     }, 120);
+  }
+
+  canKeepRemoteKeyboardForPointer(): boolean {
+    return this.showKeyboardPanel && this.remotePageVisible && this.connectionStatus === ConnectionStatus.CONNECTED &&
+      !this.showCommunicationPanel && !this.showRemoteFileBrowser && !this.showToolbarOrderEditor &&
+      !this.showGestureHelp && !this.showMobileActions;
+  }
+
+  keepRemoteKeyboardForPointer(): void {
+    if (!this.canKeepRemoteKeyboardForPointer()) return;
+    this.remoteKeyboardPointerHandoffUntil = Date.now() + 300;
+    this.cancelRemoteKeyboardClose();
+    if (!this.remoteKeyboardEditing) this.refocusRemoteKeyboard();
+  }
+
+  cancelRemoteKeyboardRefocus(): void {
+    if (this.remoteKeyboardRefocusTimer !== -1) {
+      clearTimeout(this.remoteKeyboardRefocusTimer);
+      this.remoteKeyboardRefocusTimer = -1;
+    }
   }
 
   isRemoteKeyboardBlockingPointer(): boolean {
@@ -6676,6 +6841,7 @@ struct RemotePage {
     RustDeskNapi.appendDiagnosticLog('input-keyboard',
       `state reason=${reason} capture=${this.showKeyboardPanel} visible=${this.remoteKeyboardVisible} ` +
       `editing=${this.remoteKeyboardEditing} visibility_known=${this.remoteKeyboardVisibilityKnown} ` +
+      `continuous=${this.showKeyboardPanel} pointer_handoff=${Date.now() < this.remoteKeyboardPointerHandoffUntil} ` +
       `follow_reason=${this.touchMouseFollowBlockReason()} zoom=${this.zoomScale.toFixed(2)} ` +
       `pan_x=${Math.round(this.offsetX)} pan_y=${Math.round(this.offsetY)} ` +
       `canvas_h=${Math.round(this.keyboardViewportHeight)} visible_h=${Math.round(this.qualityViewportHeight)} ` +
@@ -6689,6 +6855,9 @@ struct RemotePage {
     }
     if (!this.remoteKeyboardWindow) this.startRemoteKeyboardTracking();
     this.releaseRemoteNavigationKeys('keyboard_open');
+    this.cancelRemoteKeyboardClose();
+    this.cancelRemoteKeyboardRefocus();
+    this.remoteKeyboardPointerHandoffUntil = 0;
     if (!this.showKeyboardPanel) {
       this.snapshotRemoteKeyboardViewport();
     }
@@ -6710,6 +6879,8 @@ struct RemotePage {
   closeRemoteKeyboard(): void {
     const generation: number = ++this.remoteKeyboardFocusGeneration;
     this.cancelRemoteKeyboardClose();
+    this.cancelRemoteKeyboardRefocus();
+    this.remoteKeyboardPointerHandoffUntil = 0;
     this.releaseRemoteNavigationKeys('keyboard_close');
     this.releaseVirtualModifiers();
     this.keyboardToolsCollapsed = !this.isHandheldLandscape();
@@ -6935,12 +7106,20 @@ struct RemotePage {
   }
 
   refocusRemoteKeyboard(): void {
-    setTimeout(() => {
-      if (!this.showKeyboardPanel) return;
+    if (!this.canKeepRemoteKeyboardForPointer()) return;
+    this.cancelRemoteKeyboardRefocus();
+    const generation: number = this.remoteKeyboardFocusGeneration;
+    this.remoteKeyboardRefocusTimer = setTimeout(() => {
+      this.remoteKeyboardRefocusTimer = -1;
+      if (generation !== this.remoteKeyboardFocusGeneration || !this.canKeepRemoteKeyboardForPointer()) return;
       try {
         this.getUIContext()?.getFocusController().requestFocus('remoteKeyboardCapture');
       } catch (_e) {
+        this.traceRemoteKeyboardState('refocus_failed');
       }
+      // If focus cannot be recovered, clean up once the handoff expires.
+      // A successful editing callback cancels this timer, including hardware IMEs.
+      if (!this.remoteKeyboardEditing) this.scheduleRemoteKeyboardClose();
     }, 30);
   }
 

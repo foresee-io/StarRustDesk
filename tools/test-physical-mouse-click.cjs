@@ -154,14 +154,15 @@ test('physical click-only fallback works with the soft keyboard and a recent fin
   const p = page({ showKeyboardPanel: true, lastTouchEventAt: 999 });
   fallback(p); assert.deepEqual(sent, [1, 2]);
 });
-test('finger/pen click fallback still respects keyboard and touch duplicate guards', () => {
+test('fresh finger/pen clicks work during continuous input without bypassing touch duplicate guards', () => {
   for (const tool of [SourceTool.Finger, SourceTool.Pen]) {
     const p = page({ lastTouchEventAt: 999 });
     fallback(p, { source: SourceType.TouchScreen, sourceTool: tool });
     assert.deepEqual(sent, []);
     p.lastTouchEventAt = 0; p.showKeyboardPanel = true;
     fallback(p, { source: SourceType.TouchScreen, sourceTool: tool });
-    assert.deepEqual(sent, []);
+    assert.deepEqual(sent, [1, 2]);
+    assert.equal(p.showKeyboardPanel, true, 'clicking a new remote input field keeps capture mounted');
   }
   const p = page({ lastTouchEventAt: 999 });
   fallback(p, { sourceTool: SourceTool.Finger }); assert.deepEqual(sent, []);
@@ -184,6 +185,29 @@ for (const empty of [false, true]) test(`compatibility orphan up, empty=${empty}
 test('compatibility up without coordinates after down suppresses the duplicate click', () => {
   const p = page(); touch(p, TouchType.Down); now += 20; touch(p, TouchType.Up, true); fallback(p);
   assert.deepEqual(sent, [1, 2]);
+});
+
+for (const empty of [false,true]) test(`compatibility click is not replayed after blur/hover release, empty=${empty}`, () => {
+  const p=page(); touch(p,TouchType.Down); now+=20;
+  p.releaseHeldMouseButtons('input_blur');
+  assert.equal(p.leftButtonHeld,false);
+  now+=20; touch(p,TouchType.Up,empty); fallback(p);
+  assert.deepEqual(sent,[1,2,2],'only a harmless release, no second left-down');
+  assert.equal(p.compatibilityLeftSequence,false); assert.equal(p.pointerFallbackClicks,0);
+});
+
+test('empty compatibility down does not suppress a later click-only repair', () => {
+  const p=page(); touch(p,TouchType.Down,true); now+=20; touch(p,TouchType.Up,true); fallback(p);
+  assert.deepEqual(sent,[2,1,2]); assert.equal(p.pointerFallbackClicks,1);
+});
+
+test('projected ArkUI/native/touch button deliveries do not duplicate left or right clicks', () => {
+  const p=page({remoteExternalDisplay:true});
+  ark(p,MouseAction.Press); now+=10; touch(p,TouchType.Down); now+=10; native(p,1);
+  now+=10; touch(p,TouchType.Up); now+=10; native(p,2); now+=10; ark(p,MouseAction.Release); fallback(p);
+  now+=200; native(p,1,MouseButton.Right); now+=10; ark(p,MouseAction.Press,MouseButton.Right);
+  now+=10; ark(p,MouseAction.Release,MouseButton.Right); now+=10; native(p,2,MouseButton.Right);
+  assert.deepEqual(sent,[1,2,3,4]); assert.equal(p.pointerFallbackClicks,0);
 });
 test('native physical buttons work while the keyboard is visible', () => {
   const p = page({ showKeyboardPanel: true });

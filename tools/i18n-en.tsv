@@ -1,6 +1,10 @@
 # Chinese source key<TAB>English. Placeholders preserve user data; \n is a line break.
 跟随系统	Follow system
-1.2.21（1002021）· 系统旋转锁定与屏幕方向	1.2.21 (1002021) - System rotation lock and screen orientation
+1.2.21（1002021）· 键盘输入、投屏鼠标与屏幕方向	1.2.21 (1002021) - Keyboard input, projected mouse and screen orientation
+新增独立键盘悬浮按钮，手机和平板不用展开“控”即可打开或收起软键盘，支持拖动调整位置。	Added a draggable floating keyboard button for phones and tablets to open or hide the soft keyboard without expanding Controls.
+新增连续输入：打开软键盘后，点击远端其他输入框仍保持键盘开启，输入直接传给远端；用户主动收起后结束。保留全屏三指上滑，实体键盘和完整组合键不自动弹出软键盘。	Added continuous input: tapping another remote field keeps the soft keyboard open and sends typing directly to the remote device until you hide it. The full-screen three-finger swipe remains available; physical keys and preset shortcuts do not open the soft keyboard automatically.
+优化应用单独投屏的实体鼠标接收通路、电视与本屏坐标换算及跨通路去重，避免兼容触摸事件提前松键后补发重复点击；有线投屏效果仍需真机验证。	Improved physical mouse input reception for independent projection, coordinate conversion between TV and local display, and cross-path deduplication. Prevents duplicate clicks after early release of mouse-compatible touch events. Wired projection still requires device validation.
+补充投屏鼠标各接收层、目标显示设备、输入焦点与画面尺寸的诊断日志，不记录输入文字或密码。	Added diagnostics for projected mouse reception layers, target display, input focus and surface size. Typed text and passwords are not recorded.
 修复应用忽略系统旋转锁定的问题，手机和平板默认跟随系统旋转设置，不再强制自动切换横竖屏。	Fixed the app ignoring the system rotation lock. Phones and tablets now follow system rotation settings by default instead of forcing automatic rotation.
 “控”中的屏幕方向按钮改为选择菜单，支持跟随系统、固定竖屏和固定横屏；手动选择仅对本次远控生效。	The orientation button under Controls now opens a selector for Follow system, Lock portrait and Lock landscape. Manual choices apply only to the current remote session.
 单独投屏使用独立方向策略：默认适配横向外接屏，也可手动固定方向；返回手机或平板后恢复本屏选择，不改变远端分辨率。	Independent projection has its own orientation policy: landscape external screens are fitted automatically, or orientation can be locked manually. Returning to the phone or tablet restores its own choice without changing remote resolution.
@@ -246,7 +250,13 @@ Fn 功能键	Function keys
 Ctrl、Alt、Shift、Win/Cmd：点一下选中，相当于按住；再点一下释放，不需要手指一直按着。可以同时选中多个。	Tap Ctrl, Alt, Shift or Win/Cmd to hold it; tap again to release. Several modifiers can be selected together.
 例如 Ctrl+C：点亮 Ctrl，再输入 C，最后再次点击 Ctrl 取消选中。Mac 常用 Cmd+C。Ctrl/Shift 也可配合鼠标多选文件，用完记得释放。	For Ctrl+C, select Ctrl, type C, then release Ctrl. Macs usually use Cmd+C. Ctrl/Shift also work with mouse selection; release them afterwards.
 Ctrl+Shift+Esc 等完整组合键按钮：点一次发送整组按键，不会自动弹出本地键盘。	Full shortcuts such as Ctrl+Shift+Esc send all keys with one tap without opening the local keyboard.
-横屏打开键盘时画面会随可用区域上移和缩放，避免被键盘遮挡。	When the landscape keyboard opens, the view moves upward to avoid being covered.
+打开软键盘时保留画面当前比例，按可见区域上移，不会整体缩小。	Opening the soft keyboard preserves the current view scale and shifts it into the visible area without shrinking the whole desktop.
+连续输入与键盘悬浮按钮	Continuous input and floating keyboard button
+手机和平板连接后显示独立键盘悬浮按钮，不用展开“控”；可拖到顺手的位置。点一下打开本地键盘，再点一下收起。	Phones and tablets show a separate floating keyboard button after connecting. No need to expand Controls; drag it to a convenient position. Tap to open the local keyboard, and tap again to hide it.
+键盘开启后可继续点击远端其他输入框，输入仍直接传给远端，不因点按画面而收起；点击收起按钮、系统返回或输入法收起即可结束。	While the keyboard is open, you can click other remote fields and keep typing directly on the remote device. Tapping the desktop does not close it. Use the keyboard button, system Back or the input method's hide action to end input.
+全屏三指上滑仍可打开键盘。实体键盘和完整组合键不会自动唤起软键盘。远端输入框没有可靠的焦点通知，需要用户主动打开键盘。	A three-finger swipe up in full screen still opens the keyboard. Physical keys and preset shortcuts do not open the soft keyboard automatically. Remote fields do not provide reliable focus notifications; open the keyboard explicitly.
+收起键盘	Hide keyboard
+打开键盘	Open keyboard
 悬浮功能栏与移动画面	Floating controls and panning
 竖屏时“控”保持底部横向工具栏；横屏时默认移动到右上角并向下展开。点击收起后保留“控”按钮。	Controls use a bottom horizontal bar in portrait and expand down from the top right in landscape. Collapsing keeps the Controls button.
 未开启虚拟鼠标时，画面放大后可使用“移动画面”模式；开启虚拟鼠标后，直接单指拖动画面空白区域即可平移，鼠标本体专门控制远端指针。	Without the virtual mouse, use Pan view after zooming. With it enabled, drag elsewhere with one finger to pan; the mouse itself moves the remote pointer.

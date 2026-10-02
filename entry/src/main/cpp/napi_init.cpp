@@ -74,6 +74,8 @@ struct NativeMouseInputEvent {
     int64_t timestamp{0};
     int32_t modifierMask{0};
     bool modifierValid{false};
+    uint64_t surfaceWidth{0};
+    uint64_t surfaceHeight{0};
 };
 
 struct NativeKeyInputEvent {
@@ -328,8 +330,17 @@ static void DispatchNativeMouseEvent(OH_NativeXComponent* component, void* windo
         // modifier snapshot captured by ArkUI.
         modifierValid = hardwareState.valid && hardwareState.modifierMask != 0;
     }
+    uint64_t width = 0;
+    uint64_t height = 0;
+    // Native coordinates are component pixels; ArkUI coordinates are vp.
+    // Use the owning surface size, not the phone display's density.
+    if (OH_NativeXComponent_GetXComponentSize(component, window, &width, &height) !=
+        OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
+        width = 0;
+        height = 0;
+    }
     const uint64_t sequence = QueueNativeMouseInput({event.x, event.y, static_cast<int32_t>(event.action),
-        static_cast<int32_t>(event.button), -1, event.timestamp, modifierMask, modifierValid});
+        static_cast<int32_t>(event.button), -1, event.timestamp, modifierMask, modifierValid, width, height});
     if (event.action != OH_NATIVEXCOMPONENT_MOUSE_MOVE) {
         DiagnosticLog::instance().append("I", "input-native",
             "mouse seq=" + std::to_string(sequence) +
@@ -337,6 +348,7 @@ static void DispatchNativeMouseEvent(OH_NativeXComponent* component, void* windo
             " action=" + std::to_string(static_cast<int32_t>(event.action)) +
             " button=" + std::to_string(static_cast<int32_t>(event.button)) +
             " x=" + std::to_string(event.x) + " y=" + std::to_string(event.y) +
+            " surface=" + std::to_string(width) + "x" + std::to_string(height) +
             " modifiers=" + std::to_string(modifierMask) +
             " modifier_valid=" + std::to_string(modifierValid ? 1 : 0));
     }
@@ -2154,6 +2166,12 @@ static napi_value NativeMouseInputToJs(napi_env env, const NativeMouseInputEvent
     napi_value modifierValid;
     napi_get_boolean(env, input.modifierValid, &modifierValid);
     napi_set_named_property(env, object, "modifierValid", modifierValid);
+    napi_value surfaceWidth;
+    napi_create_double(env, static_cast<double>(input.surfaceWidth), &surfaceWidth);
+    napi_set_named_property(env, object, "surfaceWidth", surfaceWidth);
+    napi_value surfaceHeight;
+    napi_create_double(env, static_cast<double>(input.surfaceHeight), &surfaceHeight);
+    napi_set_named_property(env, object, "surfaceHeight", surfaceHeight);
     return object;
 }
 
