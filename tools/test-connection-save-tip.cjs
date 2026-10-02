@@ -9,9 +9,9 @@ let nextId = 0;
 const timers = new Map();
 const failures = [];
 const animations = [];
-const page = new Function('setTimeout', 'clearTimeout', 'Curve', 'promptAction', `return new class {${methods}}`)(
+const page = new Function('setTimeout', 'clearTimeout', 'Curve', 'promptAction', 'translate', `return new class {${methods}}`)(
   (fn, ms) => { timers.set(++nextId, { fn, ms }); return nextId; },
-  id => timers.delete(id), { EaseOut: 'easeOut' }, { showToast: x => failures.push(x.message) });
+  id => timers.delete(id), { EaseOut: 'easeOut' }, { showToast: x => failures.push(x.message) }, key => key);
 Object.assign(page, { savePageActive: true, saveTipGeneration: 0, saveTipTimer: -1,
   saveTipRemoveTimer: -1, savingConnection: false, remoteId: '123456789', saveTipVisible: false });
 page.normalizeRemoteId = x => x.trim();
@@ -48,6 +48,6 @@ const fire = id => { const timer = timers.get(id); timers.delete(id); timer.fn()
   await page.saveConnectionWithTip();
   assert.equal(failures.length, 1, 'empty ID does not save');
   assert.match(source, /aboutToDisappear\(\): void \{\s*this\.savePageActive = false\s*this\.clearSaveTip\(\)/);
-  assert.match(source, /Text\('已保存'\)[\s\S]*?hitTestBehavior\(HitTestMode.None\)/);
+  assert.match(source, /Text\(translate\('已保存', this\.uiLanguage\)\)[\s\S]*?hitTestBehavior\(HitTestMode.None\)/);
   console.log('PASS save tip: completion, repeat clicks, upward fade, cleanup and failure');
 })().catch(error => { console.error(error); process.exitCode = 1; });

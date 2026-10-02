@@ -138,6 +138,22 @@ bool SoftwareVP9Decoder::convertFrame(vpx_image_t* image, std::vector<uint8_t>& 
     const int vStride = image->stride[vIndex];
     int result = -1;
 
+    if (highBitDepth) {
+        if (format != VPX_IMG_FMT_I420 && format != VPX_IMG_FMT_I422 && format != VPX_IMG_FMT_I444) return false;
+        PlanarVideoImage source;
+        source.width = width; source.height = height; source.wideSamples = true;
+        source.chromaShiftX = image->x_chroma_shift; source.chromaShiftY = image->y_chroma_shift;
+        for (int p = 0; p < 3; ++p) { source.planes[p] = image->planes[p]; source.strides[p] = image->stride[p]; }
+        VideoColorInfo color;
+        color.bitDepth = static_cast<int>(image->bit_depth);
+        color.primaries = image->cs == VPX_CS_BT_2020 ? 9 : 1;
+        color.matrix = image->cs == VPX_CS_BT_2020 ? 9 : image->cs == VPX_CS_BT_709 ? 1 : 6;
+        color.range = static_cast<int>(image->range);
+        // VP9 elementary data carries no PQ/HLG transfer field. BT2020 + 10 bit
+        // is not sufficient evidence to apply HDR tone mapping.
+        return convertPlanarVideoToBGRA(source, color, bgra);
+    }
+
     if (!highBitDepth) {
         if (format == VPX_IMG_FMT_I420 || format == VPX_IMG_FMT_YV12) {
             result = libyuv::I420ToARGB(y, yStride, u, uStride, v, vStride,
@@ -223,6 +239,13 @@ void SoftwareVP9Decoder::workerLoop() {
                 }
             }
             decodedFrames_.fetch_add(1);
+            VideoColorInfo color;
+            color.bitDepth = static_cast<int>(image->bit_depth);
+            color.primaries = image->cs == VPX_CS_BT_2020 ? 9 : image->cs == VPX_CS_UNKNOWN ? 2 : 1;
+            color.matrix = image->cs == VPX_CS_BT_2020 ? 9 : image->cs == VPX_CS_BT_709 ? 1 : 6;
+            color.range = static_cast<int>(image->range);
+            color.output = VideoColorOutput::SDR;
+            VideoRender::instance().updateColorInfo(color);
             const bool presented = XComponentRender::instance().renderBGRAFrame(bgra.data(), static_cast<int>(bgra.size()),
                 static_cast<int>(image->d_w), static_cast<int>(image->d_h));
             VideoRender::instance().markDecodedFrame(2,

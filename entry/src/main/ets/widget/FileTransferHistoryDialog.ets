@@ -1,9 +1,11 @@
+import { translate } from '../utils/I18n'
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 import { FileTransferHistoryRecord, FileTransferHistoryService } from '../service/FileTransferHistoryService'
 
 @CustomDialog
 export struct FileTransferHistoryDialog {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @State records: FileTransferHistoryRecord[] = []
@@ -18,12 +20,12 @@ export struct FileTransferHistoryDialog {
     Column({ space: 12 }) {
       Row({ space: 10 }) {
         Column({ space: 3 }) {
-          Text('文件传输历史')
+          Text(translate('文件传输历史', this.uiLanguage))
             .fontSize(21)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
             .fontColor(this.primaryTextColor())
             .width('100%')
-          Text(`本机保存最近 90 天，最多 500 条 · 共 ${this.records.length} 条`)
+          Text(translate(`本机保存最近 90 天，最多 500 条 · 共 ${this.records.length} 条`, this.uiLanguage))
             .fontSize(12)
             .fontColor(this.secondaryTextColor())
             .width('100%')
@@ -31,7 +33,7 @@ export struct FileTransferHistoryDialog {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
 
-        Button('清空')
+        Button(translate('清空', this.uiLanguage))
           .height(34)
           .fontSize(13)
           .fontColor(this.records.length > 0 ? RustDeskTheme.ERROR : this.secondaryTextColor())
@@ -59,11 +61,11 @@ export struct FileTransferHistoryDialog {
 
       if (this.filteredRecords().length === 0) {
         Column({ space: 8 }) {
-          Text('暂无传输记录')
+          Text(translate('暂无传输记录', this.uiLanguage))
             .fontSize(16)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.primaryTextColor())
-          Text(this.filter === 'all' ? '完成发送或取回后会显示在这里' : '当前筛选条件下没有记录')
+          Text(translate(this.filter === 'all' ? '完成发送或取回后会显示在这里' : '当前筛选条件下没有记录', this.uiLanguage))
             .fontSize(13)
             .fontColor(this.secondaryTextColor())
         }
@@ -84,7 +86,7 @@ export struct FileTransferHistoryDialog {
         .edgeEffect(EdgeEffect.Spring)
       }
 
-      Button('关闭')
+      Button(translate('关闭', this.uiLanguage))
         .height(42)
         .width('100%')
         .fontSize(15)
@@ -109,7 +111,7 @@ export struct FileTransferHistoryDialog {
 
   @Builder
   buildFilterButton(label: string, value: string) {
-    Button(label)
+    Button(translate(label, this.uiLanguage))
       .layoutWeight(1)
       .height(34)
       .fontSize(13)
@@ -127,45 +129,45 @@ export struct FileTransferHistoryDialog {
   buildRecord(record: FileTransferHistoryRecord) {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
-        Text(record.direction === 'download' ? '取回' : '发送')
+        Text(translate(record.direction === 'download' ? '取回' : '发送', this.uiLanguage))
           .fontSize(12)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(Color.White)
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
           .backgroundColor(RustDeskTheme.ACCENT)
           .borderRadius(6)
-        Text(record.displayName)
+        Text(translate(record.displayName, this.uiLanguage))
           .layoutWeight(1)
           .fontSize(15)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.primaryTextColor())
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.statusText(record.status))
+        Text(translate(this.statusText(record.status), this.uiLanguage))
           .fontSize(12)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.statusColor(record.status))
       }
       .width('100%')
 
-      Text(`远端 ${record.peerId.length > 0 ? record.peerId : '未知'} · ${record.fileType} · ${record.itemCount} 项`)
+      Text(translate(`远端 ${record.peerId.length > 0 ? record.peerId : '未知'} · ${record.fileType} · ${record.itemCount} 项`, this.uiLanguage))
         .width('100%')
         .fontSize(12)
         .fontColor(this.secondaryTextColor())
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-      Text(`${this.formatFileSize(record.totalBytes)} · ${this.formatDuration(record.durationMs)} · 平均 ${this.formatSpeed(record.averageSpeed)}`)
+      Text(translate(`${this.formatFileSize(record.totalBytes)} · ${this.formatDuration(record.durationMs)} · 平均 ${this.formatSpeed(record.averageSpeed)}`, this.uiLanguage))
         .width('100%')
         .fontSize(12)
         .fontColor(this.secondaryTextColor())
 
       Row() {
-        Text(this.formatDateTime(record.finishedAt))
+        Text(translate(this.formatDateTime(record.finishedAt), this.uiLanguage))
           .layoutWeight(1)
           .fontSize(12)
           .fontColor(this.secondaryTextColor())
-        Button('删除')
+        Button(translate('删除', this.uiLanguage))
           .height(30)
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
@@ -179,7 +181,7 @@ export struct FileTransferHistoryDialog {
       .width('100%')
 
       if (record.error.length > 0) {
-        Text(record.error)
+        Text(translate(record.error, this.uiLanguage))
           .width('100%')
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
@@ -209,15 +211,15 @@ export struct FileTransferHistoryDialog {
 
   confirmClear(): void {
     AlertDialog.show({
-      title: '清空文件传输历史',
-      message: '只会删除本机记录，不会删除已经传输的文件。',
+      title: translate('清空文件传输历史', this.uiLanguage),
+      message: translate('只会删除本机记录，不会删除已经传输的文件。', this.uiLanguage),
       primaryButton: {
-        value: '取消',
+        value: translate('取消', this.uiLanguage),
         action: () => {
         },
       },
       secondaryButton: {
-        value: '清空',
+        value: translate('清空', this.uiLanguage),
         fontColor: RustDeskTheme.ERROR,
         action: () => {
           FileTransferHistoryService.clear()

@@ -20,6 +20,9 @@ export interface VideoFrameInfo {
   decoderMode?: number;
   delayMs?: number;
   targetBitrateKb?: number;
+  dynamicRange?: number;
+  colorOutput?: number;
+  bitDepth?: number;
 }
 
 export const sendChatMessage: (text: string) => number;
@@ -93,9 +96,13 @@ export const appendDiagnosticLog: (component: string, message: string) => number
 export const getDiagnosticLog: () => string;
 export const clearDiagnosticLog: () => number;
 export const connect: (peerId: string, password: string, rendezvousServer?: string, relayServer?: string,
-  forceRelay?: boolean, allowInsecureFallback?: boolean, fileOnly?: boolean) => number;
+  forceRelay?: boolean, allowInsecureFallback?: boolean, fileOnly?: boolean,
+  lockAfterDisconnect?: boolean, privacyMode?: boolean, osPassword?: string) => number;
 export const disconnect: () => number;
+export const setPrivacyMode: (enabled: boolean) => number;
+export const getPrivacyModeState: () => number;
 export const sendKeyEvent: (keyCode: number, action: number, modifierMask?: number) => number;
+export const sendPrintableShortcutKey: (keyCode: number, modifierMask: number) => number;
 export const sendCtrlAltDel: () => number;
 export const canSendCtrlAltDel: () => boolean;
 export const sendPhysicalKeyEvent: (hidCode: number, action: number, modifierMask?: number) => number;
@@ -147,6 +154,7 @@ export const getAllOptions: () => string;
 export const testIfValidServer: (server: string) => string;
 export const isUsingPublicServer: () => boolean;
 export const getVideoFrame: () => VideoFrameInfo;
+export const setHdrDisplayFormats: (formats: number) => number;
 export const setSurfaceId: (surfaceId: string) => number;
 export const prepareSurfaceRebind: () => number;
 export const rebindSurface: (surfaceId: string) => number;

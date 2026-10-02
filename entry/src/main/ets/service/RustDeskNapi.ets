@@ -2,6 +2,12 @@ import rustdeskNapi from 'libentry.so'
 import { pasteboard, deviceInfo } from '@kit.BasicServicesKit';
 import { RELEASE_NOTES_VERSION, RELEASE_NOTES_BUILD } from '../widget/ReleaseNotesDialog'
 
+export interface RemoteSecurityOptions {
+  lockAfterDisconnect: boolean
+  privacyMode: boolean
+  autoUnlock: boolean
+}
+
 const systemPasteboard: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard()
 
 export interface PeerInfo {
@@ -26,6 +32,9 @@ export interface VideoFrameInfo {
   decoderMode?: number
   delayMs?: number
   targetBitrateKb?: number
+  dynamicRange?: number
+  colorOutput?: number
+  bitDepth?: number
 }
 
 export interface RemoteCursorPosition {
@@ -56,6 +65,8 @@ export interface NativeMouseInputEvent {
   timestamp: number
   modifierMask: number
   modifierValid: boolean
+  surfaceWidth?: number
+  surfaceHeight?: number
 }
 
 export interface NativeKeyInputEvent {
@@ -161,13 +172,19 @@ export class RustDeskNapi {
     return (rustdeskNapi as ESObject).clearDiagnosticLog()
   }
 
-  static connect(peerId: string, password: string, allowInsecureFallback: boolean = false, fileOnly: boolean = false): number {
-    return rustdeskNapi.connect(peerId, password, '', '', false, allowInsecureFallback, fileOnly)
+  static connect(peerId: string, password: string, allowInsecureFallback: boolean = false, fileOnly: boolean = false,
+    security: RemoteSecurityOptions = { lockAfterDisconnect: false, privacyMode: false, autoUnlock: false },
+    osPassword: string = ''): number {
+    return rustdeskNapi.connect(peerId, password, '', '', false, allowInsecureFallback, fileOnly,
+      security.lockAfterDisconnect, security.privacyMode, security.autoUnlock ? osPassword : '')
   }
 
   static connectWithServer(peerId: string, password: string, rendezvousServer: string, relayServer: string,
-    forceRelay: boolean = false, allowInsecureFallback: boolean = false, fileOnly: boolean = false): number {
-    return rustdeskNapi.connect(peerId, password, rendezvousServer, relayServer, forceRelay, allowInsecureFallback, fileOnly)
+    forceRelay: boolean = false, allowInsecureFallback: boolean = false, fileOnly: boolean = false,
+    security: RemoteSecurityOptions = { lockAfterDisconnect: false, privacyMode: false, autoUnlock: false },
+    osPassword: string = ''): number {
+    return rustdeskNapi.connect(peerId, password, rendezvousServer, relayServer, forceRelay, allowInsecureFallback, fileOnly,
+      security.lockAfterDisconnect, security.privacyMode, security.autoUnlock ? osPassword : '')
   }
 
   static restartVideoDecoder(): number {
@@ -182,8 +199,20 @@ export class RustDeskNapi {
     return rustdeskNapi.disconnect()
   }
 
+  static setPrivacyMode(enabled: boolean): number {
+    return rustdeskNapi.setPrivacyMode(enabled)
+  }
+
+  static getPrivacyModeState(): number {
+    return rustdeskNapi.getPrivacyModeState()
+  }
+
   static sendKeyEvent(keyCode: number, action: number, modifierMask: number = 0): number {
     return rustdeskNapi.sendKeyEvent(keyCode, action, modifierMask)
+  }
+
+  static sendPrintableShortcutKey(keyCode: number, modifierMask: number): number {
+    return rustdeskNapi.sendPrintableShortcutKey(keyCode, modifierMask)
   }
 
   static sendCtrlAltDel(): number {
@@ -452,6 +481,10 @@ export class RustDeskNapi {
 
   static setSurfaceId(surfaceId: string): number {
     return rustdeskNapi.setSurfaceId(surfaceId)
+  }
+
+  static setHdrDisplayFormats(formats: number): number {
+    return rustdeskNapi.setHdrDisplayFormats(formats)
   }
   static setApiAccountContext(json: string): number {
     return rustdeskNapi.setApiAccountContext(json);

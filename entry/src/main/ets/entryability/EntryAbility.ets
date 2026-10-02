@@ -10,16 +10,20 @@ import { CloudSyncService } from '../service/CloudSyncService';
 import { CommunicationService } from '../service/CommunicationService';
 import { AccountSession } from '../service/RustDeskApiService';
 import { RemoteDisplayPolicy } from '../service/RemoteDisplayPolicy';
+import { SystemFaultDiagnostic } from '../service/SystemFaultDiagnostic';
+import { LanguageService } from '../utils/LanguageService';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    LanguageService.initialize();
     RemoteSessionBackgroundTask.initialize(this.context)
     try {
       const diagnosticLogEnabled: boolean = RustDeskNapi.getOption('diagnostic-log-enabled') === '1'
       RustDeskNapi.setDiagnosticLogEnabled(diagnosticLogEnabled)
       RustDeskNapi.initializeDiagnosticLog(this.context.filesDir)
+      SystemFaultDiagnostic.initialize(this.context.filesDir, diagnosticLogEnabled)
       RustDeskNapi.appendDiagnosticLog('app',
         `startup version=${RELEASE_NOTES_VERSION} build=${RELEASE_NOTES_BUILD} ` +
         `device_type=${deviceInfo.deviceType} model=${deviceInfo.productModel} ` +
@@ -28,6 +32,7 @@ export default class EntryAbility extends UIAbility {
     }
     PersistentStorage.persistProp('isDarkModeManual', false);
     AppStorage.setOrCreate('roundedRectButtons', RustDeskNapi.getOption('button-shape') !== 'classic');
+    this.updateFontScale(this.context.config.fontSizeScale);
     PersistentStorage.persistProp('isDarkMode', this.isDarkColorMode(this.context.config.colorMode));
     PersistentStorage.persistProp('mobileActionsOffsetX', 0);
     PersistentStorage.persistProp('mobileActionsOffsetY', 0);
@@ -41,6 +46,7 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('appForegroundEpoch', 0);
     AppStorage.setOrCreate('serverConfigVersion', 0);
     AppStorage.setOrCreate('savedConnectionsCloudRevision', 0);
+    AppStorage.setOrCreate('peerOnlineQueryEnabled', RustDeskNapi.getOption('peer-online-query-enabled') === '1');
     // Validate only the locally remembered account; never log credentials or responses.
     AccountSession.getApi().restore().catch(() => {
       RustDeskNapi.appendDiagnosticLog('api-account', 'startup_restore_failed; retry_before_connection=true');
@@ -49,6 +55,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    SystemFaultDiagnostic.stop();
     CommunicationService.dispose();
     RemoteSessionBackgroundTask.shutdown()
     RustDeskNapi.appendDiagnosticLog('app', 'ability_destroy')
@@ -77,12 +84,16 @@ export default class EntryAbility extends UIAbility {
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {
+    LanguageService.refreshSystemLanguage();
     this.updateColorMode(newConfig.colorMode);
+    this.updateFontScale(newConfig.fontSizeScale);
   }
 
   onForeground(): void {
+    LanguageService.refreshSystemLanguage();
     RemoteDisplayPolicy.refresh();
     this.updateColorMode(this.context.config.colorMode);
+    this.updateFontScale(this.context.config.fontSizeScale);
     RemoteSessionBackgroundTask.setAppBackground(false)
     RemoteSessionBackgroundTask.syncForConnectionStatus(RustDeskNapi.getConnectionStatus() as ConnectionStatus)
     let foregroundEpoch: number = AppStorage.get<number>('appForegroundEpoch') ?? 0
@@ -113,6 +124,13 @@ export default class EntryAbility extends UIAbility {
 
   private isDarkColorMode(colorMode?: ConfigurationConstant.ColorMode): boolean {
     return colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+  }
+
+  private updateFontScale(fontSizeScale?: number): void {
+    const current: number = AppStorage.get<number>('uiFontScale') ?? 1;
+    const scale: number = fontSizeScale !== undefined && Number.isFinite(fontSizeScale) && fontSizeScale > 0 ?
+      fontSizeScale : current;
+    AppStorage.setOrCreate('uiFontScale', Math.max(1, Math.min(3, scale)));
   }
 
   private updateColorMode(colorMode?: ConfigurationConstant.ColorMode): void {

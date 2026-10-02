@@ -10,7 +10,7 @@ export class SettingsModel {
   colorQuality: ColorQuality = ColorQuality.MEDIUM
   relayServer: string = ''
   relayPort: string = '21116'
-  language: string = 'en'
+  language: string = 'system'
   isDarkMode: boolean = false
   microphoneEnabled: boolean = true
   speakerEnabled: boolean = true

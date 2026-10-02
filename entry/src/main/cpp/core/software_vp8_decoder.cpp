@@ -219,6 +219,10 @@ void SoftwareVP8Decoder::workerLoop() {
                 break;
             }
             decodedFrames_.fetch_add(1);
+            VideoColorInfo color;
+            color.bitDepth = 8; color.transfer = 6; color.matrix = 6;
+            color.output = VideoColorOutput::SDR;
+            VideoRender::instance().updateColorInfo(color);
             const bool presented = XComponentRender::instance().renderBGRAFrame(bgra.data(), static_cast<int>(bgra.size()),
                 static_cast<int>(image->d_w), static_cast<int>(image->d_h));
             VideoRender::instance().markDecodedFrame(4,

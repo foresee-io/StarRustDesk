@@ -2,6 +2,8 @@
 
 #include "diagnostic_log.h"
 #include "video_render.h"
+#include "video_color_format.h"
+#include "xcomponent_render.h"
 
 #include <algorithm>
 #include <cstring>
@@ -113,6 +115,8 @@ void SystemVideoDecoder::release() {
         inputSlots_.clear();
         pts_ = 0;
         lastSourcePts_ = -1;
+        color_ = {};
+        colorFormatDirty_.store(true);
     }
     if (codec != nullptr) {
         DiagnosticLog::instance().append("I", component_,
@@ -212,6 +216,8 @@ void SystemVideoDecoder::stopLocked() {
     inputBytes_ = 0;
     outputFrames_ = 0;
     firstKeyLogged_ = false;
+    color_ = {};
+    colorFormatDirty_.store(true);
 }
 
 void SystemVideoDecoder::feedLocked() {
@@ -336,9 +342,15 @@ void SystemVideoDecoder::onError(OH_AVCodec*, int32_t errorCode, void* userData)
     }
 }
 
-void SystemVideoDecoder::onStreamChanged(OH_AVCodec*, OH_AVFormat*, void* userData) {
+void SystemVideoDecoder::onStreamChanged(OH_AVCodec* codec, OH_AVFormat* format, void* userData) {
     SystemVideoDecoder* decoder = static_cast<SystemVideoDecoder*>(userData);
     if (decoder != nullptr) {
+        decoder->colorFormatDirty_.store(true);
+        std::unique_lock<std::mutex> lock(decoder->mutex_, std::try_to_lock);
+        if (!lock.owns_lock()) return; // Never wait inside a Configure/Stop callback.
+        if (!decoder->started_ || decoder->codec_ != codec) return;
+        decoder->color_ = readVideoColorFormat(format);
+        decoder->colorFormatDirty_.store(false);
         DiagnosticLog::instance().append("I", decoder->component_, "stream_changed");
     }
 }
@@ -357,7 +369,7 @@ void SystemVideoDecoder::onNeedInputBuffer(OH_AVCodec* codec, uint32_t index, OH
     decoder->feedLocked();
 }
 
-void SystemVideoDecoder::onNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH_AVBuffer*, void* userData) {
+void SystemVideoDecoder::onNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH_AVBuffer* buffer, void* userData) {
     SystemVideoDecoder* decoder = static_cast<SystemVideoDecoder*>(userData);
     if (decoder == nullptr) {
         return;
@@ -366,6 +378,15 @@ void SystemVideoDecoder::onNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH
     if (!decoder->started_ || decoder->codec_ != codec) {
         return;
     }
+    if (decoder->colorFormatDirty_.exchange(false)) {
+        OH_AVFormat* format = OH_VideoDecoder_GetOutputDescription(codec);
+        decoder->color_ = readVideoColorFormat(format);
+        if (format) OH_AVFormat_Destroy(format);
+    }
+    auto color = decoder->color_;
+    enrichVideoColorFromBuffer(buffer, color);
+    color.output = XComponentRender::instance().applyVideoColor(decoder->window_, color);
+    VideoRender::instance().updateColorInfo(color);
     OH_AVErrCode ret = OH_VideoDecoder_RenderOutputBuffer(codec, index);
     VideoRender::instance().markDecodedFrame(decoder->codecId_, decoder->width_, decoder->height_,
         static_cast<int>(decoder->decodeMode_), ret == AV_ERR_OK);

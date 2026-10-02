@@ -4,6 +4,7 @@
 #include <hilog/log.h>
 #include <native_buffer/native_buffer.h>
 #include <unistd.h>
+#include "diagnostic_log.h"
 
 #undef LOG_DOMAIN
 #undef LOG_TAG
@@ -68,7 +69,9 @@ bool XComponentRender::createWindowLocked() {
         bufferHeight_ = 0;
     consecutiveNoBuffer_ = 0;
         OH_LOG_INFO(LOG_APP, "Native window created for surface %{public}s ret=%{public}d", surfaceId_.c_str(), ret);
-        configureWindowLocked(640, 360);
+        // The decoder owns its buffer format. Do not force HDR Surface output
+        // to BGRA8888. CPU decoders configure BGRA only on their first write.
+        cpuConfigured_ = false;
         windowReady_.store(true);
         return true;
     } else {
@@ -81,12 +84,73 @@ void XComponentRender::configureWindowLocked(int width, int height) {
     if (!nativeWindow_) return;
 
     OH_NativeWindow_NativeWindowHandleOpt(nativeWindow_, SET_FORMAT, NATIVEBUFFER_PIXEL_FMT_BGRA_8888);
+    OH_NativeWindow_SetColorSpace(nativeWindow_, OH_COLORSPACE_SRGB_FULL);
     uint64_t usage = NATIVEBUFFER_USAGE_CPU_WRITE | NATIVEBUFFER_USAGE_MEM_DMA;
     OH_NativeWindow_NativeWindowHandleOpt(nativeWindow_, SET_USAGE, usage);
     OH_NativeWindow_NativeWindowHandleOpt(nativeWindow_, SET_TIMEOUT, 16);
     OH_NativeWindow_NativeWindowHandleOpt(nativeWindow_, SET_BUFFER_GEOMETRY, width, height);
     bufferWidth_ = width;
     bufferHeight_ = height;
+    cpuConfigured_ = true;
+    colorConfigured_ = false;
+}
+
+void XComponentRender::setHdrDisplayFormats(int formats) {
+    const int previous = hdrDisplayFormats_.exchange(formats & 7);
+    if (previous != (formats & 7)) DiagnosticLog::instance().append("I", "video-color",
+        "display_hdr_formats=" + std::to_string(formats & 7));
+}
+
+VideoColorOutput XComponentRender::applyVideoColor(OHNativeWindow* expectedWindow, const VideoColorInfo& color) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (renderingPaused_.load() || nativeWindow_ == nullptr || expectedWindow != nativeWindow_)
+        return VideoColorOutput::Unknown;
+    if (colorConfigured_ && appliedColor_ == color && appliedHdrFormats_ == hdrDisplayFormats_.load())
+        return appliedOutput_;
+    cpuConfigured_ = false;
+    colorConfigured_ = true;
+    appliedColor_ = color;
+    appliedHdrFormats_ = hdrDisplayFormats_.load();
+    appliedOutput_ = VideoColorOutput::Unknown;
+    if (!color.isHdr()) {
+        // Leave unspecified metadata to the decoder; do not relabel an unknown stream SDR.
+        if (color.dynamicRange() == VideoDynamicRange::Unknown) return VideoColorOutput::Unknown;
+        if (color.primaries == 1) {
+            const auto space = color.range == 1 ? OH_COLORSPACE_BT709_FULL : OH_COLORSPACE_BT709_LIMIT;
+            if (OH_NativeWindow_SetColorSpace(nativeWindow_, space) != 0) return VideoColorOutput::Unknown;
+        }
+        return appliedOutput_ = VideoColorOutput::SDR;
+    }
+    if (color.primaries != 9 || (color.transfer != 16 && color.transfer != 18))
+        return appliedOutput_ = VideoColorOutput::Unsupported;
+    const auto space = color.transfer == 16 ?
+        (color.range == 1 ? OH_COLORSPACE_BT2020_PQ_FULL : OH_COLORSPACE_BT2020_PQ_LIMIT) :
+        (color.range == 1 ? OH_COLORSPACE_BT2020_HLG_FULL : OH_COLORSPACE_BT2020_HLG_LIMIT);
+    const int result = OH_NativeWindow_SetColorSpace(nativeWindow_, space);
+    if (result != 0) {
+        DiagnosticLog::instance().append("W", "video-color", "surface_color_failed result=" + std::to_string(result));
+        return appliedOutput_ = VideoColorOutput::Unsupported;
+    }
+    // Compositor owns output conversion/metadata. No fabricated mastering metadata,
+    // no global Vivid-only decoder conversion option on HDR10/HLG/SDR streams.
+    const int required = color.vivid ? 4 : color.transfer == 16 ? 2 : 1;
+    return appliedOutput_ = color.bitDepth >= 10 && (hdrDisplayFormats_.load() & required) != 0 ?
+        VideoColorOutput::HDRSurface : VideoColorOutput::SystemManaged;
+}
+
+void XComponentRender::resetVideoColor() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    colorConfigured_ = false;
+    if (nativeWindow_) OH_NativeWindow_SetColorSpace(nativeWindow_, OH_COLORSPACE_NONE);
+}
+
+OHNativeWindow* XComponentRender::prepareDecoderSurface() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (renderingPaused_.load()) return nullptr;
+    // Called after the old decoder is drained. A window previously configured
+    // by the CPU writer must not carry its BGRA8888 constraint into Main10.
+    if (cpuConfigured_) { destroyWindowLocked(); createWindowLocked(); }
+    return nativeWindow_;
 }
 
 bool XComponentRender::renderFrame(const uint8_t* data, int length, int width, int height) {
@@ -110,7 +174,7 @@ bool XComponentRender::renderPackedFrame(const uint8_t* data, int length, int wi
         return false;
     }
 
-    if (bufferWidth_ != (uint32_t)width || bufferHeight_ != (uint32_t)height) {
+    if (!cpuConfigured_ || bufferWidth_ != (uint32_t)width || bufferHeight_ != (uint32_t)height) {
         configureWindowLocked(width, height);
     }
 
@@ -222,4 +286,6 @@ void XComponentRender::destroyWindowLocked() {
     bufferWidth_ = 0;
     bufferHeight_ = 0;
     consecutiveNoBuffer_ = 0;
+    cpuConfigured_ = false;
+    colorConfigured_ = false;
 }

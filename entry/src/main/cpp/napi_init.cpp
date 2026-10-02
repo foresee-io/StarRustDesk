@@ -29,6 +29,7 @@
 #include <deque>
 #include <chrono>
 #include <algorithm>
+#include <utility>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <hilog/log.h>
@@ -73,6 +74,8 @@ struct NativeMouseInputEvent {
     int64_t timestamp{0};
     int32_t modifierMask{0};
     bool modifierValid{false};
+    uint64_t surfaceWidth{0};
+    uint64_t surfaceHeight{0};
 };
 
 struct NativeKeyInputEvent {
@@ -327,8 +330,17 @@ static void DispatchNativeMouseEvent(OH_NativeXComponent* component, void* windo
         // modifier snapshot captured by ArkUI.
         modifierValid = hardwareState.valid && hardwareState.modifierMask != 0;
     }
+    uint64_t width = 0;
+    uint64_t height = 0;
+    // Native coordinates are component pixels; ArkUI coordinates are vp.
+    // Use the owning surface size, not the phone display's density.
+    if (OH_NativeXComponent_GetXComponentSize(component, window, &width, &height) !=
+        OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
+        width = 0;
+        height = 0;
+    }
     const uint64_t sequence = QueueNativeMouseInput({event.x, event.y, static_cast<int32_t>(event.action),
-        static_cast<int32_t>(event.button), -1, event.timestamp, modifierMask, modifierValid});
+        static_cast<int32_t>(event.button), -1, event.timestamp, modifierMask, modifierValid, width, height});
     if (event.action != OH_NATIVEXCOMPONENT_MOUSE_MOVE) {
         DiagnosticLog::instance().append("I", "input-native",
             "mouse seq=" + std::to_string(sequence) +
@@ -336,6 +348,7 @@ static void DispatchNativeMouseEvent(OH_NativeXComponent* component, void* windo
             " action=" + std::to_string(static_cast<int32_t>(event.action)) +
             " button=" + std::to_string(static_cast<int32_t>(event.button)) +
             " x=" + std::to_string(event.x) + " y=" + std::to_string(event.y) +
+            " surface=" + std::to_string(width) + "x" + std::to_string(height) +
             " modifiers=" + std::to_string(modifierMask) +
             " modifier_valid=" + std::to_string(modifierValid ? 1 : 0));
     }
@@ -587,6 +600,7 @@ static bool IsSafeRustLifecycleEvent(const std::string& text) {
         "login response: ok/",
         "login response: 2fa-",
         "performance options sent",
+        "remote security:",
         "refresh video sent",
         "initial video received ack",
         "switch display received",
@@ -716,18 +730,18 @@ static void OnRustEvent(const char* message) {
         }
     } else if (text == "peer transport interrupted") {
         if (g_connectionStatus.load() == 2) {
-            SetLastConnectionMessage("Peer transport interrupted");
+            SetLastConnectionMessage("远端传输中断");
             g_lastConnectionResult.store(-18);
             g_connectionStatus.store(3);
         }
     } else if (text.rfind("connection lost:", 0) == 0) {
-        SetLastConnectionMessage("Peer connection closed");
+        SetLastConnectionMessage("远端连接已断开");
         g_lastConnectionResult.store(-18);
         g_connectionStatus.store(3);
     } else if (text == "receive loop ended" &&
                (g_connectionStatus.load() == 1 || g_connectionStatus.load() == 2 ||
                 g_connectionStatus.load() == 4)) {
-        SetLastConnectionMessage("Peer connection closed");
+        SetLastConnectionMessage("远端连接已断开");
         g_lastConnectionResult.store(-18);
         g_connectionStatus.store(3);
     }
@@ -762,40 +776,41 @@ static void OnRustAudioFrame(const unsigned char* data, int length) {
 static std::string ConnectionResultToMessage(int result) {
     switch (result) {
         case 0: return "";
-        case -1: return "Unable to connect to rendezvous server";
-        case -2: return "Failed to send rendezvous request";
-        case -3: return "Rendezvous response has no peer address";
-        case -4: return "Rendezvous response has no peer or relay address";
-        case -5: return "Unexpected rendezvous response";
-        case -6: return "Failed to parse rendezvous response";
-        case -7: return "Rendezvous server did not respond";
-        case -8: return "Remote ID does not exist";
-        case -9: return "Remote device is offline";
-        case -10: return "Server key mismatch";
-        case -11: return "Server license overuse";
-        case -13: return "Rendezvous server rejected the request";
-        case -14: return "Direct peer connection failed";
-        case -15: return "Relay connection failed";
-        case -16: return "Peer secure handshake failed";
-        case -17: return "Remote login failed";
-        case -18: return "Peer connection closed";
-        case -19: return "Connection was replaced";
-        case -20: return "Connection timed out";
-        case -21: return "Previous connection is still closing";
-        case -22: return "Connection state is busy";
-        case -23: return "Invalid direct IP address or port";
-        case -24: return "Server key is invalid";
+        case -1: return "无法连接 ID 服务器";
+        case -2: return "向 ID 服务器发送连接请求失败";
+        case -3: return "ID 服务器未返回远端地址";
+        case -4: return "ID 服务器未返回远端或中继地址";
+        case -5: return "ID 服务器返回了异常响应";
+        case -6: return "无法解析 ID 服务器的响应";
+        case -7: return "ID 服务器未响应";
+        case -8: return "远端 ID 不存在";
+        case -9: return "远端设备已离线";
+        // PunchHoleResponse::LICENSE_MISMATCH is a server refusal, not a local key-verification failure.
+        case -10: return "ID 服务器密钥不匹配";
+        case -11: return "服务器授权使用量已超限";
+        case -13: return "ID 服务器拒绝了连接请求";
+        case -14: return "与远端直连失败";
+        case -15: return "中继连接失败";
+        case -16: return "与远端安全握手失败";
+        case -17: return "远端登录失败";
+        case -18: return "远端连接已断开";
+        case -19: return "当前连接已被其他连接替换";
+        case -20: return "连接超时";
+        case -21: return "上一次连接尚未关闭，请稍后重试";
+        case -22: return "连接正忙，请稍后重试";
+        case -23: return "直连 IP 地址或端口无效";
+        case -24: return "服务器密钥无效";
         case -25: return "服务器要求账号登录，请到设置中的 API 账号登录；这不是远端设备密码";
         case -26: return "服务器账号登录已过期或令牌无效，请到设置中的 API 账号重新登录";
         case -27: return "服务器拒绝访问，请检查账号的远控权限";
         case -28: return "ID 服务器连接中断，请重试；如持续失败，请导出诊断日志";
-        default: return "Connection failed (" + std::to_string(result) + ")";
+        default: return "连接失败（错误码：" + std::to_string(result) + "）";
     }
 }
 
 static napi_value Connect(napi_env env, napi_callback_info info) {
-    size_t argc = 7;
-    napi_value args[7] = {nullptr};
+    size_t argc = 10;
+    napi_value args[10] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
     bool forceRelay = false;
     bool allowInsecureFallback = false;
@@ -803,10 +818,15 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
     if (argc >= 6) napi_get_value_bool(env, args[5], &allowInsecureFallback);
     bool fileOnly = false;
     if (argc >= 7) napi_get_value_bool(env, args[6], &fileOnly);
+    bool lockAfterDisconnect = false;
+    bool privacyMode = false;
+    if (argc >= 8) napi_get_value_bool(env, args[7], &lockAfterDisconnect);
+    if (argc >= 9) napi_get_value_bool(env, args[8], &privacyMode);
 
     char peerId[128] = {0}, password[512] = {0};
     char rendezvousServer[256] = {0}, relayServer[256] = {0};
-    size_t peerIdLen = 0, passwordLen = 0, rendezvousLen = 0, relayLen = 0;
+    char osPassword[1024] = {0};
+    size_t peerIdLen = 0, passwordLen = 0, rendezvousLen = 0, relayLen = 0, osPasswordLen = 0;
 
     napi_get_value_string_utf8(env, args[0], peerId, sizeof(peerId), &peerIdLen);
     napi_get_value_string_utf8(env, args[1], password, sizeof(password), &passwordLen);
@@ -814,11 +834,15 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
         napi_get_value_string_utf8(env, args[2], rendezvousServer, sizeof(rendezvousServer), &rendezvousLen);
     if (argc >= 4)
         napi_get_value_string_utf8(env, args[3], relayServer, sizeof(relayServer), &relayLen);
+    if (argc >= 10)
+        napi_get_value_string_utf8(env, args[9], osPassword, sizeof(osPassword), &osPasswordLen);
 
     std::string peer = peerIdLen > 0 ? peerId : "";
     std::string pass = passwordLen > 0 ? password : "";
     std::string rendezvous = rendezvousLen > 0 ? rendezvousServer : "";
     std::string relay = relayLen > 0 ? relayServer : "";
+    std::string osPass = osPasswordLen > 0 ? osPassword : "";
+    std::fill(std::begin(osPassword), std::end(osPassword), 0);
     std::string serverKey = Config::instance().get("key");
     std::string clientHwid = Config::instance().get("trust-this-device") == "Y"
         ? GetOrCreateClientHwid() : "";
@@ -849,9 +873,13 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
         " rendezvous=" + std::string(rendezvous.empty() ? "default" : "custom") +
         " relay=" + std::string(relay.empty() ? "default" : "custom") +
         " key=" + std::string(serverKey.empty() ? "empty" : "set") +
-        " insecure_fallback=" + std::string(allowInsecureFallback ? "approved_once" : "denied"));
-    std::thread([peer, pass, rendezvous, relay, serverKey, clientHwid, clientId, generation,
-                 forceRelay, allowInsecureFallback, fileOnly]() {
+        " insecure_fallback=" + std::string(allowInsecureFallback ? "approved_once" : "denied") +
+        " lock_after_disconnect=" + std::string(lockAfterDisconnect ? "yes" : "no") +
+        " privacy_requested=" + std::string(privacyMode ? "yes" : "no") +
+        " os_password_configured=" + std::string(osPass.empty() ? "no" : "yes"));
+    std::thread([peer, pass, rendezvous, relay, serverKey, clientHwid, clientId,
+                 osPass = std::move(osPass), generation, forceRelay, allowInsecureFallback,
+                 fileOnly, lockAfterDisconnect, privacyMode]() mutable {
         {
             std::unique_lock<std::mutex> lock(g_connectionLifecycleMutex);
             g_disconnectFinished.wait(lock, []() { return !g_disconnectInProgress.load(); });
@@ -872,7 +900,10 @@ static napi_value Connect(napi_env env, napi_callback_info info) {
             "rust_connect_started generation=" + std::to_string(generation));
         int result = rust_connect(peer.c_str(), pass.c_str(), rendezvous.c_str(), relay.c_str(),
                                   serverKey.c_str(), clientHwid.c_str(), clientId.c_str(), forceRelay ? 1 : 0,
-                                  allowInsecureFallback ? 1 : 0, fileOnly ? 1 : 0);
+                                  allowInsecureFallback ? 1 : 0, fileOnly ? 1 : 0,
+                                  lockAfterDisconnect ? 1 : 0, privacyMode ? 1 : 0, osPass.c_str());
+        std::fill(osPass.begin(), osPass.end(), '\0');
+        osPass.clear();
         OH_LOG_INFO(LOG_APP, "rust_connect finished result=%{public}d", result);
         DiagnosticLog::instance().append(result == 0 ? "I" : "E", "connection",
             "rust_connect_finished generation=" + std::to_string(generation) +
@@ -974,6 +1005,21 @@ static napi_value SendKeyEvent(napi_env env, napi_callback_info info) {
     }
     if (result != 0) {
         OH_LOG_WARN(LOG_APP, "SendKeyEvent key=%{public}d action=%{public}d result=%{public}d", keyCode, action, result);
+    }
+    napi_value ret;
+    napi_create_int32(env, result, &ret);
+    return ret;
+}
+
+static napi_value SendPrintableShortcutKey(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int32_t keyCode = 0, modifierMask = 0;
+    int result = -3;
+    if (argc == 2 && napi_get_value_int32(env, args[0], &keyCode) == napi_ok &&
+        napi_get_value_int32(env, args[1], &modifierMask) == napi_ok) {
+        result = rust_send_printable_shortcut_key(keyCode, modifierMask);
     }
     napi_value ret;
     napi_create_int32(env, result, &ret);
@@ -1234,7 +1280,7 @@ static napi_value GetConnectionStatus(napi_env env, napi_callback_info info) {
             g_videoReadyGeneration.store(0);
             g_connectionStartedAtMs.store(0);
             g_lastConnectionResult.store(-20);
-            SetLastConnectionMessage("Connection timed out");
+            SetLastConnectionMessage("连接超时");
             g_connectionStatus.store(3);
             bool expected = false;
             if (g_disconnectInProgress.compare_exchange_strong(expected, true)) {
@@ -1254,7 +1300,7 @@ static napi_value GetConnectionStatus(napi_env env, napi_callback_info info) {
         status = 3;
         g_connectionStatus.store(status);
         if (GetLastConnectionMessage().empty()) {
-            SetLastConnectionMessage("Peer connection closed");
+            SetLastConnectionMessage("远端连接已断开");
             g_lastConnectionResult.store(-18);
         }
     }
@@ -1275,14 +1321,34 @@ static napi_value GetConnectionTransport(napi_env env, napi_callback_info info) 
     return ret;
 }
 
+static std::string LocalizePeerLoginError(const std::string& error) {
+    if (error == "Wrong Password") return "远端密码错误";
+    if (error == "No Password Access") return "远端未启用密码访问";
+    if (error == "Connection not allowed" || error == "Connection is not allowed") return "远端拒绝连接";
+    if (error == "Too many wrong password attempts") return "远端密码错误次数过多，请稍后重试";
+    if (error == "Permission denied") return "远端拒绝访问，请检查权限";
+    if (error == "Remote desktop is offline") return "远端设备已离线";
+    if (error == "Connection closed manually by the peer") return "远端已主动断开连接";
+    return "";
+}
+
 static napi_value GetLastConnectionError(napi_env env, napi_callback_info info) {
+    const int result = g_lastConnectionResult.load();
     std::string message = GetLastConnectionMessage();
+    if (!message.empty()) {
+        const std::string loginMessage = LocalizePeerLoginError(message);
+        if (!loginMessage.empty()) {
+            message = loginMessage;
+        } else if (result == -17) {
+            // Unknown peer-controlled login text may contain private input.
+            message = "远端登录失败，请检查远端设备并导出诊断日志";
+        }
+    }
     if (!message.empty()) {
         napi_value ret;
         napi_create_string_utf8(env, message.c_str(), message.length(), &ret);
         return ret;
     }
-    int result = g_lastConnectionResult.load();
     message = ConnectionResultToMessage(result);
     napi_value ret;
     napi_create_string_utf8(env, message.c_str(), message.length(), &ret);
@@ -1371,6 +1437,24 @@ static napi_value SetRemoteAudioEnabled(napi_env env, napi_callback_info info) {
         std::string("remote_audio_enabled=") + (enabled ? "true" : "false"));
     napi_value ret;
     napi_create_int32(env, result, &ret);
+    return ret;
+}
+
+static napi_value SetPrivacyMode(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    bool enabled = false;
+    if (argc > 0 && args[0] != nullptr) napi_get_value_bool(env, args[0], &enabled);
+    int result = rust_set_privacy_mode(enabled ? 1 : 0);
+    napi_value ret;
+    napi_create_int32(env, result, &ret);
+    return ret;
+}
+
+static napi_value GetPrivacyModeState(napi_env env, napi_callback_info info) {
+    napi_value ret;
+    napi_create_int32(env, rust_get_privacy_mode_state(), &ret);
     return ret;
 }
 
@@ -1945,6 +2029,8 @@ static napi_value GetVideoFrame(napi_env env, napi_callback_info info) {
     }
     int codec = VideoRender::instance().activeCodec();
     int decoderMode = VideoRender::instance().activeDecodeMode();
+    auto color = VideoRender::instance().colorInfo();
+    if (g_videoReadyGeneration.load() != g_connectionGeneration.load()) color = {};
     int64_t now = NowMs();
     int64_t previousHealthLog = g_lastVideoHealthLogMs.load();
     int status = g_connectionStatus.load();
@@ -1960,6 +2046,9 @@ static napi_value GetVideoFrame(napi_env env, napi_callback_info info) {
             " transport=" + std::to_string(rust_get_connection_transport()) +
             " codec=" + std::to_string(codec) +
             " decoder_mode=" + std::to_string(decoderMode) +
+            " dynamic_range=" + std::to_string(static_cast<int>(color.dynamicRange())) +
+            " color_output=" + std::to_string(static_cast<int>(color.output)) +
+            " bit_depth=" + std::to_string(color.bitDepth) +
             " input_total=" + std::to_string(totalFrames) +
             " input_delta=" + std::to_string(totalFrames - std::min(totalFrames, previousFrames)) +
             " bytes_total=" + std::to_string(totalBytes) +
@@ -1984,12 +2073,27 @@ static napi_value GetVideoFrame(napi_env env, napi_callback_info info) {
     napi_value decodedCountVal; napi_create_int64(env, static_cast<int64_t>(decodedFrames), &decodedCountVal); napi_set_named_property(env, obj, "decodedFrames", decodedCountVal);
     napi_value codecVal; napi_create_int32(env, codec, &codecVal); napi_set_named_property(env, obj, "codec", codecVal);
     napi_value decoderModeVal; napi_create_int32(env, decoderMode, &decoderModeVal); napi_set_named_property(env, obj, "decoderMode", decoderModeVal);
+    napi_value dynamicRangeVal; napi_create_int32(env, static_cast<int>(color.dynamicRange()), &dynamicRangeVal); napi_set_named_property(env, obj, "dynamicRange", dynamicRangeVal);
+    napi_value colorOutputVal; napi_create_int32(env, static_cast<int>(color.output), &colorOutputVal); napi_set_named_property(env, obj, "colorOutput", colorOutputVal);
+    napi_value bitDepthVal; napi_create_int32(env, color.bitDepth, &bitDepthVal); napi_set_named_property(env, obj, "bitDepth", bitDepthVal);
     napi_value delayVal; napi_create_int32(env, rust_get_connection_delay_ms(), &delayVal); napi_set_named_property(env, obj, "delayMs", delayVal);
     napi_value targetBitrateVal; napi_create_int32(env, rust_get_connection_target_bitrate_kb(), &targetBitrateVal); napi_set_named_property(env, obj, "targetBitrateKb", targetBitrateVal);
     return obj;
 }
 
 // ===== XComponent Surface =====
+
+static napi_value SetHdrDisplayFormats(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int32_t formats = 0;
+    if (argc == 1) napi_get_value_int32(env, args[0], &formats);
+    XComponentRender::instance().setHdrDisplayFormats(formats);
+    napi_value result;
+    napi_create_int32(env, 0, &result);
+    return result;
+}
 
 static napi_value SetSurfaceId(napi_env env, napi_callback_info info) {
     size_t argc = 1;
@@ -2062,6 +2166,12 @@ static napi_value NativeMouseInputToJs(napi_env env, const NativeMouseInputEvent
     napi_value modifierValid;
     napi_get_boolean(env, input.modifierValid, &modifierValid);
     napi_set_named_property(env, object, "modifierValid", modifierValid);
+    napi_value surfaceWidth;
+    napi_create_double(env, static_cast<double>(input.surfaceWidth), &surfaceWidth);
+    napi_set_named_property(env, object, "surfaceWidth", surfaceWidth);
+    napi_value surfaceHeight;
+    napi_create_double(env, static_cast<double>(input.surfaceHeight), &surfaceHeight);
+    napi_set_named_property(env, object, "surfaceHeight", surfaceHeight);
     return object;
 }
 
@@ -2226,8 +2336,11 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"getDiagnosticLog", nullptr, GetDiagnosticLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"clearDiagnosticLog", nullptr, ClearDiagnosticLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setPerformancePreset", nullptr, SetPerformancePreset, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setPrivacyMode", nullptr, SetPrivacyMode, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getPrivacyModeState", nullptr, GetPrivacyModeState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKeyEvent", nullptr, SendKeyEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendPrintableShortcutKey", nullptr, SendPrintableShortcutKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendCtrlAltDel", nullptr, SendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"canSendCtrlAltDel", nullptr, CanSendCtrlAltDel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPhysicalKeyEvent", nullptr, SendPhysicalKeyEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -2290,6 +2403,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"testIfValidServer", nullptr, TestIfValidServer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isUsingPublicServer", nullptr, IsUsingPublicServer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getVideoFrame", nullptr, GetVideoFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setHdrDisplayFormats", nullptr, SetHdrDisplayFormats, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setSurfaceId", nullptr, SetSurfaceId, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"prepareSurfaceRebind", nullptr, PrepareSurfaceRebind, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rebindSurface", nullptr, RebindSurface, nullptr, nullptr, nullptr, napi_default, nullptr},

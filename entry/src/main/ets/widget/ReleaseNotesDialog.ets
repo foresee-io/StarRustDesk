@@ -1,13 +1,15 @@
+import { translate } from '../utils/I18n'
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.0'
-export const RELEASE_NOTES_BUILD: string = '1002006'
+export const RELEASE_NOTES_VERSION: string = '1.2.21'
+export const RELEASE_NOTES_BUILD: string = '1002021'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}-r1`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
 export struct ReleaseNotesDialog {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   controller?: CustomDialogController
@@ -17,12 +19,12 @@ export struct ReleaseNotesDialog {
     Column({ space: 14 }) {
       Row({ space: 10 }) {
         Column({ space: 3 }) {
-          Text('本次更新内容')
+          Text(translate('本次更新内容', this.uiLanguage))
             .fontSize(22)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('StarRustDesk 已更新')
+          Text(translate('StarRustDesk 已更新', this.uiLanguage))
             .fontSize(13)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -30,7 +32,7 @@ export struct ReleaseNotesDialog {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
 
-        Text(`v${RELEASE_NOTES_VERSION}`)
+        Text(translate(`v${RELEASE_NOTES_VERSION}`, this.uiLanguage))
           .fontSize(13)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.ACCENT)
@@ -46,6 +48,74 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.21（1002021）· 键盘输入、投屏鼠标与屏幕方向', [
+            '新增独立键盘悬浮按钮，手机和平板不用展开“控”即可打开或收起软键盘，支持拖动调整位置。',
+            '新增连续输入：打开软键盘后，点击远端其他输入框仍保持键盘开启，输入直接传给远端；用户主动收起后结束。保留全屏三指上滑，实体键盘和完整组合键不自动弹出软键盘。',
+            '优化应用单独投屏的实体鼠标接收通路、电视与本屏坐标换算及跨通路去重，避免兼容触摸事件提前松键后补发重复点击；有线投屏效果仍需真机验证。',
+            '补充投屏鼠标各接收层、目标显示设备、输入焦点与画面尺寸的诊断日志，不记录输入文字或密码。',
+            '修复应用忽略系统旋转锁定的问题，手机和平板默认跟随系统旋转设置，不再强制自动切换横竖屏。',
+            '“控”中的屏幕方向按钮改为选择菜单，支持跟随系统、固定竖屏和固定横屏；手动选择仅对本次远控生效。',
+            '单独投屏使用独立方向策略：默认适配横向外接屏，也可手动固定方向；返回手机或平板后恢复本屏选择，不改变远端分辨率。',
+            '更新手势说明和多语言文字，补充方向选择与窗口应用的诊断日志；取消菜单或切换显示设备时不误修改另一块屏幕的方向。'
+          ])
+          this.buildSection('1.2.20（1002020）· 多语言、折叠屏与 HDR 视频适配', [
+            '新增简体中文、繁体中文和英语，默认跟随系统；可在设置中手动切换，保存语言偏好，不影响远控连接、按键和用户文件名。',
+            '优化折叠屏内外屏及横竖屏的软键盘避让：保留远端画面当前比例，按可见区域和最后鼠标位置上移画面，光标同步移动；折叠、展开和旋转后重新计算。',
+            '新增实验性 HDR 视频接收与显示适配，识别 HDR10/PQ 和 HLG；连接信息增加动态范围与输出路径，补充色彩、位深和显示设备的脱敏诊断。',
+            'AV1 软件解码增加 HDR 转 SDR，完善 VP9/AV1 高位深画面转换及解码切换的色彩状态清理。真正 HDR 显示需要远端发送 HDR 视频及设备支持，不能恢复已转换为 SDR 的画面，实际效果仍需真机验证。'
+          ])
+          this.buildSection('1.2.19（1002019）· 实体鼠标、画面跟随与大字体适配', [
+            '修复远端光标图层可能遮挡实体鼠标点击的问题；优化鼠标与触摸兼容事件的识别及点击去重，避免左右键被误拦截。',
+            '修复输入 Windows 登录密码后，本地键盘已收起但放大画面的鼠标跟随仍被阻止的问题；按实际键盘可见性和编辑状态恢复跟随，保留缩放比例与画面位置。',
+            '优化系统大字体下的按钮适配：常用按钮、键控快捷栏和底部导航随字体调整尺寸，已保存连接工具区支持换行，减少文字被截断。',
+            '补充键盘显示、焦点与画面跟随阻止原因的脱敏诊断，不记录输入内容；有线应用单独投屏的实体鼠标兼容问题仍待实机排查与验证。'
+          ])
+          this.buildSection('1.2.18（1002018）· 投屏鼠标与软键盘组合键', [
+            '修复应用单独投屏时，实体鼠标连续移动事件可能被误过滤的问题；按事件类型和坐标精准去重，保留点击、拖动及触控原有路径。',
+            '优化投屏窗口的远端指针显示与位置更新，切换显示设备时清理旧输入状态；补充鼠标移动、过滤原因及指针状态诊断，便于排查设备差异。',
+            '修复选中 Ctrl 后使用软键盘输入 Q 等字母时，远端可能多出 Shift 的问题；区分字母字符与功能键编码，保留明确选中的 Shift、普通文字及中文输入。',
+            '投屏输入日志仅在诊断开关开启时记录，并限制输出频率；具体有线投屏兼容性仍需结合设备实测。'
+          ])
+          this.buildSection('1.2.17（1002017）· 方向键与翻页操作', [
+            '“键 → 更多”新增 ←、↑、↓、→ 四个方向按钮，支持配合选中的 Ctrl、Shift 等修饰键操作；点击不主动弹出软键盘，长按可调整顺序。',
+            '修复打开本地键盘后，外接键盘或 PC 键盘的方向键、翻页键未正确传递到远端的问题；补齐 PageUp、PageDown、Home、End 和 Insert 映射。',
+            '优化实体方向键长按连续输入、重复事件去重及失去焦点后的松键处理，避免重复发送和卡键；中文组字时保留本地输入法选词。',
+            '补充方向键与输入法状态的脱敏诊断记录，不记录输入文字或候选内容；保留原有自定义按键排序。'
+          ])
+          this.buildSection('1.2.16（1002016）· 连接错误提示', [
+            '连接失败错误码改为中文提示，区分 ID 服务器密钥不匹配、服务器密钥无效、连接超时及中继失败等情况。',
+            '远端密码错误、权限拒绝与连接中断等常见提示同步中文化；保留自动重连和用户确认后降级连接的原有判断。'
+          ])
+          this.buildSection('1.2.15（1002015）· 连接稳定性与 PC 全屏', [
+            '自建 ID 服务器未配置 API 账号时，连接前跳过不必要的账号会话准备；已记住账号或配置 API 时仍按原流程处理。',
+            '在线状态查询只连接 ID 服务器的辅助 TCP 端口，不再探测相邻 WebSocket 端口，减少对远控建链的干扰。',
+            'WebSocket 连接失败后的重试限定次数并共用超时期限，避免异常服务器导致反复尝试。',
+            '修复鸿蒙 PC 远控全屏：进入沉浸式全屏后，右侧功能栏收为右上角悬浮“控”按钮，保留独立的“退出全屏”按钮；退出后恢复固定侧栏。'
+          ])
+          this.buildSection('1.2.14（1002014）· 虚拟鼠标边缘操作', [
+            '放大远端画面后，虚拟鼠标拖到右侧或下侧边缘时，继续拖动可让画面移开并露出黑色操作空间；控件和自带箭头保持贴合。',
+            '修复在画面其他区域平移后，虚拟鼠标控件与自带箭头可能分离的问题；反向拖动可收回边缘空白。',
+            '开启虚拟鼠标时，控件外的单指拖动只用于移动画面，不再误移动远端光标；未放大时不再把该手势当作触控板输入。'
+          ])
+          this.buildSection('1.2.13（1002013）· 远端安全选项', [
+            '新增按设备配置断开后锁定远端、隐私屏幕和自动解锁远端系统；功能是否生效取决于被控端支持与授权。',
+            '自动解锁仅在符合条件的加密连接中发送本机安全保存的系统密码；密码不参与连接备份或云同步。',
+            '补充远端安全操作的脱敏诊断日志，记录请求、回执与跳过原因，不记录密码或验证码。',
+            '关闭在线状态查询后，已保存设备图标不再显示状态圆点和状态图例；开启后恢复显示。',
+            '改进个人云空间同步的完成确认、错误提示及云目录快照写入兼容性；真实跨设备恢复仍需在云服务上验证。'
+          ])
+          this.buildSection('1.2.12（1002012）· 在线状态查询开关', [
+            '设置中的“查询服务器/设备在线状态”默认关闭；关闭时首页不再定时向服务器查询已保存设备的在线状态。',
+            '需要在线状态提示时可手动开启；此开关不影响输入 ID 后连接远端。'
+          ])
+          this.buildSection('1.2.10（1002010）· 全屏、画面跟随与故障诊断', [
+            '修复全屏按钮文字与选中状态未及时更新的问题；切换中防止重复点击，失败时恢复状态并提示，退出远控时恢复系统栏。',
+            '全屏与普通模式复用视频显示组件，仅系统栏或黑边区域变化时不再重复重建解码器；保留实际旋转、换屏和显示目标变化时的安全重绑定，减少切换黑屏。',
+            '优化手机和平板放大后的鼠标画面跟随：开启边缘跟随后，手指将鼠标移到可视区域中心附近即可连续平移视野，停手即停，再次滑动无需等待；虚拟鼠标拖动区同步支持。',
+            '补充全屏切换、系统窗口调用、画面复用与恢复的阶段、耗时和失败码日志，方便排查设备兼容问题。',
+            '诊断模式新增系统崩溃、卡死及系统终止事件的本地脱敏采集，可随诊断日志导出；是否获得完整调用栈取决于系统投递，诊断默认关闭，不自动上传。',
+            '增强已保存设备在线查询的分阶段诊断与 Wi-Fi、蜂窝网络类型关联，辅助定位家庭 Wi-Fi 下保存连接或查询时的异常；这项增强不代表已确认修复相关闪退原因。'
+          ])
           this.buildSection('1.2.0（1002006）· 控制端功能与诊断修订', [
             '新增独立文件传输会话、批量和文件夹上传，以及远端新建文件夹、重命名和删除；文件夹上传暂不保留空文件夹。',
             '新增地址簿手动双向同步预览、冲突处理和设备标签管理，不同步本地连接密码与密钥。',
@@ -293,7 +363,7 @@ export struct ReleaseNotesDialog {
       .scrollBar(BarState.Auto)
       .edgeEffect(EdgeEffect.Spring)
 
-      Button('知道了')
+      Button(translate('知道了', this.uiLanguage))
         .height(44)
         .width('100%')
         .fontSize(15)
@@ -322,7 +392,7 @@ export struct ReleaseNotesDialog {
   @Builder
   buildSection(title: string, items: string[]) {
     Column({ space: 8 }) {
-      Text(title)
+      Text(translate(title, this.uiLanguage))
         .fontSize(16)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
@@ -335,7 +405,7 @@ export struct ReleaseNotesDialog {
             .height(6)
             .fill(RustDeskTheme.ACCENT)
             .margin({ top: 7 })
-          Text(item)
+          Text(translate(item, this.uiLanguage))
             .layoutWeight(1)
             .fontSize(13)
             .lineHeight(21)

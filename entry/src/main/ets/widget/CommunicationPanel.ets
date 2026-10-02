@@ -1,3 +1,4 @@
+import { translate } from '../utils/I18n'
 import { common } from '@kit.AbilityKit';
 import { CommunicationService, SessionChatMessage } from '../service/CommunicationService';
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier';
@@ -7,6 +8,7 @@ const VOICE_CALL_UI_ENABLED: boolean = true;
 
 @Component
 export struct CommunicationPanel {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('isDarkMode') isDarkMode: boolean = false;
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true;
   @State messages: SessionChatMessage[] = [];
@@ -67,28 +69,28 @@ export struct CommunicationPanel {
         .onClick(() => { this.onClose(); });
       Column({ space: 10 }) {
         Row() {
-          Text(VOICE_CALL_UI_ENABLED ? '聊天与通话' : '聊天').fontSize(19).fontWeight(FontWeight.Bold)
+          Text(translate(VOICE_CALL_UI_ENABLED ? '聊天与通话' : '聊天', this.uiLanguage)).fontSize(19).fontWeight(FontWeight.Bold)
             .fontColor(this.isDarkMode ? '#F1F5F9' : '#17253D').layoutWeight(1);
-          Button('关闭').height(36).fontSize(14).fontColor('#286BC2').backgroundColor('#DFEDFF')
+          Button(translate('关闭', this.uiLanguage)).height(36).fontSize(14).fontColor('#286BC2').backgroundColor('#DFEDFF')
             .onClick(() => { this.onClose(); })
             .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule));
         }.width('100%');
         if (VOICE_CALL_UI_ENABLED) {
-          Text(this.statusText()).fontSize(13).fontColor(this.isDarkMode ? '#BFDBFE' : '#385D87').width('100%');
+          Text(translate(this.statusText(), this.uiLanguage)).fontSize(13).fontColor(this.isDarkMode ? '#BFDBFE' : '#385D87').width('100%');
           Row({ space: 10 }) {
             if (this.state === 1 || this.state === 2) {
               if (this.state === 2) {
-                Button(this.muted ? '开启麦克风' : '静音').height(38).fontSize(14)
+                Button(translate(this.muted ? '开启麦克风' : '静音', this.uiLanguage)).height(38).fontSize(14)
                   .fontColor('#245FA5').backgroundColor(this.muted ? '#C7DFFF' : '#E5EFFF')
                   .onClick(() => { CommunicationService.toggleMute(); this.refresh(); })
                   .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule));
               }
-              Button(this.state === 1 ? '取消呼叫' : '挂断').height(38).fontSize(14)
+              Button(translate(this.state === 1 ? '取消呼叫' : '挂断', this.uiLanguage)).height(38).fontSize(14)
                 .fontColor('#B03040').backgroundColor('#FFE2E5')
                 .onClick(() => { CommunicationService.hangup(); this.refresh(); })
                 .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule));
             } else {
-              Button('发起语音').height(38).fontSize(14).fontColor('#245FA5').backgroundColor('#DFEDFF')
+              Button(translate('发起语音', this.uiLanguage)).height(38).fontSize(14).fontColor('#245FA5').backgroundColor('#DFEDFF')
                 .onClick(() => {
                   CommunicationService.call(this.getUIContext().getHostContext() as common.UIAbilityContext);
                 })
@@ -97,18 +99,18 @@ export struct CommunicationPanel {
           }.width('100%');
         }
         if (this.notice.length > 0) {
-          Text(this.notice).fontSize(12).fontColor(this.isDarkMode ? '#FFCCA0' : '#925018').width('100%');
+          Text(translate(this.notice, this.uiLanguage)).fontSize(12).fontColor(this.isDarkMode ? '#FFCCA0' : '#925018').width('100%');
         }
         Scroll(this.scroller) {
           Column({ space: 10 }) {
             if (this.messages.length === 0) {
-              Text('暂无消息\n发送的文字将显示在远端 RustDesk 聊天窗口').fontSize(14)
+              Text(translate('暂无消息\n发送的文字将显示在远端 RustDesk 聊天窗口', this.uiLanguage)).fontSize(14)
                 .fontColor(this.isDarkMode ? '#ABBBD0' : '#617089').textAlign(TextAlign.Center)
                 .width('100%').padding(24);
             }
             ForEach(this.messages, (message: SessionChatMessage) => {
               Column({ space: 3 }) {
-                Text(`${message.outgoing ? '我' : '远端'} · ${message.time}`).fontSize(11)
+                Text(`${translate(message.outgoing ? '我' : '远端', this.uiLanguage)} · ${message.time}`).fontSize(11)
                   .fontColor(this.isDarkMode ? '#ABBBD0' : '#617089');
                 Text(message.text).fontSize(15).fontColor(this.isDarkMode ? '#F1F5F9' : '#17253D')
                   .copyOption(CopyOptions.LocalDevice).padding(10).borderRadius(12)
@@ -120,16 +122,16 @@ export struct CommunicationPanel {
           }.width('100%');
         }.width('100%').layoutWeight(1).scrollBar(BarState.Auto);
         Row({ space: 8 }) {
-          TextInput({ text: this.draft, placeholder: '输入聊天消息' }).layoutWeight(1).height(42)
+          TextInput({ text: this.draft, placeholder: translate('输入聊天消息', this.uiLanguage) }).layoutWeight(1).height(42)
             .maxLength(1000).fontSize(15).fontColor(this.isDarkMode ? '#F1F5F9' : '#17253D')
             .backgroundColor(this.isDarkMode ? '#303E50' : '#EEF2F7')
             .enterKeyType(EnterKeyType.Send).onChange((text: string) => { this.draft = text; })
             .onSubmit(() => { this.send(); });
-          Button('发送').height(42).width(64).fontSize(14).fontColor('#245FA5').backgroundColor('#D8E9FF')
+          Button(translate('发送', this.uiLanguage)).height(42).width(64).fontSize(14).fontColor('#245FA5').backgroundColor('#D8E9FF')
             .enabled(this.draft.trim().length > 0).onClick(() => { this.send(); })
             .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule));
         }.width('100%');
-        Text(VOICE_CALL_UI_ENABLED ? '记录仅保留本次连接；已接通的语音在系统允许时可后台继续，挂断即停止采集，建议使用耳机。' : '聊天记录仅保留本次连接。')
+        Text(translate(VOICE_CALL_UI_ENABLED ? '记录仅保留本次连接；已接通的语音在系统允许时可后台继续，挂断即停止采集，建议使用耳机。' : '聊天记录仅保留本次连接。', this.uiLanguage))
           .fontSize(11).fontColor(this.isDarkMode ? '#ABBBD0' : '#617089').width('100%');
       }.width('92%').constraintSize({ maxWidth: 520 }).height('86%').padding(16)
         .borderRadius(20).backgroundColor(this.isDarkMode ? '#1E2A3A' : '#FFFFFF');

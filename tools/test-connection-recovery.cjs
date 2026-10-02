@@ -33,7 +33,13 @@ const Online = subject(slice('entry/src/main/ets/pages/ConnectionPage.ets',
 });
 const online = Object.assign(new Online(), { savedConnections: [{remoteId: 'a'}, {remoteId: 'b'}],
   peerOnlineQueryInFlight: true, peerOnlineQueryStartedAt: 1000, peerOnlineStatesVersion: 0,
-  customServerHint: 'server', peerStateServer: 'server', peerOnlineStates: {} });
+  peerOnlineQueryEnabled: false, customServerHint: 'server', peerStateServer: 'server', peerOnlineStates: {} });
+test('disabled online query does not mark a pending request as timed out', () => {
+  now = 14000; online.pollPeerOnlineStates();
+  assert.equal(online.peerOnlineQueryInFlight, true);
+  assert.equal(online.peerOnlineStates.a, undefined);
+  online.peerOnlineQueryEnabled = true;
+});
 test('timeout marks unknown without inventing offline', () => {
   now = 14000; online.pollPeerOnlineStates();
   assert.equal(online.peerOnlineQueryInFlight, false); assert.equal(online.peerOnlineStates.a, 3);
@@ -133,7 +139,7 @@ test('relay route never retries relay again',()=>{
 });
 
 test('fast direct secure failure immediately retries over encrypted relay',()=>{
-  status=3; route=1; lastConnectionError='Peer secure handshake failed';
+  status=3; route=1; lastConnectionError='与远端安全握手失败';
   Object.assign(Service,{retryPeer:'test',retryPassword:'test-only',retryRendezvous:'server',retryRelay:'relay',
     relayRetryUsed:false,rendezvousRetryCount:0,relayFailureRetryCount:0});
   assert.match(Service.retryRecoverableConnectionFailure(lastConnectionError),/加密中继/);
@@ -142,14 +148,14 @@ test('fast direct secure failure immediately retries over encrypted relay',()=>{
   assert.equal(Service.retryRecoverableConnectionFailure(lastConnectionError),'');
 });
 test('rendezvous retry preserves forced relay after direct secure failure',()=>{
-  status=3; route=0; lastConnectionError='Rendezvous server did not respond';
+  status=3; route=0; lastConnectionError='ID 服务器未响应';
   Object.assign(Service,{retryPeer:'test',relayRetryUsed:true,rendezvousRetryCount:0});
   const before=forcedConnections;
   assert.match(Service.retryRecoverableConnectionFailure(lastConnectionError),/1\/2/);
   assert.equal(forcedConnections,before+1);
 });
 test('rendezvous timeout retries twice with fresh normal connections',()=>{
-  status=3; route=0; lastConnectionError='Rendezvous server did not respond';
+  status=3; route=0; lastConnectionError='ID 服务器未响应';
   Object.assign(Service,{retryPeer:'test',rendezvousRetryCount:0,relayFailureRetryCount:0,relayRetryUsed:false});
   assert.match(Service.retryRecoverableConnectionFailure(lastConnectionError),/1\/2/);
   status=3;
@@ -159,7 +165,7 @@ test('rendezvous timeout retries twice with fresh normal connections',()=>{
   assert.equal(normalConnections,2);
 });
 test('relay failure requests one fresh forced-relay route',()=>{
-  status=3; route=0; lastConnectionError='Relay connection failed';
+  status=3; route=0; lastConnectionError='中继连接失败';
   Object.assign(Service,{retryPeer:'test',relayFailureRetryCount:0,relayRetryUsed:false});
   const before=forcedConnections;
   assert.match(Service.retryRecoverableConnectionFailure(lastConnectionError),/重新申请中继/);
@@ -168,7 +174,7 @@ test('relay failure requests one fresh forced-relay route',()=>{
   assert.equal(forcedConnections,before+1);
 });
 test('security failure on a relay route does not loop or downgrade',()=>{
-  status=3; route=2; lastConnectionError='Peer secure handshake failed';
+  status=3; route=2; lastConnectionError='与远端安全握手失败';
   Object.assign(Service,{retryPeer:'test',relayRetryUsed:false});
   assert.equal(Service.retryRecoverableConnectionFailure(lastConnectionError),'');
   assert.equal(insecureConnections,0);
@@ -181,7 +187,7 @@ for (const endpoint of ['192.168.2.123', '192.168.2.123:21118', '[2001:db8::1]:2
   });
 }
 test('invalid server key downgrade requires explicit one-time retry',()=>{
-  status=3; route=2; lastConnectionError='Server key is invalid';
+  status=3; route=2; lastConnectionError='服务器密钥无效';
   Object.assign(Service,{retryPeer:'test-peer',retryPassword:'test-only',retryRendezvous:'server',
     retryRelay:'relay',insecureRetryUsed:false});
   assert.equal(Service.canRetryWithoutEncryption(),true);
@@ -192,8 +198,27 @@ test('invalid server key downgrade requires explicit one-time retry',()=>{
   assert.equal(Service.retryPassword,'test-only');
 });
 test('other handshake errors never offer insecure downgrade',()=>{
-  status=3; lastConnectionError='Peer secure handshake failed'; Service.insecureRetryUsed=false;
+  status=3; lastConnectionError='与远端安全握手失败'; Service.insecureRetryUsed=false;
   assert.equal(Service.canRetryWithoutEncryption(),false);
+});
+test('rendezvous license mismatch has a distinct message and cannot downgrade',()=>{
+  const cpp = read('entry/src/main/cpp/napi_init.cpp');
+  const message = cpp.match(/case -10: return "([^"]+)";/)?.[1];
+  assert.equal(message, 'ID 服务器密钥不匹配');
+  status=3; lastConnectionError=message; Service.insecureRetryUsed=false;
+  assert.equal(Service.canRetryWithoutEncryption(),false);
+});
+test('all connection error codes have Chinese messages',()=>{
+  const cpp = read('entry/src/main/cpp/napi_init.cpp');
+  const mapping = cpp.slice(cpp.indexOf('static std::string ConnectionResultToMessage('),
+    cpp.indexOf('static napi_value Connect(', cpp.indexOf('static std::string ConnectionResultToMessage(')));
+  const cases = [...mapping.matchAll(/case (-\d+): return "([^"]+)";/g)];
+  assert.equal(cases.length, 27);
+  for (const [, code, message] of cases) {
+    assert.match(message, /[\u4e00-\u9fff]/, `code ${code}`);
+  }
+  assert.match(mapping, /default: return "连接失败（错误码："/);
+  assert.match(cpp, /else if \(result == -17\)/);
 });
 let polledFrame={generation:1,security:0,hasFrame:true,width:1280,height:720}, scheduled;
 const Poller = subject(slice('entry/src/main/ets/pages/RemotePage.ets',
@@ -205,6 +230,7 @@ const Poller = subject(slice('entry/src/main/ets/pages/RemotePage.ets',
 });
 const poller=Object.assign(new Poller(),{framePollGeneration:0,videoSessionGeneration:-1,
   stopFramePolling(){this.framePollGeneration++;}, resetViewportTransform(){},
+  physicalMouseDeduplicator:{clear(){}},resetPointerDiagnostics(){},
   checkFirstVideoHealth(){},checkDecoderHealth(){},updateStats(){},
   scheduleSurfaceRebindIfSizeChanged(){}});
 test('new session resets old successful frame and statistics',()=>{
@@ -222,7 +248,7 @@ const Stats = subject(slice('entry/src/main/ets/pages/RemotePage.ets',
   '  updateStats(frame:', '  videoCodecName('), {Date:clock});
 test('FPS counts presented frames while speed counts received bytes',()=>{
   const stats=Object.assign(new Stats(),{lastStatsTime:0,smoothFps:0,smoothKbps:0,
-    videoCodecStatus:()=>'',videoCodecName:()=>'',videoDecoderName:()=>''});
+    videoCodecStatus:()=>'',videoCodecName:()=>'',videoDecoderName:()=>'',videoDynamicRangeStatus:()=>''});
   now=1000; stats.updateStats({totalFrames:100,renderedFrames:10,totalBytes:1024});
   now=2000; stats.updateStats({totalFrames:200,renderedFrames:20,totalBytes:2048});
   assert.equal(stats.fpsText,'10.0 fps'); assert.equal(stats.speedText,'1 KB/s');
@@ -235,10 +261,11 @@ test('connection quality panel can be hidden and restored',()=>{
   assert.match(remotePageSource, /this\.setQualityMonitorExpanded\(true\)/);
 });
 test('quality monitor drag preserves anchor, clamps bounds and suppresses drag clicks',()=>{
-  const methods = remotePageSource.slice(remotePageSource.indexOf('  getQualityMonitorWidth():'),
-    remotePageSource.indexOf('  @Builder\n  buildStatsPanel()')).replace(/: number|: boolean|: void/g,'');
+  const methods = slice('entry/src/main/ets/pages/RemotePage.ets',
+    '  getQualityMonitorWidth():', '  @Builder');
   const clock = { now:()=>1000 };
-  const panel = new Function('Date',`return new class {${methods}}`)(clock);
+  const Panel = subject(methods, {Date:clock});
+  const panel = new Panel();
   Object.assign(panel,{qualityViewportWidth:800,qualityViewportHeight:400,showQualityMonitor:false,
     qualityMonitorX:-1,qualityMonitorY:-1,qualityLastDragAt:0,isFullScreen:false});
   assert.equal(panel.getQualityMonitorWidth(),64);
@@ -252,9 +279,11 @@ test('quality monitor drag preserves anchor, clamps bounds and suppresses drag c
   assert.equal(panel.showQualityMonitor,true);
   assert.equal(panel.getQualityMonitorX(),150); assert.equal(panel.getQualityMonitorY(),100);
   panel.updateQualityMonitorDrag(2000,2000);
-  assert.equal(panel.getQualityMonitorX(),598); assert.equal(panel.getQualityMonitorY(),202);
+  assert.equal(panel.getQualityMonitorX(),598);
+  assert.equal(panel.getQualityMonitorY(),panel.qualityViewportHeight-panel.getQualityMonitorHeight()-8);
   panel.qualityViewportWidth=320; panel.qualityViewportHeight=240;
-  assert.equal(panel.getQualityMonitorX(),118); assert.equal(panel.getQualityMonitorY(),42);
+  assert.equal(panel.getQualityMonitorX(),118);
+  assert.equal(panel.getQualityMonitorY(),panel.qualityViewportHeight-panel.getQualityMonitorHeight()-8);
   panel.updateQualityMonitorDrag(-2000,-2000);
   assert.equal(panel.getQualityMonitorX(),8); assert.equal(panel.getQualityMonitorY(),8);
 });

@@ -11,7 +11,7 @@ for (const prop of ['label: string', 'selected: boolean', 'isEnabled: boolean'])
   assert(action.includes('@Prop ' + prop), prop);
 }
 assert(action.includes('.enabled(this.isEnabled)'));
-assert(action.includes('Button(this.label)'));
+assert(action.includes('Button(translate(this.label, this.uiLanguage))'));
 assert(action.includes('if (this.isEnabled) this.onAction()'));
 assert.equal((dialog.match(/ApiAccountAction\(\{/g) || []).length, 17);
 assert(dialog.includes("label: this.busy ? '取消请求' : '关闭'"));

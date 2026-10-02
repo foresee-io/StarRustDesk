@@ -152,6 +152,15 @@ int main() {
             CHECK(Number(items[0]->props.at("mouse"), "x") == 1);
             CHECK(Number(items[2]->props.at("mouse"), "x") == 2);
         });
+        Test("projected native surface dimensions survive queue coalescing and JS serialization", [] {
+            auto first = Mouse(100); first.surfaceWidth = 1000; first.surfaceHeight = 500;
+            auto last = Mouse(200); last.surfaceWidth = 2000; last.surfaceHeight = 1000;
+            QueueNativeMouseInput(first); QueueNativeMouseInput(last);
+            auto items = Drain(); CHECK(items.size() == 1);
+            auto mouse = items[0]->props.at("mouse");
+            CHECK(Number(mouse, "x") == 200);
+            CHECK(Number(mouse, "surfaceWidth") == 2000); CHECK(Number(mouse, "surfaceHeight") == 1000);
+        });
         Test("compatible contiguous moves coalesce to latest sequence and payload", [] {
             QueueNativeMouseInput(Mouse(1)); QueueNativeMouseInput(Mouse(2));
             auto last = QueueNativeMouseInput(Mouse(3));
@@ -247,7 +256,7 @@ int main() {
                 CHECK(keyIds.size() == 64); CHECK(mouseIds.size() == 64); CHECK(Drain().empty());
             }
         });
-        std::cout << "11 executable native input queue tests passed" << std::endl;
+        std::cout << "12 executable native input queue tests passed" << std::endl;
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << std::endl; return 1;

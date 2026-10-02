@@ -59,6 +59,8 @@ void releaseEveryDecoder() {
     SoftwareVP8Decoder::instance().release();
     SystemVideoDecoder::av1().release();
     SoftwareAV1Decoder::instance().release();
+    VideoRender::instance().resetColorInfo();
+    XComponentRender::instance().resetVideoColor();
 }
 
 void ensureH264Decoder(OHNativeWindow* window, int width, int height) {
@@ -69,6 +71,7 @@ void ensureH264Decoder(OHNativeWindow* window, int width, int height) {
     std::lock_guard<std::mutex> lock(g_decoderMutex);
     if (g_activeDecoder != ActiveDecoder::H264) {
         releaseEveryDecoder();
+        window = XComponentRender::instance().prepareDecoderSurface();
         g_activeDecoder = ActiveDecoder::H264;
         DiagnosticLog::instance().append("I", "video", "active_decoder=H264");
     }
@@ -83,6 +86,7 @@ bool ensureVP9Decoder(OHNativeWindow* window, int width, int height) {
     std::lock_guard<std::mutex> lock(g_decoderMutex);
     if (g_activeDecoder != ActiveDecoder::VP9) {
         releaseEveryDecoder();
+        window = XComponentRender::instance().prepareDecoderSurface();
         g_activeDecoder = ActiveDecoder::VP9;
         DiagnosticLog::instance().append("I", "video", "active_decoder=VP9");
     }
@@ -107,6 +111,7 @@ bool ensureSystemDecoder(ActiveDecoder active, SystemVideoDecoder& decoder, OHNa
     std::lock_guard<std::mutex> lock(g_decoderMutex);
     if (g_activeDecoder != active) {
         releaseEveryDecoder();
+        window = XComponentRender::instance().prepareDecoderSurface();
         g_activeDecoder = active;
         DiagnosticLog::instance().append("I", "video", "active_decoder=" + std::string(name));
     }
@@ -154,6 +159,27 @@ void releaseActiveDecoderAsync() {
 VideoRender& VideoRender::instance() {
     static VideoRender render;
     return render;
+}
+
+void VideoRender::updateColorInfo(const VideoColorInfo& color) {
+    std::lock_guard<std::mutex> lock(colorMutex_);
+    if (color == colorInfo_) return;
+    colorInfo_ = color;
+    DiagnosticLog::instance().append("I", "video-color",
+        "source=" + std::to_string(static_cast<int>(color.dynamicRange())) +
+        " bits=" + std::to_string(color.bitDepth) + " primaries=" + std::to_string(color.primaries) +
+        " transfer=" + std::to_string(color.transfer) + " matrix=" + std::to_string(color.matrix) +
+        " range=" + std::to_string(color.range) + " output=" + std::to_string(static_cast<int>(color.output)));
+}
+
+VideoColorInfo VideoRender::colorInfo() {
+    std::lock_guard<std::mutex> lock(colorMutex_);
+    return colorInfo_;
+}
+
+void VideoRender::resetColorInfo() {
+    std::lock_guard<std::mutex> lock(colorMutex_);
+    colorInfo_ = {};
 }
 
 VideoDecoderCapabilities VideoRender::decoderCapabilities() {
@@ -275,6 +301,10 @@ void VideoRender::setSurfaceId(const std::string& surfaceId) {
         surfaceId_ = surfaceId;
     }
     if (unchanged && XComponentRender::instance().window() != nullptr) {
+        // A coalesced resize may settle back to its original surface. Resume
+        // the paused CPU writer via the same-target fast path (no window or
+        // decoder recreation), before flushing pending frames.
+        XComponentRender::instance().setSurface(surfaceId);
         flushPendingFramesAsync();
         return;
     }

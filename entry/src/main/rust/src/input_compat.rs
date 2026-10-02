@@ -65,9 +65,80 @@ pub fn legacy_physical_key(hid: u32, action: i32, modifiers: i32) -> Option<KeyE
     Some(event)
 }
 
+// Soft-keyboard shortcuts supply VK-style key identities, while Legacy Chr is
+// a Unicode character. Do not pass these identities through as uppercase text,
+// and do not feed lowercase characters back through the control-key VK table.
+pub fn printable_shortcut_key(key_code: i32, modifiers: i32) -> Option<KeyEvent> {
+    let shift = modifiers & 2 != 0;
+    let ch = match key_code {
+        65..=90 => if shift { key_code as u32 } else { (key_code + 32) as u32 },
+        48..=57 => if shift { b")!@#$%^&*("[(key_code - 48) as usize] as u32 }
+            else { key_code as u32 },
+        186 => (if shift { ':' } else { ';' }) as u32,
+        187 => (if shift { '+' } else { '=' }) as u32,
+        188 => (if shift { '<' } else { ',' }) as u32,
+        189 => (if shift { '_' } else { '-' }) as u32,
+        190 => (if shift { '>' } else { '.' }) as u32,
+        191 => (if shift { '?' } else { '/' }) as u32,
+        192 => (if shift { '~' } else { '`' }) as u32,
+        219 => (if shift { '{' } else { '[' }) as u32,
+        220 => (if shift { '|' } else { '\\' }) as u32,
+        221 => (if shift { '}' } else { ']' }) as u32,
+        222 => (if shift { '"' } else { '\'' }) as u32,
+        _ => return None,
+    };
+    Some(KeyEvent {
+        press: true,
+        mode: KeyboardMode::Legacy.into(),
+        modifiers: super::modifier_mask_to_controls(modifiers),
+        union: Some(key_event::Union::Chr(ch)),
+        ..Default::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn printable_hotkeys_do_not_invent_shift_or_alias_function_keys() {
+        for code in 65..=90 {
+            for mask in [1, 4, 8, 1 | 4, 1 | 8] {
+                let event = printable_shortcut_key(code, mask).unwrap();
+                assert_eq!(event.union, Some(key_event::Union::Chr((code + 32) as u32)));
+                assert_eq!(event.modifiers, super::super::modifier_mask_to_controls(mask));
+                assert!(!event.modifiers.contains(&ControlKey::Shift.into()));
+                assert!(event.press);
+                assert!(!event.down);
+                assert_eq!(event.mode.enum_value().unwrap(), KeyboardMode::Legacy);
+            }
+        }
+        assert_eq!(printable_shortcut_key(81, 1).unwrap().chr(), 'q' as u32);
+        assert_eq!(super::super::key_code_to_control(113), Some(ControlKey::F2));
+        assert!(printable_shortcut_key(113, 1).is_none());
+        assert!(printable_shortcut_key(46, 1).is_none());
+    }
+
+    #[test]
+    fn printable_shortcuts_preserve_explicit_shift_and_punctuation() {
+        for mask in [2, 3, 6, 10, 15] {
+            for code in 65..=90 {
+                let event = printable_shortcut_key(code, mask).unwrap();
+                assert_eq!(event.chr(), code as u32);
+                assert_eq!(event.modifiers, super::super::modifier_mask_to_controls(mask));
+            }
+        }
+        for code in 48..=57 {
+            assert_eq!(printable_shortcut_key(code, 1).unwrap().chr(), code as u32);
+            assert_eq!(printable_shortcut_key(code, 3).unwrap().chr(), b")!@#$%^&*("[(code - 48) as usize] as u32);
+        }
+        for (code, normal, shifted) in [(186, ';', ':'), (187, '=', '+'),
+            (188, ',', '<'), (189, '-', '_'), (190, '.', '>'), (191, '/', '?'),
+            (192, '`', '~'), (219, '[', '{'), (220, '\\', '|'), (221, ']', '}'), (222, '\'', '"')] {
+            assert_eq!(printable_shortcut_key(code, 1).unwrap().chr(), normal as u32);
+            assert_eq!(printable_shortcut_key(code, 3).unwrap().chr(), shifted as u32);
+        }
+    }
+
     #[test]
     fn kvm_detection_is_narrow() {
         assert!(is_one_kvm("one-kvm", &["KVM Display".into()]));

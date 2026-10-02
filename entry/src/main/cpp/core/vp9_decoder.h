@@ -1,7 +1,9 @@
 #ifndef RUSTDESK_CORE_VP9_DECODER_H
 #define RUSTDESK_CORE_VP9_DECODER_H
+#include "video_color.h"
 
 #include <cstdint>
+#include <atomic>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -60,6 +62,8 @@ private:
     uint64_t inputBytes_{0};
     uint64_t outputFrames_{0};
     bool firstKeyLogged_{false};
+    VideoColorInfo color_;
+    std::atomic<bool> colorFormatDirty_{true};
     std::deque<EncodedFrame> frames_;
     std::deque<InputSlot> inputSlots_;
 };
