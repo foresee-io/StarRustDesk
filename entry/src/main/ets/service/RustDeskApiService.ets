@@ -487,11 +487,49 @@ export class RustDeskApiService {
     return books;
   }
 
-  // The official client does not restrict address book ID format; only drop
-  // obviously invalid rows. "." and ":" are allowed for direct-IP entries
-  // (e.g. 192.168.0.100:21117).
+  private static validIpv4(address: string): boolean {
+    const parts = address.split('.');
+    return parts.length === 4 && parts.every((part: string) =>
+      /^(0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255);
+  }
+
+  private static validIpv6(address: string): boolean {
+    // Match Rust's IpAddr input, including IPv4-mapped IPv6 but not zone IDs.
+    if (!address.includes(':') || !/^[0-9A-Fa-f:.]+$/.test(address)) return false;
+    if (address.includes('.')) {
+      const lastColon = address.lastIndexOf(':');
+      if (!RustDeskApiService.validIpv4(address.slice(lastColon + 1))) return false;
+      address = address.slice(0, lastColon) + ':0:0';
+    }
+    const halves = address.split('::');
+    if (halves.length > 2) return false;
+    let groups = 0;
+    for (const half of halves) {
+      if (!half) continue;
+      const parts = half.split(':');
+      if (!parts.every((part: string) => /^[0-9A-Fa-f]{1,4}$/.test(part))) return false;
+      groups += parts.length;
+    }
+    return halves.length === 2 ? groups < 8 : groups === 8;
+  }
+
+  // Use the same ID/endpoint rules for browsing, importing and two-way sync.
+  // Preserve the original spelling: it is also the server's address-book key.
   static validPeerId(id: string): boolean {
-    return /^[A-Za-z0-9_.:\-]{1,64}$/.test(id);
+    if (!id || id.length > 64) return false;
+    if (id.startsWith('[')) {
+      const endpoint = /^\[([0-9A-Fa-f:.]+)\](?::([0-9]+))?$/.exec(id);
+      return endpoint !== null && RustDeskApiService.validIpv6(endpoint[1]) &&
+        (endpoint[2] === undefined || (Number(endpoint[2]) > 0 && Number(endpoint[2]) <= 65535));
+    }
+    if (id.includes(':')) {
+      if (RustDeskApiService.validIpv6(id)) return true;
+      const endpoint = /^([0-9.]+):([0-9]+)$/.exec(id);
+      return endpoint !== null && RustDeskApiService.validIpv4(endpoint[1]) &&
+        Number(endpoint[2]) > 0 && Number(endpoint[2]) <= 65535;
+    }
+    if (id.includes('.') && /^[0-9.]+$/.test(id)) return RustDeskApiService.validIpv4(id);
+    return /^[A-Za-z0-9_.\-]+$/.test(id);
   }
 
   static parsePeers(rows: ApiRow[]): ApiPeer[] {
@@ -529,26 +567,39 @@ export class RustDeskApiService {
       return parsed;
     }
     const peers: ApiPeer[] = [];
-    let total = 0;
+    let total = -1;
     for (let page = 1; page <= 50; page++) {
       const result = await this.request(`/api/ab/peers?current=${page}&pageSize=100&ab=${encodeURIComponent(book.guid)}`, 'POST');
       if (result.data === undefined || result.data === null) throw new ApiFailure('服务器未返回完整设备列表，已取消同步');
       if (!Array.isArray(result.data)) throw new ApiFailure('地址簿设备列表无效');
-      // Official-client semantics (upstream _fetchPeers): total is a first-page hint for
-      // loop counting only, never a completeness guarantee. Some servers ignore
-      // current/pageSize and always return the whole table, so a mismatch between total
-      // and accumulated rows must not fail the fetch.
-      if (total === 0 && typeof result.total === 'number' && result.total > 0) total = result.total;
+      // Browsing may show a partial list from a non-standard server. Sync must
+      // prove completeness before missing rows can become deletion candidates.
+      const pageTotal = typeof result.total === 'number' && Number.isSafeInteger(result.total) && result.total >= 0
+        ? result.total : -1;
+      if (strict && ((result.total !== undefined && pageTotal < 0) ||
+        (total >= 0 && pageTotal >= 0 && pageTotal !== total))) {
+        throw new ApiFailure('服务器未正确分页，设备列表不完整，请升级 API 服务');
+      }
+      if (total < 0 && pageTotal >= 0) total = pageTotal;
       const rows = RustDeskApiService.parsePeers(result.data);
       if (strict && rows.length !== result.data.length) throw new ApiFailure('设备列表含无效或重复记录，已取消同步');
       let added = 0;
       for (const row of rows) {
         if (!peers.some((peer: ApiPeer) => peer.id === row.id)) { peers.push(row); added++; }
       }
-      if (total > 0 && peers.length >= total) break;
-      if (total > 0 && page * 100 >= total) break;
-      if (!added) break;
-      if (result.data.length < 100 && !(total > peers.length)) break;
+      if (strict && total >= 0 && peers.length > total) {
+        throw new ApiFailure('服务器未正确分页，设备列表不完整，请升级 API 服务');
+      }
+      if (total >= 0 && peers.length >= total) break;
+      if (!added) {
+        if (strict && (total > peers.length || result.data.length > 0)) {
+          throw new ApiFailure('服务器未正确分页，设备列表不完整，请升级 API 服务');
+        }
+        break;
+      }
+      // Without total, a short page is only a browsing hint. A sync must
+      // continue to an explicit empty page (servers may cap their own page size).
+      if (!strict && total < 0 && result.data.length < 100) break;
       if (page === 50) throw new ApiFailure('设备超过分页限制，请在服务端分组后重试');
     }
     return peers;

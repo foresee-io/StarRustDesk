@@ -26,11 +26,9 @@ export class ApiBookSync {
     }
     return result;
   }
-  // By design, direct-IP entries do not take part in two-way sync: both sides
-  // (local and remote) are filtered to syncable IDs, so direct-IP peers never
-  // produce "download" changes that can never settle.
+  // Direct-IP entries must participate on both sides so imports converge.
   static syncableId(id: string): boolean {
-    return /^[A-Za-z0-9_-]{1,64}$/.test(id);
+    return RustDeskApiService.validPeerId(id);
   }
   static key(api: RustDeskApiService, book: ApiBook): string {
     return `api-book-sync:${encodeURIComponent(api.server)}:${encodeURIComponent(api.username)}:${encodeURIComponent(book.guid || 'legacy')}`;
