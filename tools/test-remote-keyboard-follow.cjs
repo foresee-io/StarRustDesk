@@ -59,6 +59,7 @@ const names = ['isHandheldDevice', 'shouldFollowTouchMouse', 'touchMouseFollowBl
   'handleRemoteKeyboardHeightChange', 'handleRemoteKeyboardEditingChange',
   'scheduleRemoteKeyboardClose', 'cancelRemoteKeyboardClose', 'traceRemoteKeyboardState',
   'toggleRemoteKeyboard', 'openRemoteKeyboard', 'closeRemoteKeyboard',
+  'snapshotRemoteKeyboardViewport', 'getKeyboardCanvasShiftY',
   'applyKeyboardResizeMode', 'restoreKeyboardAvoidMode', 'buildKeyboardCapture',
   'updateCenterFollowPointer', 'remotePointToVisual', 'getDisplayWidth', 'getDisplayHeight',
   'getDisplayLeft', 'getDisplayTop', 'getHorizontalPanLimit', 'getVerticalPanLimit', 'getPanLimit', 'canPanViewport'];
@@ -75,6 +76,7 @@ function page({ queryFails = false } = {}) {
     remoteKeyboardVisible: false, remoteKeyboardEditing: false, remoteKeyboardVisibilityKnown: false,
     remoteKeyboardFocusGeneration: 0, remoteKeyboardCloseTimer: -1,
     keyboardAvoidModeChanged: false, keyboardLayoutWidth: 0, keyboardLayoutHeight: 0, keyboardViewportHeight: 0,
+    keyboardFocusAvailable: false, pointerInitialized: false, qualityViewportHeight: 400,
     pageWidth: 800, pageHeight: 450, componentWidth: 400, componentHeight: 400,
     remoteWidth: 1000, remoteHeight: 1000, zoomScale: 2, offsetX: 0, offsetY: 0,
     lastAbsX: 500, lastAbsY: 500, edgeAutoPanEnabled: true, inputMode: 'mouse',

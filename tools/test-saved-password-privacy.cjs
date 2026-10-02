@@ -118,8 +118,8 @@ function create() {
   assert.equal(osCredentials.has('b'), false, 'async save must not copy OS password to another device');
 
   const ui = slice('  buildPasswordInput()', '  @Builder\n  buildSavedConnections');
-  assert(ui.includes("Text('密码已保存')"));
-  assert(ui.includes("Button('更换')") && ui.includes("Button('清除')"));
+  assert(ui.includes("Text(translate('密码已保存', this.uiLanguage))"));
+  assert(ui.includes("Button(translate('更换', this.uiLanguage))") && ui.includes("Button(translate('清除', this.uiLanguage))"));
   assert(ui.includes('保存后生效'));
   assert(ui.includes('.showPasswordIcon(true)'));
   assert(!source.includes('this.password = item.password'));

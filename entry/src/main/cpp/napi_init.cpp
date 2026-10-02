@@ -2017,6 +2017,8 @@ static napi_value GetVideoFrame(napi_env env, napi_callback_info info) {
     }
     int codec = VideoRender::instance().activeCodec();
     int decoderMode = VideoRender::instance().activeDecodeMode();
+    auto color = VideoRender::instance().colorInfo();
+    if (g_videoReadyGeneration.load() != g_connectionGeneration.load()) color = {};
     int64_t now = NowMs();
     int64_t previousHealthLog = g_lastVideoHealthLogMs.load();
     int status = g_connectionStatus.load();
@@ -2032,6 +2034,9 @@ static napi_value GetVideoFrame(napi_env env, napi_callback_info info) {
             " transport=" + std::to_string(rust_get_connection_transport()) +
             " codec=" + std::to_string(codec) +
             " decoder_mode=" + std::to_string(decoderMode) +
+            " dynamic_range=" + std::to_string(static_cast<int>(color.dynamicRange())) +
+            " color_output=" + std::to_string(static_cast<int>(color.output)) +
+            " bit_depth=" + std::to_string(color.bitDepth) +
             " input_total=" + std::to_string(totalFrames) +
             " input_delta=" + std::to_string(totalFrames - std::min(totalFrames, previousFrames)) +
             " bytes_total=" + std::to_string(totalBytes) +
@@ -2056,12 +2061,27 @@ static napi_value GetVideoFrame(napi_env env, napi_callback_info info) {
     napi_value decodedCountVal; napi_create_int64(env, static_cast<int64_t>(decodedFrames), &decodedCountVal); napi_set_named_property(env, obj, "decodedFrames", decodedCountVal);
     napi_value codecVal; napi_create_int32(env, codec, &codecVal); napi_set_named_property(env, obj, "codec", codecVal);
     napi_value decoderModeVal; napi_create_int32(env, decoderMode, &decoderModeVal); napi_set_named_property(env, obj, "decoderMode", decoderModeVal);
+    napi_value dynamicRangeVal; napi_create_int32(env, static_cast<int>(color.dynamicRange()), &dynamicRangeVal); napi_set_named_property(env, obj, "dynamicRange", dynamicRangeVal);
+    napi_value colorOutputVal; napi_create_int32(env, static_cast<int>(color.output), &colorOutputVal); napi_set_named_property(env, obj, "colorOutput", colorOutputVal);
+    napi_value bitDepthVal; napi_create_int32(env, color.bitDepth, &bitDepthVal); napi_set_named_property(env, obj, "bitDepth", bitDepthVal);
     napi_value delayVal; napi_create_int32(env, rust_get_connection_delay_ms(), &delayVal); napi_set_named_property(env, obj, "delayMs", delayVal);
     napi_value targetBitrateVal; napi_create_int32(env, rust_get_connection_target_bitrate_kb(), &targetBitrateVal); napi_set_named_property(env, obj, "targetBitrateKb", targetBitrateVal);
     return obj;
 }
 
 // ===== XComponent Surface =====
+
+static napi_value SetHdrDisplayFormats(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int32_t formats = 0;
+    if (argc == 1) napi_get_value_int32(env, args[0], &formats);
+    XComponentRender::instance().setHdrDisplayFormats(formats);
+    napi_value result;
+    napi_create_int32(env, 0, &result);
+    return result;
+}
 
 static napi_value SetSurfaceId(napi_env env, napi_callback_info info) {
     size_t argc = 1;
@@ -2365,6 +2385,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"testIfValidServer", nullptr, TestIfValidServer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isUsingPublicServer", nullptr, IsUsingPublicServer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getVideoFrame", nullptr, GetVideoFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setHdrDisplayFormats", nullptr, SetHdrDisplayFormats, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setSurfaceId", nullptr, SetSurfaceId, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"prepareSurfaceRebind", nullptr, PrepareSurfaceRebind, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rebindSurface", nullptr, RebindSurface, nullptr, nullptr, nullptr, napi_default, nullptr},

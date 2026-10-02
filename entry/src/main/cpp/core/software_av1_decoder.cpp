@@ -20,6 +20,17 @@ constexpr size_t MAX_QUEUED_FRAMES = 90;
 int highBitStride(int byteStride) {
     return byteStride / static_cast<int>(sizeof(uint16_t));
 }
+
+VideoColorInfo av1ColorInfo(const aom_image_t* image) {
+    VideoColorInfo color;
+    color.bitDepth = static_cast<int>(image->bit_depth);
+    color.primaries = static_cast<int>(image->cp);
+    color.transfer = static_cast<int>(image->tc);
+    color.matrix = static_cast<int>(image->mc);
+    color.range = static_cast<int>(image->range);
+    color.output = color.isHdr() ? VideoColorOutput::ToneMapped : VideoColorOutput::SDR;
+    return color;
+}
 }
 
 SoftwareAV1Decoder& SoftwareAV1Decoder::instance() {
@@ -128,6 +139,24 @@ bool SoftwareAV1Decoder::convertFrame(aom_image_t* image, std::vector<uint8_t>& 
     const int vStride = image->stride[AOM_PLANE_V];
     int result = -1;
 
+    const auto color = av1ColorInfo(image);
+    if (color.isHdr() || highBitDepth) {
+        if (format != AOM_IMG_FMT_I420 && format != AOM_IMG_FMT_I422 && format != AOM_IMG_FMT_I444) return false;
+        PlanarVideoImage source;
+        source.width = width; source.height = height;
+        source.wideSamples = highBitDepth;
+        source.monochrome = image->monochrome != 0;
+        source.chromaShiftX = image->x_chroma_shift;
+        source.chromaShiftY = image->y_chroma_shift;
+        for (int plane = 0; plane < 3; ++plane) {
+            source.planes[plane] = image->planes[plane];
+            source.strides[plane] = image->stride[plane];
+        }
+        const bool converted = convertPlanarVideoToBGRA(source, color, bgra);
+        if (!converted) DiagnosticLog::instance().append("W", "video-color", "software_hdr_conversion_unsupported");
+        return converted;
+    }
+
     if (!highBitDepth) {
         if (format == AOM_IMG_FMT_I420 || format == (AOM_IMG_FMT_YV12 & ~AOM_IMG_FMT_UV_FLIP) ||
             format == AOM_IMG_FMT_AOMI420 || format == (AOM_IMG_FMT_AOMYV12 & ~AOM_IMG_FMT_UV_FLIP)) {
@@ -213,6 +242,7 @@ void SoftwareAV1Decoder::workerLoop() {
             if (frame.generation != generation_ || resetRequested_) {
                 break;
             }
+            VideoRender::instance().updateColorInfo(av1ColorInfo(image));
             decodedFrames_.fetch_add(1);
             const bool presented = XComponentRender::instance().renderBGRAFrame(bgra.data(), static_cast<int>(bgra.size()),
                 static_cast<int>(image->d_w), static_cast<int>(image->d_h));

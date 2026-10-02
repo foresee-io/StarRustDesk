@@ -38,7 +38,7 @@ assert.match(page, /beginKeyboardToolsDrag\(\)/,
   'The shortcut bar must expose a drag start handler');
 assert.match(page, /updateKeyboardToolsDrag\(event\.offsetX, event\.offsetY\)/,
   'The shortcut bar and its compact button must be draggable');
-assert.match(page, /Text\('键'\)/,
+assert.match(page, /Text\(translate\('键', this\.uiLanguage\)\)/,
   'The collapsed shortcut bar must remain available as a small transparent button');
 assert.match(page, /this\.setFloatingPanelCollapsed\(keyboard, true\)/,
   'The expanded shortcut bar must provide a collapse action');

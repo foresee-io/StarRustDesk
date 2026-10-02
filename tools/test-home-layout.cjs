@@ -36,11 +36,11 @@ assert.match(form, /this\.connectionFormExpanded \? '收起选项⌃' : '更多�
   'compact form needs a clear advanced-options action');
 assert.match(form, /TransitionEffect\.OPACITY[\s\S]*TransitionEffect\.translate\(\{ y: -8 \}\)[\s\S]*duration: 220/,
   'advanced connection fields should animate while expanding and collapsing');
-assert.match(page, /placeholder: '远端 ID \/ IP'/,
+assert.match(page, /placeholder: translate\('远端 ID \/ IP', this\.uiLanguage\)/,
   'compact form must state that IDs and IP addresses are accepted');
 
 const saved = between('  buildSavedConnections() {', '  @Builder\n  buildConnectionStatusLegend()');
-assert.match(saved, /Text\(`\$\{this\.savedConnections\.length\}`\)/,
+assert.match(saved, /Text\(translate\(`\$\{this\.savedConnections\.length\}`, this\.uiLanguage\)\)/,
   'saved connection count should sit beside the title');
 assert.match(saved, /this\.buildConnectionStatusLegend\(\)/,
   'compact list needs a status legend');
@@ -50,9 +50,9 @@ assert.match(saved, /toggleSavedConnectionsExpanded\(\)[\s\S]*duration: 240/,
   'saved connection section should animate while expanding and collapsing');
 
 const group = between('  buildSavedConnectionGroup(', '  @Builder\n  buildGroupNameDialog()');
-assert.match(group, /Button\('连接'\)[\s\S]*CONTROL_SELECTED_BG/,
+assert.match(group, /Button\(translate\('连接', this\.uiLanguage\)\)[\s\S]*CONTROL_SELECTED_BG/,
   'saved rows should use a pale-blue connection button');
-assert.match(group, /Button\('⋯'\)[\s\S]*value: '移动到分组'[\s\S]*value: '修改连接'[\s\S]*value: '删除连接'/,
+assert.match(group, /Button\('⋯'\)[\s\S]*value: translate\('移动到分组', this\.uiLanguage\)[\s\S]*value: translate\('修改连接', this\.uiLanguage\)[\s\S]*value: translate\('删除连接', this\.uiLanguage\)/,
   'compact more menu must retain move, edit and delete');
 assert.doesNotMatch(group, /peerOnlineStateHint\(item\.remoteId\)/,
   'saved rows should stay at two text lines');

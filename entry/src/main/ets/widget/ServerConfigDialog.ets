@@ -12,6 +12,7 @@ import { OperationDiagnostic } from '../service/OperationDiagnostic'
 
 @CustomDialog
 export struct ServerConfigDialog {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @State idServer: string = ''
@@ -67,26 +68,26 @@ export struct ServerConfigDialog {
   build() {
     Scroll() {
     Column({ space: 12 }) {
-      Button(this.scanning ? '扫描中' : '扫码导入服务器配置').height(32).fontSize(13)
+      Button(translate(this.scanning ? '扫描中' : '扫码导入服务器配置', this.uiLanguage)).height(32).fontSize(13)
         .enabled(!this.scanning).onClick(() => { this.scanConfig() })
-      Button(this.showQr ? '收起配置二维码' : '显示配置二维码').height(32).fontSize(13)
+      Button(translate(this.showQr ? '收起配置二维码' : '显示配置二维码', this.uiLanguage)).height(32).fontSize(13)
         .enabled(this.idServer.trim().length > 0).onClick(() => { this.showQr = !this.showQr })
       if (this.showQr) {
         QRCode(new ServerConfigModel(this.idServer, this.relayServer, this.apiServer, this.serverKey).toQrPayload())
           .width(180).height(180).color(Color.Black).backgroundColor(Color.White)
-        Text('包含当前填写的服务器地址与公钥，不含连接密码。请仅向可信设备展示。')
+        Text(translate('包含当前填写的服务器地址与公钥，不含连接密码。请仅向可信设备展示。', this.uiLanguage))
           .fontSize(11).fontColor(this.isDarkMode ? '#D6DCE7' : '#52627A')
       }
-      if (this.errorMsg) { Text(this.errorMsg).fontSize(12).fontColor(RustDeskTheme.ERROR).width('100%') }
+      if (this.errorMsg) { Text(translate(this.errorMsg, this.uiLanguage)).fontSize(12).fontColor(RustDeskTheme.ERROR).width('100%') }
       Row({ space: 8 }) {
-        Text(translate('ID/Relay Server'))
+        Text(translate('ID/Relay Server', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
           .layoutWeight(1)
           .textAlign(TextAlign.Start)
 
-        Button('导入')
+        Button(translate('导入', this.uiLanguage))
           .height(30)
           .fontSize(12)
           .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.ACCENT)
@@ -98,7 +99,7 @@ export struct ServerConfigDialog {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
 
-        Button('导出')
+        Button(translate('导出', this.uiLanguage))
           .height(30)
           .fontSize(12)
           .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.ACCENT)
@@ -112,18 +113,18 @@ export struct ServerConfigDialog {
       }
       .width('100%')
 
-      Text('为连接指定自建的 ID、Relay 与 API 服务')
+      Text(translate('为连接指定自建的 ID、Relay 与 API 服务', this.uiLanguage))
         .fontSize(13)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
         .margin({ bottom: 4 })
 
-      this.buildField(translate('ID Server'), this.idServer, (v: string) => { this.idServer = v })
-      this.buildField(translate('Relay Server'), this.relayServer, (v: string) => { this.relayServer = v })
-      this.buildField(translate('API Server'), this.apiServer, (v: string) => { this.apiServer = v })
-      this.buildField(translate('Key'), this.serverKey, (v: string) => { this.serverKey = v })
+      this.buildField(translate('ID Server', this.uiLanguage), this.idServer, (v: string) => { this.idServer = v })
+      this.buildField(translate('Relay Server', this.uiLanguage), this.relayServer, (v: string) => { this.relayServer = v })
+      this.buildField(translate('API Server', this.uiLanguage), this.apiServer, (v: string) => { this.apiServer = v })
+      this.buildField(translate('Key', this.uiLanguage), this.serverKey, (v: string) => { this.serverKey = v })
 
-      Text('IPv6 可输入裸地址，指定端口时请使用 [IPv6]:端口，例如 [2001:db8::1]:21116')
+      Text(translate('IPv6 可输入裸地址，指定端口时请使用 [IPv6]:端口，例如 [2001:db8::1]:21116', this.uiLanguage))
         .fontSize(11)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
@@ -133,10 +134,10 @@ export struct ServerConfigDialog {
           Circle()
             .width(8)
             .height(8)
-            .fill(this.testResult.startsWith('✓') || this.testResult === translate('Server connected successfully') ? RustDeskTheme.SUCCESS : RustDeskTheme.ERROR)
-          Text(this.testResult)
+            .fill(this.testResult.startsWith('✓') || this.testResult === translate('Server connected successfully', this.uiLanguage) ? RustDeskTheme.SUCCESS : RustDeskTheme.ERROR)
+          Text(translate(this.testResult, this.uiLanguage))
             .fontSize(12)
-            .fontColor(this.testResult.startsWith('✓') || this.testResult === translate('Server connected successfully') ? RustDeskTheme.SUCCESS : RustDeskTheme.ERROR)
+            .fontColor(this.testResult.startsWith('✓') || this.testResult === translate('Server connected successfully', this.uiLanguage) ? RustDeskTheme.SUCCESS : RustDeskTheme.ERROR)
             .margin({ left: 4 })
         }
         .width('100%')
@@ -147,7 +148,7 @@ export struct ServerConfigDialog {
           LoadingProgress()
             .width(16)
             .height(16)
-          Text(translate('Testing connection...'))
+          Text(translate('Testing connection...', this.uiLanguage))
             .fontSize(12)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .margin({ left: 6 })
@@ -155,13 +156,13 @@ export struct ServerConfigDialog {
         .width('100%')
       }
 
-      Text('导出配置与 RustDesk 官方格式兼容，并包含服务器 Key，请勿发送给不可信的人。')
+      Text(translate('导出配置与 RustDesk 官方格式兼容，并包含服务器 Key，请勿发送给不可信的人。', this.uiLanguage))
         .fontSize(11)
         .fontColor('#B7791F')
         .width('100%')
 
       Row({ space: 12 }) {
-        Button(translate('Cancel'))
+        Button(translate('Cancel', this.uiLanguage))
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.SURFACE_MUTED_DARK : RustDeskTheme.SURFACE_MUTED)
           .borderRadius(6)
@@ -173,7 +174,7 @@ export struct ServerConfigDialog {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 6, ButtonType.Capsule))
 
-        Button(translate('Test Connection'))
+        Button(translate('Test Connection', this.uiLanguage))
           .fontColor(Color.White)
           .backgroundColor('#248A68')
           .borderRadius(6)
@@ -184,7 +185,7 @@ export struct ServerConfigDialog {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 6, ButtonType.Capsule))
 
-        Button(translate('OK'))
+        Button(translate('OK', this.uiLanguage))
           .fontColor(Color.White)
           .backgroundColor(RustDeskTheme.ACCENT)
           .borderRadius(6)
@@ -210,7 +211,7 @@ export struct ServerConfigDialog {
 
   testConnection(): void {
     if (this.idServer.length === 0) {
-      this.testResult = translate('Please enter ID server address')
+      this.testResult = translate('Please enter ID server address', this.uiLanguage)
       return
     }
     this.isTesting = true
@@ -218,7 +219,7 @@ export struct ServerConfigDialog {
     let result: string = RustDeskNapi.testIfValidServer(this.idServer)
     this.isTesting = false
     if (result.length === 0) {
-      this.testResult = translate('Server connected successfully')
+      this.testResult = translate('Server connected successfully', this.uiLanguage)
     } else {
       this.testResult = '✗ ' + result
     }
@@ -253,27 +254,27 @@ export struct ServerConfigDialog {
     const config: ServerConfigModel = new ServerConfigModel(
       this.idServer, this.relayServer, this.apiServer, this.serverKey)
     if (!config.isValid()) {
-      promptAction.showToast({ message: '请先填写 ID 服务器地址' })
+      promptAction.showToast({ message: translate('请先填写 ID 服务器地址', this.uiLanguage) })
       return
     }
     const result: number = await RustDeskNapi.setClipboardTextAsync(config.encode())
     if (result === 0) {
       RustDeskNapi.appendDiagnosticLog('server-config', 'official_compatible_config_exported')
-      promptAction.showToast({ message: '服务器配置已导出到剪贴板' })
+      promptAction.showToast({ message: translate('服务器配置已导出到剪贴板', this.uiLanguage) })
     } else {
-      promptAction.showToast({ message: '导出失败，请重试' })
+      promptAction.showToast({ message: translate('导出失败，请重试', this.uiLanguage) })
     }
   }
 
   async importServerConfigFromClipboard(): Promise<void> {
     const source: string = await RustDeskNapi.getClipboardTextAsync()
     if (source.trim().length === 0) {
-      promptAction.showToast({ message: '剪贴板为空，请先复制服务器配置' })
+      promptAction.showToast({ message: translate('剪贴板为空，请先复制服务器配置', this.uiLanguage) })
       return
     }
     const config: ServerConfigModel = ServerConfigModel.decode(source)
     if (!config.isValid()) {
-      promptAction.showToast({ message: '服务器配置无效' })
+      promptAction.showToast({ message: translate('服务器配置无效', this.uiLanguage) })
       return
     }
     this.idServer = config.idServer
@@ -282,17 +283,17 @@ export struct ServerConfigDialog {
     this.serverKey = config.serverKey
     this.applyConfig(this.idServer, this.relayServer, this.apiServer, this.serverKey)
     RustDeskNapi.appendDiagnosticLog('server-config', 'official_compatible_config_imported')
-    promptAction.showToast({ message: '服务器配置已导入并生效' })
+    promptAction.showToast({ message: translate('服务器配置已导入并生效', this.uiLanguage) })
   }
 
   @Builder
   buildField(label: string, value: string, onChange: (v: string) => void) {
     Column() {
-      Text(label)
+      Text(translate(label, this.uiLanguage))
         .fontSize(12)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
-      TextInput({ placeholder: label, text: value })
+      TextInput({ placeholder: translate(label, this.uiLanguage), text: value })
         .height(44)
         .fontSize(14)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)

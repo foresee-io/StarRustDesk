@@ -32,6 +32,9 @@ export interface VideoFrameInfo {
   decoderMode?: number
   delayMs?: number
   targetBitrateKb?: number
+  dynamicRange?: number
+  colorOutput?: number
+  bitDepth?: number
 }
 
 export interface RemoteCursorPosition {
@@ -476,6 +479,10 @@ export class RustDeskNapi {
 
   static setSurfaceId(surfaceId: string): number {
     return rustdeskNapi.setSurfaceId(surfaceId)
+  }
+
+  static setHdrDisplayFormats(formats: number): number {
+    return rustdeskNapi.setHdrDisplayFormats(formats)
   }
   static setApiAccountContext(json: string): number {
     return rustdeskNapi.setApiAccountContext(json);

@@ -1,13 +1,15 @@
+import { translate } from '../utils/I18n'
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.19'
-export const RELEASE_NOTES_BUILD: string = '1002019'
+export const RELEASE_NOTES_VERSION: string = '1.2.20'
+export const RELEASE_NOTES_BUILD: string = '1002020'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
 @CustomDialog
 export struct ReleaseNotesDialog {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   controller?: CustomDialogController
@@ -17,12 +19,12 @@ export struct ReleaseNotesDialog {
     Column({ space: 14 }) {
       Row({ space: 10 }) {
         Column({ space: 3 }) {
-          Text('本次更新内容')
+          Text(translate('本次更新内容', this.uiLanguage))
             .fontSize(22)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('StarRustDesk 已更新')
+          Text(translate('StarRustDesk 已更新', this.uiLanguage))
             .fontSize(13)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -30,7 +32,7 @@ export struct ReleaseNotesDialog {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
 
-        Text(`v${RELEASE_NOTES_VERSION}`)
+        Text(translate(`v${RELEASE_NOTES_VERSION}`, this.uiLanguage))
           .fontSize(13)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.ACCENT)
@@ -46,6 +48,12 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.20（1002020）· 多语言、折叠屏与 HDR 视频适配', [
+            '新增简体中文、繁体中文和英语，默认跟随系统；可在设置中手动切换，保存语言偏好，不影响远控连接、按键和用户文件名。',
+            '优化折叠屏内外屏及横竖屏的软键盘避让：保留远端画面当前比例，按可见区域和最后鼠标位置上移画面，光标同步移动；折叠、展开和旋转后重新计算。',
+            '新增实验性 HDR 视频接收与显示适配，识别 HDR10/PQ 和 HLG；连接信息增加动态范围与输出路径，补充色彩、位深和显示设备的脱敏诊断。',
+            'AV1 软件解码增加 HDR 转 SDR，完善 VP9/AV1 高位深画面转换及解码切换的色彩状态清理。真正 HDR 显示需要远端发送 HDR 视频及设备支持，不能恢复已转换为 SDR 的画面，实际效果仍需真机验证。'
+          ])
           this.buildSection('1.2.19（1002019）· 实体鼠标、画面跟随与大字体适配', [
             '修复远端光标图层可能遮挡实体鼠标点击的问题；优化鼠标与触摸兼容事件的识别及点击去重，避免左右键被误拦截。',
             '修复输入 Windows 登录密码后，本地键盘已收起但放大画面的鼠标跟随仍被阻止的问题；按实际键盘可见性和编辑状态恢复跟随，保留缩放比例与画面位置。',
@@ -345,7 +353,7 @@ export struct ReleaseNotesDialog {
       .scrollBar(BarState.Auto)
       .edgeEffect(EdgeEffect.Spring)
 
-      Button('知道了')
+      Button(translate('知道了', this.uiLanguage))
         .height(44)
         .width('100%')
         .fontSize(15)
@@ -374,7 +382,7 @@ export struct ReleaseNotesDialog {
   @Builder
   buildSection(title: string, items: string[]) {
     Column({ space: 8 }) {
-      Text(title)
+      Text(translate(title, this.uiLanguage))
         .fontSize(16)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
@@ -387,7 +395,7 @@ export struct ReleaseNotesDialog {
             .height(6)
             .fill(RustDeskTheme.ACCENT)
             .margin({ top: 7 })
-          Text(item)
+          Text(translate(item, this.uiLanguage))
             .layoutWeight(1)
             .fontSize(13)
             .lineHeight(21)

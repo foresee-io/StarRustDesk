@@ -76,7 +76,7 @@ const service = context.exports.CommunicationService;
   const panel = read('entry/src/main/ets/widget/CommunicationPanel.ets');
   assert.match(panel, /const VOICE_CALL_UI_ENABLED: boolean = true/);
   assert.match(page, /case 'chat': return '聊天与语音'/);
-  assert.match(panel, /if \(VOICE_CALL_UI_ENABLED\) \{[\s\S]*?Button\('发起语音'\)/);
+  assert.match(panel, /if \(VOICE_CALL_UI_ENABLED\) \{[\s\S]*?Button\(translate\('发起语音', this\.uiLanguage\)\)/);
   assert.match(panel, /VOICE_CALL_UI_ENABLED \? '聊天与通话' : '聊天'/);
   console.log('Communication lifecycle, privacy, backpressure and input isolation tests passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

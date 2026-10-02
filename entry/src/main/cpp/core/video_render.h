@@ -7,6 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <vector>
+#include "video_color.h"
 
 struct VideoDecoderCapabilities {
     bool h264;
@@ -40,6 +41,9 @@ public:
     std::string getSurfaceId();
     void resetSession();
     VideoDecoderCapabilities decoderCapabilities();
+    void updateColorInfo(const VideoColorInfo& color);
+    VideoColorInfo colorInfo();
+    void resetColorInfo();
 
 private:
     struct PendingFrame {
@@ -73,6 +77,8 @@ private:
     std::mutex surfaceMutex_;
     std::string surfaceId_;
     std::function<void(const uint8_t*, int, int, int)> frameCallback_;
+    std::mutex colorMutex_;
+    VideoColorInfo colorInfo_;
 };
 
 #endif

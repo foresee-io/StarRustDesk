@@ -464,6 +464,7 @@ async function test(name, fn) { await fn(); console.log(`PASS ${name}`); passed+
     const { UI } = e.load(`export class UI { ${method}\n${update}\n}`, 'CloudSettingsMethods')
     e.sandbox.getContext = () => e.context
     e.sandbox.promptAction = { showToast() {} }
+    e.sandbox.translate = key => key
     const ui = new UI()
     ui.cloudSyncEnabled = true; ui.cloudSyncBusy = false
     let result = { success: false, message: 'network failure', code: 22400002 }

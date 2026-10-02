@@ -1,3 +1,4 @@
+import { translate } from '../utils/I18n'
 import { ApiBook, ApiPeer, ApiFailure, ApiLoginOption, RustDeskApiService, AccountSession } from '../service/RustDeskApiService';
 import { common } from '@kit.AbilityKit';
 import { ApiAddressBookImport } from '../service/ApiAddressBookImport';
@@ -7,6 +8,7 @@ import { ApiBookSync, BookSyncPlan, BookSyncChange } from '../service/ApiBookSyn
 
 @CustomDialog
 export struct ApiAccountDialog {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   controller: CustomDialogController;
   @StorageLink('isDarkMode') isDarkMode: boolean = false;
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true;
@@ -226,9 +228,9 @@ export struct ApiAccountDialog {
     finally { if (this.alive) this.busy = false; }
   }
   confirmDeletePeer(peer: ApiPeer): void {
-    AlertDialog.show({ title: '删除地址簿设备', message: `从服务器地址簿删除“${peer.name}”？不会删除远端设备或其文件。`,
-      primaryButton: { value: '取消', action: () => {} },
-      secondaryButton: { value: '删除', action: () => { this.deletePeer(peer); } } });
+    AlertDialog.show({ title: translate('删除地址簿设备', this.uiLanguage), message: `从服务器地址簿删除“${peer.name}”？不会删除远端设备或其文件。`,
+      primaryButton: { value: translate('取消', this.uiLanguage), action: () => {} },
+      secondaryButton: { value: translate('删除', this.uiLanguage), action: () => { this.deletePeer(peer); } } });
   }
   async deletePeer(peer: ApiPeer): Promise<void> {
     if (this.busy) return;
@@ -252,7 +254,7 @@ export struct ApiAccountDialog {
   build() {
     Column({ space: 12 }) {
       Row() {
-        Text('服务器账号与地址簿').fontSize(19).fontWeight(FontWeight.Bold).fontColor(this.textColor()).layoutWeight(1);
+        Text(translate('服务器账号与地址簿', this.uiLanguage)).fontSize(19).fontWeight(FontWeight.Bold).fontColor(this.textColor()).layoutWeight(1);
         ApiAccountAction({ label: this.busy ? '取消请求' : '关闭', onAction: () => {
           if (this.webWaiting) {
             this.stopWebLogin(); this.busy = false; this.message = '已取消网页登录';
@@ -274,40 +276,40 @@ export struct ApiAccountDialog {
               isEnabled: !this.busy && !this.loggedIn && !this.challenge,
               onAction: () => { this.provider = 'thirdParty'; this.loginOptions = []; } });
           }.width('100%');
-          TextInput({ text: this.server, placeholder: 'API 地址，例如 https://api.example.com' }).fontSize(14)
+          TextInput({ text: this.server, placeholder: translate('API 地址，例如 https://api.example.com', this.uiLanguage) }).fontSize(14)
             .enabled(!this.loggedIn && !this.busy && !this.challenge).onChange((value: string) => { this.server = value; this.loginOptions = []; });
           if (!this.loggedIn && !this.challenge) {
             Row() {
               Checkbox({ name: 'allowHttp' }).select(this.allowHttp).enabled(!this.busy)
                 .onChange((value: boolean) => { this.allowHttp = value; this.loginOptions = []; });
-              Text('允许 HTTP（账号密码和令牌可能被窃听）').fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
+              Text(translate('允许 HTTP（账号密码和令牌可能被窃听）', this.uiLanguage)).fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
             }.width('100%');
-            TextInput({ text: this.username, placeholder: '服务器账号，不是远端设备 ID' }).enabled(!this.busy)
+            TextInput({ text: this.username, placeholder: translate('服务器账号，不是远端设备 ID', this.uiLanguage) }).enabled(!this.busy)
               .onChange((value: string) => { this.username = value; }).maxLength(128);
-            TextInput({ text: this.password, placeholder: '账号密码' }).type(InputType.Password).enabled(!this.busy)
+            TextInput({ text: this.password, placeholder: translate('账号密码', this.uiLanguage) }).type(InputType.Password).enabled(!this.busy)
               .onChange((value: string) => { this.password = value; }).maxLength(256);
             Row() {
               Checkbox({ name: 'rememberApi' }).select(this.remember).enabled(!this.busy)
                 .onChange((value: boolean) => { this.remember = value; });
-              Text('记住登录（仅令牌保存在本机安全存储）').fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
+              Text(translate('记住登录（仅令牌保存在本机安全存储）', this.uiLanguage)).fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
             }.width('100%');
             Row() {
               Checkbox({ name: 'authorizeConnections' }).select(this.authorizeConnections).enabled(!this.busy)
                 .onChange((value: boolean) => { this.authorizeConnections = value; });
-              Text('用于当前自建 ID 服务器的连接权限认证（需公钥）')
+              Text(translate('用于当前自建 ID 服务器的连接权限认证（需公钥）', this.uiLanguage))
                 .fontSize(12).fontColor(this.secondaryColor()).layoutWeight(1);
             }.width('100%');
             ApiAccountAction({ label: '登录', selected: true, isEnabled: !this.busy, onAction: () => { this.login(); } });
-            Text('官方公共网络登录后自动用于官方连接；自建网络需勾选上方连接认证。账号密码不是远端设备密码。')
+            Text(translate('官方公共网络登录后自动用于官方连接；自建网络需勾选上方连接认证。账号密码不是远端设备密码。', this.uiLanguage))
               .fontSize(12).fontColor(this.secondaryColor());
             ApiAccountAction({ label: '获取网页登录方式', isEnabled: !this.busy, onAction: () => { this.loadLoginOptions(); } });
             ForEach(this.loginOptions, (option: ApiLoginOption) => {
               ApiAccountAction({ label: `通过 ${option.name} 登录`, isEnabled: !this.busy, onAction: () => { this.webLogin(option.name); } });
             }, (option: ApiLoginOption) => option.name);
           } else if (!this.loggedIn) {
-            Text(this.challenge === 'email' ? '请输入邮箱验证码' : '请输入身份验证器验证码')
+            Text(translate(this.challenge === 'email' ? '请输入邮箱验证码' : '请输入身份验证器验证码', this.uiLanguage))
               .fontSize(14).fontColor(this.textColor());
-            TextInput({ text: this.code, placeholder: '6 位验证码' }).maxLength(6).type(InputType.Number)
+            TextInput({ text: this.code, placeholder: translate('6 位验证码', this.uiLanguage) }).maxLength(6).type(InputType.Number)
               .enabled(!this.busy).onChange((value: string) => { this.code = value; });
             Row({ space: 8 }) {
               ApiAccountAction({ label: '验证', selected: true, isEnabled: !this.busy, onAction: () => { this.login(); } });
@@ -315,7 +317,7 @@ export struct ApiAccountDialog {
             }
           } else {
             Row({ space: 8 }) {
-              Text(`已登录：${this.username}`).fontSize(14).fontColor(this.textColor()).layoutWeight(1);
+              Text(translate(`已登录：${this.username}`, this.uiLanguage)).fontSize(14).fontColor(this.textColor()).layoutWeight(1);
               ApiAccountAction({ label: '刷新', isEnabled: !this.busy, onAction: () => { this.refreshBooks(); } });
               ApiAccountAction({ label: '退出', isEnabled: !this.busy, onAction: () => { this.logout(); } });
             }.width('100%');
@@ -324,24 +326,24 @@ export struct ApiAccountDialog {
               .enabled(!this.busy).width('100%').onSelect((index: number) => { this.syncPlan = undefined; this.editingId = ''; this.loadBook(index); });
             if (this.bookIndex >= 0) {
               ApiAccountAction({ label: '预览双向同步', isEnabled: !this.busy, onAction: () => { this.previewSync(); } });
-              Text('手动同步本地全部 ID 连接与当前地址簿，请确认它们属于同一服务器。IP 直连、密码及服务器密钥不参与同步。删除及冲突会先列出，不会自动执行。')
+              Text(translate('手动同步本地全部 ID 连接与当前地址簿，请确认它们属于同一服务器。IP 直连、密码及服务器密钥不参与同步。删除及冲突会先列出，不会自动执行。', this.uiLanguage))
                 .fontSize(12).fontColor(this.secondaryColor());
             }
             if (this.syncPlan) {
               ForEach(this.syncPlan.changes, (change: BookSyncChange) => {
-                Text(`${this.syncLabel(change.kind)}：${change.name} (${change.id})`).fontSize(13).fontColor(this.textColor()).width('100%');
+                Text(`${translate(this.syncLabel(change.kind), this.uiLanguage)}：${change.name} (${change.id})`).fontSize(13).fontColor(this.textColor()).width('100%');
               }, (change: BookSyncChange) => change.id);
               Row() {
                 Checkbox().select(this.preferLocal).enabled(!this.busy).onChange((v: boolean) => { this.preferLocal = v; });
-                Text('冲突时使用本地版本（不选则使用服务器版本）').fontSize(12).fontColor(this.textColor()).layoutWeight(1);
+                Text(translate('冲突时使用本地版本（不选则使用服务器版本）', this.uiLanguage)).fontSize(12).fontColor(this.textColor()).layoutWeight(1);
               }
               ApiAccountAction({ label: '确认执行上述变更（含删除）', isEnabled: !this.busy && this.syncPlan.changes.length > 0,
                 onAction: () => { this.applySync(); } });
               ApiAccountAction({ label: '取消同步', isEnabled: !this.busy, onAction: () => { this.syncPlan = undefined; } });
             }
             if (this.editingId) {
-              TextInput({ text: this.editingName, placeholder: '设备名称' }).maxLength(100).onChange((v: string) => { this.editingName = v; });
-              TextInput({ text: this.editingTags, placeholder: '标签，用逗号分隔' }).maxLength(400).onChange((v: string) => { this.editingTags = v; });
+              TextInput({ text: this.editingName, placeholder: translate('设备名称', this.uiLanguage) }).maxLength(100).onChange((v: string) => { this.editingName = v; });
+              TextInput({ text: this.editingTags, placeholder: translate('标签，用逗号分隔', this.uiLanguage) }).maxLength(400).onChange((v: string) => { this.editingTags = v; });
               Row({ space: 8 }) {
                 ApiAccountAction({ label: '保存到服务器', isEnabled: !this.busy, onAction: () => { this.savePeer(); } });
                 ApiAccountAction({ label: '取消修改', isEnabled: !this.busy, onAction: () => { this.editingId = ''; } });
@@ -360,22 +362,22 @@ export struct ApiAccountDialog {
                   Checkbox({ name: peer.id }).select(this.selected.includes(peer.id)).onChange(() => { this.toggle(peer.id); });
                   Column({ space: 3 }) {
                     Text(peer.name).fontSize(15).fontColor(this.textColor()).width('100%');
-                    Text(`${peer.id} · ${peer.platform || '设备'}${peer.tags.length > 0 ? ' · ' + peer.tags.join(' / ') : ''}`)
+                    Text(translate(`${peer.id} · ${peer.platform || '设备'}${peer.tags.length > 0 ? ' · ' + peer.tags.join(' / ') : ''}`, this.uiLanguage))
                       .fontSize(12).fontColor(this.secondaryColor()).width('100%');
                   }.layoutWeight(1);
                   if (this.books[this.bookIndex]?.writable) {
                     Button('⋯').height(36).width(40).enabled(!this.busy).bindMenu([
-                      { value: '修改名称 / 标签', action: () => { this.editingId = peer.id; this.editingName = peer.name; this.editingTags = peer.tags.join(', '); } },
-                      { value: '删除服务器记录', action: () => { this.confirmDeletePeer(peer); } }
+                      { value: translate('修改名称 / 标签', this.uiLanguage), action: () => { this.editingId = peer.id; this.editingName = peer.name; this.editingTags = peer.tags.join(', '); } },
+                      { value: translate('删除服务器记录', this.uiLanguage), action: () => { this.confirmDeletePeer(peer); } }
                     ]);
                   }
                 }.width('100%').padding({ top: 8, bottom: 8 });
               }, (peer: ApiPeer) => peer.id);
             }
           }
-          if (this.busy) { Text('正在请求服务器…').fontSize(13).fontColor(this.secondaryColor()); }
-          if (this.message) { Text(this.message).fontSize(13).fontColor(this.textColor()).width('100%'); }
-          Text('API 用于账号和地址簿，不替代 ID/中继服务器。导入后沿用当前中继配置，请确保属于同一网络。不会自动上传本地连接；不导入远端密码或密码哈希。')
+          if (this.busy) { Text(translate('正在请求服务器…', this.uiLanguage)).fontSize(13).fontColor(this.secondaryColor()); }
+          if (this.message) { Text(translate(this.message, this.uiLanguage)).fontSize(13).fontColor(this.textColor()).width('100%'); }
+          Text(translate('API 用于账号和地址簿，不替代 ID/中继服务器。导入后沿用当前中继配置，请确保属于同一网络。不会自动上传本地连接；不导入远端密码或密码哈希。', this.uiLanguage))
             .fontSize(12).fontColor(this.secondaryColor()).width('100%');
         }.width('100%');
       }.width('100%').layoutWeight(1).scrollBar(BarState.Auto);

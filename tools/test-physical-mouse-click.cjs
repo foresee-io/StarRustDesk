@@ -127,8 +127,8 @@ test('left-button-held status indicator cannot block a drag or its release', () 
   const viewport = method('buildRemoteViewport');
   const start = viewport.indexOf('if (this.showLeftButtonHoldIndicator');
   const indicator = viewport.slice(start, viewport.indexOf('.zIndex(30)', start));
-  const dot = indicator.slice(indicator.indexOf('Circle()'), indicator.indexOf("Text('左键按住')"));
-  const label = indicator.slice(indicator.indexOf("Text('左键按住')"));
+  const dot = indicator.slice(indicator.indexOf('Circle()'), indicator.indexOf("Text(translate('左键按住', this.uiLanguage))"));
+  const label = indicator.slice(indicator.indexOf("Text(translate('左键按住', this.uiLanguage))"));
   assert.match(dot, /\.hitTestBehavior\(HitTestMode.None\)/);
   assert.match(label, /\.hitTestBehavior\(HitTestMode.None\)/);
 });

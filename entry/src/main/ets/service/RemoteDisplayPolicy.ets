@@ -45,6 +45,24 @@ export class RemoteDisplayPolicy {
       RemoteDisplayPolicy.localDisplayId !== RemoteDisplayPolicy.currentDisplayId;
     AppStorage.setOrCreate('remoteExternalDisplay', external);
     AppStorage.setOrCreate('remoteProjectionDisplayId', RemoteDisplayPolicy.currentDisplayId);
+    RemoteDisplayPolicy.publishHdrCapability();
+  }
+
+  private static publishHdrCapability(): void {
+    let mask: number = 0;
+    try {
+      // Query the owning window's display, not the phone screen when projected.
+      const target = RemoteDisplayPolicy.currentDisplayId >= 0 ?
+        display.getDisplayByIdSync(RemoteDisplayPolicy.currentDisplayId) : display.getDefaultDisplaySync();
+      for (const format of target.hdrFormats ?? []) {
+        if (format === 1) mask |= 1; // VIDEO_HLG
+        if (format === 2) mask |= 2; // VIDEO_HDR10
+        if (format === 3) mask |= 4; // VIDEO_HDR_VIVID
+      }
+    } catch (_error) {
+      // Older systems / disconnected external displays: never claim HDR output.
+    }
+    RustDeskNapi.setHdrDisplayFormats(mask);
   }
 
   static getMainWindow(): window.Window | undefined {

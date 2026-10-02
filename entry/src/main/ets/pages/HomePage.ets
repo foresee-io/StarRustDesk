@@ -13,6 +13,7 @@ import {
 @Entry
 @Component
 struct HomePage {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @State currentTabIndex: number = 0
   @State pageWidth: number = 0
   @State tabBarWidth: number = 0
@@ -123,8 +124,8 @@ struct HomePage {
       }
 
       Row({ space: 6 }) {
-        this.buildTabItem(0, translate('Connection'))
-        this.buildTabItem(1, translate('Settings'))
+        this.buildTabItem(0, 'Connection')
+        this.buildTabItem(1, 'Settings')
       }
       .width('100%')
       .height('100%')
@@ -153,7 +154,7 @@ struct HomePage {
   @Builder
   buildTabItem(index: number, label: string) {
     Row() {
-      Text(label)
+      Text(translate(label, this.uiLanguage))
         .fontSize(14)
         .maxLines(1)
         .minFontSize(11)

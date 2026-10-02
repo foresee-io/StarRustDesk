@@ -11,11 +11,13 @@ import { CommunicationService } from '../service/CommunicationService';
 import { AccountSession } from '../service/RustDeskApiService';
 import { RemoteDisplayPolicy } from '../service/RemoteDisplayPolicy';
 import { SystemFaultDiagnostic } from '../service/SystemFaultDiagnostic';
+import { LanguageService } from '../utils/LanguageService';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    LanguageService.initialize();
     RemoteSessionBackgroundTask.initialize(this.context)
     try {
       const diagnosticLogEnabled: boolean = RustDeskNapi.getOption('diagnostic-log-enabled') === '1'
@@ -82,11 +84,13 @@ export default class EntryAbility extends UIAbility {
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {
+    LanguageService.refreshSystemLanguage();
     this.updateColorMode(newConfig.colorMode);
     this.updateFontScale(newConfig.fontSizeScale);
   }
 
   onForeground(): void {
+    LanguageService.refreshSystemLanguage();
     RemoteDisplayPolicy.refresh();
     this.updateColorMode(this.context.config.colorMode);
     this.updateFontScale(this.context.config.fontSizeScale);

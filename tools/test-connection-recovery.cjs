@@ -248,7 +248,7 @@ const Stats = subject(slice('entry/src/main/ets/pages/RemotePage.ets',
   '  updateStats(frame:', '  videoCodecName('), {Date:clock});
 test('FPS counts presented frames while speed counts received bytes',()=>{
   const stats=Object.assign(new Stats(),{lastStatsTime:0,smoothFps:0,smoothKbps:0,
-    videoCodecStatus:()=>'',videoCodecName:()=>'',videoDecoderName:()=>''});
+    videoCodecStatus:()=>'',videoCodecName:()=>'',videoDecoderName:()=>'',videoDynamicRangeStatus:()=>''});
   now=1000; stats.updateStats({totalFrames:100,renderedFrames:10,totalBytes:1024});
   now=2000; stats.updateStats({totalFrames:200,renderedFrames:20,totalBytes:2048});
   assert.equal(stats.fpsText,'10.0 fps'); assert.equal(stats.speedText,'1 KB/s');
@@ -279,9 +279,11 @@ test('quality monitor drag preserves anchor, clamps bounds and suppresses drag c
   assert.equal(panel.showQualityMonitor,true);
   assert.equal(panel.getQualityMonitorX(),150); assert.equal(panel.getQualityMonitorY(),100);
   panel.updateQualityMonitorDrag(2000,2000);
-  assert.equal(panel.getQualityMonitorX(),598); assert.equal(panel.getQualityMonitorY(),202);
+  assert.equal(panel.getQualityMonitorX(),598);
+  assert.equal(panel.getQualityMonitorY(),panel.qualityViewportHeight-panel.getQualityMonitorHeight()-8);
   panel.qualityViewportWidth=320; panel.qualityViewportHeight=240;
-  assert.equal(panel.getQualityMonitorX(),118); assert.equal(panel.getQualityMonitorY(),42);
+  assert.equal(panel.getQualityMonitorX(),118);
+  assert.equal(panel.getQualityMonitorY(),panel.qualityViewportHeight-panel.getQualityMonitorHeight()-8);
   panel.updateQualityMonitorDrag(-2000,-2000);
   assert.equal(panel.getQualityMonitorX(),8); assert.equal(panel.getQualityMonitorY(),8);
 });

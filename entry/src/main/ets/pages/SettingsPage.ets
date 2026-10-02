@@ -1,6 +1,7 @@
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 ﻿import { RustDeskTheme } from '../theme/RustDeskTheme'
 import { translate } from '../utils/I18n'
+import { LanguageService } from '../utils/LanguageService'
 import { ServerConfigDialog } from '../widget/ServerConfigDialog'
 import { ApiAccountDialog } from '../widget/ApiAccountDialog'
 import {
@@ -29,6 +30,8 @@ interface SettingItem {
 
 @Component
 export struct SettingsPage {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
+  @StorageLink('uiLanguagePreference') uiLanguagePreference: string = 'system'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('uiFontScale') uiFontScale: number = 1
   @StorageLink('isDarkMode') isDarkMode: boolean = false
@@ -80,7 +83,7 @@ export struct SettingsPage {
   })
   private cloudPasswordDialogController: CustomDialogController = new CustomDialogController({
     builder: SettingsPasswordDialog({
-      title: '云备份密码',
+      title: translate('云备份密码', this.uiLanguage),
       description: '密码仅保存在本机安全存储中，新设备恢复时需要重新输入。',
       onSave: (password: string) => {
         this.saveCloudPassword(password)
@@ -122,12 +125,12 @@ export struct SettingsPage {
     Column() {
       Row() {
         Column({ space: 4 }) {
-          Text('设置')
+          Text(translate('设置', this.uiLanguage))
             .fontSize(this.pageWidth >= 820 ? 30 : 26)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('连接质量、网络服务与外观')
+          Text(translate('连接质量、网络服务与外观', this.uiLanguage))
             .fontSize(14)
             .fontColor(this.isDarkMode ? '#B7C0CF' : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -140,9 +143,10 @@ export struct SettingsPage {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildLanguageCard()
           this.buildButtonShapeCard()
-          this.buildSectionCard(translate('Account'), [
-            { label: translate('Device Name'), value: RustDeskNapi.getDeviceName() },
+          this.buildSectionCard(translate('Account', this.uiLanguage), [
+            { label: translate('Device Name', this.uiLanguage), value: RustDeskNapi.getDeviceName() },
           ])
           this.buildDisplayCard()
           this.buildInputCard()
@@ -174,17 +178,62 @@ export struct SettingsPage {
   }
 
   @Builder
+  buildLanguageCard() {
+    Column({ space: 12 }) {
+      Text(translate('Language', this.uiLanguage))
+        .fontSize(17)
+        .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
+        .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
+        .width('100%')
+      Flex({ wrap: FlexWrap.Wrap }) {
+        this.buildLanguageChoice('system', '跟随系统')
+        this.buildLanguageChoice('zh-Hans', '简体中文')
+        this.buildLanguageChoice('zh-Hant', '繁體中文')
+        this.buildLanguageChoice('en', 'English')
+      }.width('100%')
+      Text(translate('界面语言立即生效，不影响远控连接；系统权限提示在下次启动时应用。', this.uiLanguage))
+        .fontSize(12)
+        .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
+        .width('100%')
+    }
+    .padding(16).width('100%')
+    .backgroundColor(this.isDarkMode ? RustDeskTheme.HOME_CARD_DARK : RustDeskTheme.HOME_CARD)
+    .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.HOME_BORDER_DARK : RustDeskTheme.HOME_BORDER })
+    .borderRadius(RustDeskTheme.HOME_CARD_RADIUS)
+  }
+
+  @Builder
+  buildLanguageChoice(value: string, label: string) {
+    Button(value === 'system' ? translate('跟随系统', this.uiLanguage) : label)
+      .id('language-' + value)
+      .fontSize(14)
+      .labelStyle({ maxLines: 2, minFontSize: 11, maxFontSize: 14,
+        heightAdaptivePolicy: TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST })
+      .constraintSize({ minHeight: this.buttonShapeOptionHeight(), minWidth: 110 })
+      .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+      .margin({ right: 8, bottom: 8 })
+      .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
+      .backgroundColor(this.uiLanguagePreference === value ?
+        (this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BG_DARK : RustDeskTheme.CONTROL_SELECTED_BG) :
+        (this.isDarkMode ? RustDeskTheme.HOME_SURFACE_DARK : RustDeskTheme.HOME_SURFACE))
+      .border({ width: this.uiLanguagePreference === value ? 2 : 1,
+        color: this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_BORDER_DARK : RustDeskTheme.CONTROL_SELECTED_BORDER })
+      .onClick(() => { LanguageService.setPreference(value) })
+      .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
+  }
+
+  @Builder
   buildApiAccountEntry() {
     Button() {
       Row({ space: 12 }) {
         Column({ space: 5 }) {
-          Text('服务器账号')
+          Text(translate('服务器账号', this.uiLanguage))
             .fontSize(17)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? '#F2F6FF' : '#17253D')
             .width('100%')
             .textAlign(TextAlign.Start)
-          Text('API 登录与地址簿')
+          Text(translate('API 登录与地址簿', this.uiLanguage))
             .fontSize(14)
             .fontColor(this.isDarkMode ? '#C5D5EB' : '#445B78')
             .width('100%')
@@ -206,7 +255,7 @@ export struct SettingsPage {
     .padding(0)
     .backgroundColor(this.isDarkMode ? '#24364D' : '#EDF4FF')
     .border({ width: 1, color: this.isDarkMode ? '#516B8B' : '#CDDEF4' })
-    .accessibilityText('服务器账号，API 登录与地址簿')
+    .accessibilityText(translate('服务器账号，API 登录与地址簿', this.uiLanguage))
     .onClick(() => { this.apiAccountDialogController.open() })
     .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
   }
@@ -214,7 +263,7 @@ export struct SettingsPage {
   @Builder
   buildDisplayCard() {
     Column() {
-      Text(translate('Display'))
+      Text(translate('Display', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -222,11 +271,11 @@ export struct SettingsPage {
         .margin({ bottom: 8 })
 
       Row() {
-        Text(translate('Resolution'))
+        Text(translate('Resolution', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Text(this.resolution)
+        Text(translate(this.resolution, this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         Text('>')
@@ -258,11 +307,11 @@ export struct SettingsPage {
         .margin({ top: 4, bottom: 4 })
 
       Row() {
-        Text(translate('Frame Rate'))
+        Text(translate('Frame Rate', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Text(this.frameRate.toString())
+        Text(translate(this.frameRate.toString(), this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         Text('>')
@@ -309,7 +358,7 @@ export struct SettingsPage {
 
   @Builder
   buildOptionItem(label: string, onClick: () => void) {
-    Text(label)
+    Text(translate(label, this.uiLanguage))
       .fontSize(14)
       .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
       .padding({ top: 6, bottom: 6, left: 8 })
@@ -326,7 +375,7 @@ export struct SettingsPage {
   @Builder
   buildSectionCard(title: string, items: SettingItem[]) {
     Column() {
-      Text(title)
+      Text(translate(title, this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -335,12 +384,12 @@ export struct SettingsPage {
 
       ForEach(items, (item: SettingItem) => {
         Row() {
-          Text(item.label)
+          Text(translate(item.label, this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           Blank()
           if (item.value.length > 0) {
-            Text(item.value)
+            Text(translate(item.value, this.uiLanguage))
               .fontSize(RustDeskTheme.FONT_SIZE_BODY)
               .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
           }
@@ -362,12 +411,12 @@ export struct SettingsPage {
     Column({ space: 4 }) {
       Row() {
         Column({ space: 4 }) {
-          Text('显示本地鼠标指针')
+          Text(translate('显示本地鼠标指针', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('仅控制本机连接的物理鼠标指针，远端真实光标始终显示')
+          Text(translate('仅控制本机连接的物理鼠标指针，远端真实光标始终显示', this.uiLanguage))
             .fontSize(12)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -399,12 +448,12 @@ export struct SettingsPage {
     Column({ space: 4 }) {
       Row() {
         Column({ space: 4 }) {
-          Text('播放远端声音')
+          Text(translate('播放远端声音', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('播放远端设备的系统声音；有真实音频时接入系统播控中心')
+          Text(translate('播放远端设备的系统声音；有真实音频时接入系统播控中心', this.uiLanguage))
             .fontSize(12)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -438,14 +487,14 @@ export struct SettingsPage {
   @Builder
   buildCloudSyncCard() {
     Column({ space: 4 }) {
-      Text('华为云空间')
+      Text(translate('华为云空间', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
         .margin({ bottom: 4 })
 
-      Text('在同一华为账号的设备间备份和恢复已保存连接、分组与服务器地址。')
+      Text(translate('在同一华为账号的设备间备份和恢复已保存连接、分组与服务器地址。', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
         .lineHeight(19)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
@@ -458,12 +507,12 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('个人云空间同步')
+          Text(translate('个人云空间同步', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(this.cloudSyncStatus)
+          Text(translate(this.cloudSyncStatus, this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -488,12 +537,12 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('同步连接密码和服务器密钥')
+          Text(translate('同步连接密码和服务器密钥', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(this.cloudSyncIncludesSecrets ? '同步时使用 AES-256-GCM 加密敏感信息' : '默认不上传敏感信息')
+          Text(translate(this.cloudSyncIncludesSecrets ? '同步时使用 AES-256-GCM 加密敏感信息' : '默认不上传敏感信息', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -516,11 +565,11 @@ export struct SettingsPage {
 
       if (this.cloudSyncEnabled && this.cloudSyncIncludesSecrets) {
         Row() {
-          Text('备份密码仅保存在本机')
+          Text(translate('备份密码仅保存在本机', this.uiLanguage))
             .fontSize(11)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
           Blank()
-          Text('更换密码')
+          Text(translate('更换密码', this.uiLanguage))
             .fontSize(12)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
@@ -541,7 +590,7 @@ export struct SettingsPage {
         .color(this.isDarkMode ? RustDeskTheme.DIVIDER_DARK : RustDeskTheme.DIVIDER)
 
       Row({ space: 10 }) {
-        Button(this.cloudSyncBusy ? '同步中…' : '立即同步')
+        Button(translate(this.cloudSyncBusy ? '同步中…' : '立即同步', this.uiLanguage))
           .fontSize(14)
           .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.ACCENT_SOFT_DARK : RustDeskTheme.ACCENT_SOFT)
@@ -552,7 +601,7 @@ export struct SettingsPage {
             this.syncCloudNow(false, false)
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button('从云端恢复')
+        Button(translate('从云端恢复', this.uiLanguage))
           .fontSize(14)
           .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.ACCENT_SOFT_DARK : RustDeskTheme.ACCENT_SOFT)
@@ -567,7 +616,7 @@ export struct SettingsPage {
       .width('100%')
       .padding({ top: 10, bottom: 6 })
 
-      Text('还需在系统“设置 > 华为账号 > 云空间”中允许 StarRustDesk 同步。')
+      Text(translate('还需在系统“设置 > 华为账号 > 云空间”中允许 StarRustDesk 同步。', this.uiLanguage))
         .fontSize(11)
         .lineHeight(17)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
@@ -611,7 +660,7 @@ export struct SettingsPage {
       this.cloudPasswordDialogController.open()
     } catch (_error) {
       this.cloudSyncStatus = '无法读取本机云备份密码，请稍后重试'
-      promptAction.showToast({ message: this.cloudSyncStatus })
+      promptAction.showToast({ message: translate(this.cloudSyncStatus, this.uiLanguage) })
     }
   }
 
@@ -631,7 +680,7 @@ export struct SettingsPage {
         await this.syncCloudNow(false, false)
       }
     } catch (_error) {
-      promptAction.showToast({ message: '备份密码保存失败' })
+      promptAction.showToast({ message: translate('备份密码保存失败', this.uiLanguage) })
     }
   }
 
@@ -653,19 +702,19 @@ export struct SettingsPage {
         this.cloudPasswordAction = result.passwordAction ?? (restoreOnly ? 'restore' : 'sync')
         this.cloudPasswordDialogController.open()
         this.cloudSyncStatus = '需要云备份密码'
-        if (!quiet) promptAction.showToast({ message: result.message })
+        if (!quiet) promptAction.showToast({ message: translate(result.message, this.uiLanguage) })
         return
       }
       if (result.success) this.updateCloudSyncStatus()
       else this.cloudSyncStatus = result.message
       this.cloudSyncIncludesSecrets = CloudSyncService.includesSecrets()
       if (!quiet || !result.success) {
-        promptAction.showToast({ message: result.message })
+        promptAction.showToast({ message: translate(result.message, this.uiLanguage) })
       }
     } catch (_error) {
       if (this.cloudSyncEnabled) {
         this.cloudSyncStatus = '云同步未完成，请开启诊断日志后重试'
-        if (!quiet) promptAction.showToast({ message: this.cloudSyncStatus })
+        if (!quiet) promptAction.showToast({ message: translate(this.cloudSyncStatus, this.uiLanguage) })
       }
     } finally {
       this.cloudSyncBusy = false
@@ -674,17 +723,17 @@ export struct SettingsPage {
 
   confirmCloudRestore(): void {
     AlertDialog.show({
-      title: '从云端恢复',
-      message: '云端的连接、分组和服务器配置将覆盖本机对应内容。未加密备份不会覆盖本机已有密码与服务器密钥。',
+      title: translate('从云端恢复', this.uiLanguage),
+      message: translate('云端的连接、分组和服务器配置将覆盖本机对应内容。未加密备份不会覆盖本机已有密码与服务器密钥。', this.uiLanguage),
       autoCancel: true,
       alignment: DialogAlignment.Center,
       primaryButton: {
-        value: '取消',
+        value: translate('取消', this.uiLanguage),
         action: () => {
         },
       },
       secondaryButton: {
-        value: '恢复',
+        value: translate('恢复', this.uiLanguage),
         fontColor: RustDeskTheme.ACCENT,
         action: () => {
           this.syncCloudNow(true, false)
@@ -710,21 +759,20 @@ export struct SettingsPage {
     }
     let date: Date = new Date(lastTime)
     let pad: (value: number) => string = (value: number): string => value < 10 ? `0${value}` : value.toString()
-    this.cloudSyncStatus = `上次同步 ${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-      `${pad(date.getHours())}:${pad(date.getMinutes())}`
+    this.cloudSyncStatus = `上次同步 ${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
   }
 
   @Builder
   buildDiagnosticsCard() {
     Column({ space: 4 }) {
-      Text('问题诊断')
+      Text(translate('问题诊断', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
         .margin({ bottom: 4 })
 
-      Text('诊断默认关闭。开启后记录连接、网络通道、视频编码和解码状态；不会记录密码、验证码、剪贴板内容或密钥。')
+      Text(translate('诊断默认关闭。开启后记录连接、网络通道、视频编码和解码状态；不会记录密码、验证码、剪贴板内容或密钥。', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
         .lineHeight(19)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
@@ -737,12 +785,12 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('诊断日志')
+          Text(translate('诊断日志', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(this.diagnosticLogEnabled ? '本地记录运行及系统故障日志，不自动上传；关闭时清除已采集的系统故障记录' : '已关闭，不会在后台写入诊断日志')
+          Text(translate(this.diagnosticLogEnabled ? '本地记录运行及系统故障日志，不自动上传；关闭时清除已采集的系统故障记录' : '已关闭，不会在后台写入诊断日志', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -767,19 +815,19 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text(this.diagnosticLogBusy ? '正在导出…' : '导出诊断日志')
+          Text(translate(this.diagnosticLogBusy ? '正在导出…' : '导出诊断日志', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('包含已采集的崩溃/卡死记录；闪退后请重新打开应用，稍候再导出')
+          Text(translate('包含已采集的崩溃/卡死记录；闪退后请重新打开应用，稍候再导出', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
-        Text('导出')
+        Text(translate('导出', this.uiLanguage))
           .fontSize(14)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
@@ -800,7 +848,7 @@ export struct SettingsPage {
         .color(this.isDarkMode ? RustDeskTheme.DIVIDER_DARK : RustDeskTheme.DIVIDER)
 
       Row() {
-        Text('清除诊断日志')
+        Text(translate('清除诊断日志', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? '#FF9A9A' : RustDeskTheme.ERROR)
         Blank()
@@ -852,11 +900,11 @@ export struct SettingsPage {
       outputFile = fileIo.openSync(saveUris[0],
         fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC)
       fileIo.writeSync(outputFile.fd, content)
-      promptAction.showToast({ message: '诊断日志导出成功' })
+      promptAction.showToast({ message: translate('诊断日志导出成功', this.uiLanguage) })
       RustDeskNapi.appendDiagnosticLog('support', 'log_export_succeeded')
     } catch (_e) {
       RustDeskNapi.appendDiagnosticLog('support', 'log_export_failed')
-      promptAction.showToast({ message: '诊断日志导出失败，请重新选择保存位置' })
+      promptAction.showToast({ message: translate('诊断日志导出失败，请重新选择保存位置', this.uiLanguage) })
     } finally {
       if (outputFile !== undefined) {
         try {
@@ -877,22 +925,22 @@ export struct SettingsPage {
 
   confirmClearDiagnosticLog(): void {
     AlertDialog.show({
-      title: '清除诊断日志',
-      message: '清除后，当前、上一份诊断日志和已采集的系统故障记录都无法恢复。确定继续吗？',
+      title: translate('清除诊断日志', this.uiLanguage),
+      message: translate('清除后，当前、上一份诊断日志和已采集的系统故障记录都无法恢复。确定继续吗？', this.uiLanguage),
       autoCancel: true,
       alignment: DialogAlignment.Center,
       primaryButton: {
-        value: '取消',
+        value: translate('取消', this.uiLanguage),
         action: () => {
         },
       },
       secondaryButton: {
-        value: '清除',
+        value: translate('清除', this.uiLanguage),
         fontColor: RustDeskTheme.ERROR,
         action: () => {
           RustDeskNapi.clearDiagnosticLog()
           SystemFaultDiagnostic.clear()
-          promptAction.showToast({ message: '诊断日志已清除' })
+          promptAction.showToast({ message: translate('诊断日志已清除', this.uiLanguage) })
         },
       },
     })
@@ -901,7 +949,7 @@ export struct SettingsPage {
   @Builder
   buildAboutCard() {
     Column() {
-      Text(translate('About'))
+      Text(translate('About', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -909,11 +957,11 @@ export struct SettingsPage {
         .margin({ bottom: 8 })
 
       Row() {
-        Text(translate('Version'))
+        Text(translate('Version', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Text(RELEASE_NOTES_VERSION)
+        Text(translate(RELEASE_NOTES_VERSION, this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
       }
@@ -926,11 +974,11 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('更新日志')
+          Text(translate('更新日志', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(`查看 v${RELEASE_NOTES_VERSION} 的更新内容`)
+          Text(translate(`查看 v${RELEASE_NOTES_VERSION} 的更新内容`, this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -954,11 +1002,11 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('文件传输历史')
+          Text(translate('文件传输历史', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('查看发送、取回、失败和取消记录')
+          Text(translate('查看发送、取回、失败和取消记录', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -977,10 +1025,10 @@ export struct SettingsPage {
       })
 
       Row() {
-        Text('会话录像').fontSize(RustDeskTheme.FONT_SIZE_BODY)
+        Text(translate('会话录像', this.uiLanguage)).fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .layoutWeight(1)
-        Text('查看 / 导出  >').fontSize(RustDeskTheme.FONT_SIZE_SMALL)
+        Text(translate('查看 / 导出  >', this.uiLanguage)).fontSize(RustDeskTheme.FONT_SIZE_SMALL)
           .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
       }
       .width('100%').padding({ top: 14, bottom: 14 })
@@ -992,11 +1040,11 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('加入 QQ 群')
+          Text(translate('加入 QQ 群', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text(`群号 ${QQ_GROUP_NUMBER}`)
+          Text(translate(`群号 ${QQ_GROUP_NUMBER}`, this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -1019,11 +1067,11 @@ export struct SettingsPage {
         .color(this.isDarkMode ? RustDeskTheme.DIVIDER_DARK : RustDeskTheme.DIVIDER)
 
       Row() {
-        Text(translate('APP Filing Number'))
+        Text(translate('APP Filing Number', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Text('浙ICP备2026058556号-2A')
+        Text(translate('浙ICP备2026058556号-2A', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
           .fontColor(this.isDarkMode ? '#76A9FF' : RustDeskTheme.ACCENT)
         Text('>')
@@ -1067,9 +1115,9 @@ export struct SettingsPage {
       try {
         let data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, QQ_GROUP_NUMBER)
         await pasteboard.getSystemPasteboard().setData(data)
-        promptAction.showToast({ message: `未检测到 QQ，群号 ${QQ_GROUP_NUMBER} 已复制` })
+        promptAction.showToast({ message: translate(`未检测到 QQ，群号 ${QQ_GROUP_NUMBER} 已复制`, this.uiLanguage) })
       } catch (_) {
-        promptAction.showToast({ message: `请在 QQ 中搜索群号 ${QQ_GROUP_NUMBER}` })
+        promptAction.showToast({ message: translate(`请在 QQ 中搜索群号 ${QQ_GROUP_NUMBER}`, this.uiLanguage) })
       }
     }
   }
@@ -1079,11 +1127,11 @@ export struct SettingsPage {
     Column() {
       Row() {
         Column() {
-          Text(translate('ID/Relay Server'))
+          Text(translate('ID/Relay Server', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
-          Text(translate('Configure custom server'))
+          Text(translate('Configure custom server', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         }
@@ -1107,12 +1155,12 @@ export struct SettingsPage {
 
       Row() {
         Column({ space: 3 }) {
-          Text('查询服务器/设备在线状态')
+          Text(translate('查询服务器/设备在线状态', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_BODY)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('默认关闭；开启后定期查询已保存设备，手动连接不受影响')
+          Text(translate('默认关闭；开启后定期查询已保存设备，手动连接不受影响', this.uiLanguage))
             .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -1143,17 +1191,17 @@ export struct SettingsPage {
   @Builder
   buildButtonShapeCard() {
     Column({ space: 12 }) {
-      Text('按钮样式')
+      Text(translate('按钮样式', this.uiLanguage))
         .fontSize(16)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
-      Text('应用到连接、设置、远控功能栏和弹窗，立即生效并记住选择')
+      Text(translate('应用到连接、设置、远控功能栏和弹窗，立即生效并记住选择', this.uiLanguage))
         .fontSize(12)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
       Row({ space: 12 }) {
-        Button(this.roundedRectButtons ? '✓ 圆角长方形' : '圆角长方形', { type: ButtonType.Normal })
+        Button(translate(this.roundedRectButtons ? '✓ 圆角长方形' : '圆角长方形', this.uiLanguage), { type: ButtonType.Normal })
           .id('buttonShapeRectangle')
           .layoutWeight(1)
           .height(this.buttonShapeOptionHeight())
@@ -1167,7 +1215,7 @@ export struct SettingsPage {
           .border({ width: 1, color: this.isDarkMode ? RustDeskTheme.HOME_BORDER_DARK : RustDeskTheme.HOME_BORDER })
           .onClick(() => { this.setButtonShape(true) })
           .borderRadius(12)
-        Button(this.roundedRectButtons ? '经典圆润' : '✓ 经典圆润', { type: ButtonType.Capsule })
+        Button(translate(this.roundedRectButtons ? '经典圆润' : '✓ 经典圆润', this.uiLanguage), { type: ButtonType.Capsule })
           .id('buttonShapeClassic')
           .layoutWeight(1)
           .height(this.buttonShapeOptionHeight())
@@ -1202,7 +1250,7 @@ export struct SettingsPage {
   buildThemeToggle() {
     Column() {
       Row() {
-        Text(translate('Dark Mode'))
+        Text(translate('Dark Mode', this.uiLanguage))
           .fontSize(RustDeskTheme.FONT_SIZE_BODY)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -1229,6 +1277,7 @@ export struct SettingsPage {
 
 @CustomDialog
 struct SettingsPasswordDialog {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false
   @State password: string = ''
@@ -1242,7 +1291,7 @@ struct SettingsPasswordDialog {
 
   build() {
     Column({ space: 12 }) {
-      Text(this.title)
+      Text(translate(this.title, this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_TITLE)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
@@ -1250,14 +1299,14 @@ struct SettingsPasswordDialog {
         .textAlign(TextAlign.Start)
 
       if (this.description.length > 0) {
-        Text(this.description)
+        Text(translate(this.description, this.uiLanguage))
           .fontSize(12)
           .lineHeight(18)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
           .width('100%')
       }
 
-      TextInput({ placeholder: translate('Password'), text: this.password })
+      TextInput({ placeholder: translate('Password', this.uiLanguage), text: this.password })
         .height(40)
         .fontSize(14)
         .type(InputType.Password)
@@ -1272,7 +1321,7 @@ struct SettingsPasswordDialog {
           this.errorMsg = ''
         })
 
-      TextInput({ placeholder: translate('Confirm Password'), text: this.passwordConfirm })
+      TextInput({ placeholder: translate('Confirm Password', this.uiLanguage), text: this.passwordConfirm })
         .height(40)
         .fontSize(14)
         .type(InputType.Password)
@@ -1288,14 +1337,14 @@ struct SettingsPasswordDialog {
         })
 
       if (this.errorMsg.length > 0) {
-        Text(this.errorMsg)
+        Text(translate(this.errorMsg, this.uiLanguage))
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
           .width('100%')
       }
 
       Row({ space: 12 }) {
-        Button(translate('Cancel'))
+        Button(translate('Cancel', this.uiLanguage))
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
           .backgroundColor(this.isDarkMode ? RustDeskTheme.SURFACE_MUTED_DARK : RustDeskTheme.BG_LIGHT)
           .borderRadius(8)
@@ -1308,7 +1357,7 @@ struct SettingsPasswordDialog {
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 8, ButtonType.Capsule))
 
-        Button(translate('Save'))
+        Button(translate('Save', this.uiLanguage))
           .fontColor(Color.White)
           .backgroundColor(RustDeskTheme.ACCENT)
           .borderRadius(8)
@@ -1319,7 +1368,7 @@ struct SettingsPasswordDialog {
               return
             }
             if (this.password !== this.passwordConfirm) {
-              this.errorMsg = translate('Passwords do not match')
+              this.errorMsg = translate('Passwords do not match', this.uiLanguage)
               return
             }
             let password: string = this.password

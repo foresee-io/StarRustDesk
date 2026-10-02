@@ -23,7 +23,7 @@ expect(theme, /CONTROL_SELECTED_TEXT:\s*ResourceColor\s*=\s*'#246BCE'/,
   'light toolbar selection text must remain readable blue')
 expect(remotePage, /@State remoteToolbarCollapsed:\s*boolean\s*=\s*false/,
   'remote toolbar must support a collapsed state')
-expect(remotePage, /buildFloatingToolbar\(\)[\s\S]*Text\('控'\)[\s\S]*setFloatingPanelCollapsed\(false, false\)/,
+expect(remotePage, /buildFloatingToolbar\(\)[\s\S]*Text\(translate\('控', this\.uiLanguage\)\)[\s\S]*setFloatingPanelCollapsed\(false, false\)/,
   'collapsed remote toolbar must expose a compact restore button')
 expect(remotePage, /beginRemoteToolbarDrag\(\)[\s\S]*updateRemoteToolbarDrag\(offsetX:\s*number,\s*offsetY:\s*number\)/,
   'remote toolbar must support bounded dragging')
@@ -37,7 +37,7 @@ expect(remotePage, /selected \? this\.controlSelectedBackgroundColor\(\) : this\
   'general selected toolbar buttons must use the pale-blue selected style')
 expect(remotePage, /按钮变为淡蓝色/,
   'gesture help must describe the new selected state')
-expect(remotePage, /Button\(`屏\$\{display \+ 1\}`\)[\s\S]*?\.width\(this\.adaptiveToolbarButtonWidth\(vertical \? 80 : 44\)\)/,
+expect(remotePage, /Button\(translate\(`屏\$\{display \+ 1\}`, this\.uiLanguage\)\)[\s\S]*?\.width\(this\.adaptiveToolbarButtonWidth\(vertical \? 80 : 44\)\)/,
   'phone display buttons must keep their compact base width and adapt to large system fonts')
 expect(remotePage, /item === 'input'[\s\S]*buildInputModeButton\(vertical \? 80 : 56, vertical, item\)/,
   'the dynamic toolbar must preserve the compact phone input-mode button')
@@ -75,7 +75,7 @@ expect(remotePage, /updateVirtualMouseMove[\s\S]*updatePointerFromVirtualMouse\(
   'virtual mouse dragging must not reuse accelerated touchpad deltas')
 expect(remotePage, /handleVirtualMouseButtonTouch[\s\S]*TouchType\.Move[\s\S]*VIRTUAL_MOUSE_BUTTON_DRAG_THRESHOLD[\s\S]*beginVirtualMouseButtonDrag[\s\S]*TouchType\.Up[\s\S]*clickVirtualMouseButton/,
   'virtual mouse buttons must distinguish taps from drag selection in one touch path')
-expect(remotePage, /Button\('左键'[\s\S]*?handleVirtualMouseButtonTouch\('left'[\s\S]*?Button\('右键'[\s\S]*?handleVirtualMouseButtonTouch\('right'/,
+expect(remotePage, /Button\(translate\('左键'[\s\S]*?handleVirtualMouseButtonTouch\('left'[\s\S]*?Button\(translate\('右键'[\s\S]*?handleVirtualMouseButtonTouch\('right'/,
   'both virtual mouse buttons must use the conflict-free touch handler')
 expect(remotePage, /clickVirtualMouseButtonFallback[\s\S]*virtualMouseLastTouchResolvedAt[\s\S]*clickVirtualMouseButton[\s\S]*handleVirtualMouseButtonTouch\('left'[\s\S]*clickVirtualMouseButtonFallback\('left'/,
   'virtual mouse buttons must provide a deduplicated click fallback')
@@ -89,8 +89,12 @@ expect(remotePage, /setKeyboardAvoidMode\(KeyboardAvoidMode\.RESIZE\)/,
   'the keyboard must resize the available area for floating controls')
 expect(remotePage, /\.height\(this\.getRemoteCanvasHeight\(\)\)[\s\S]*?minHeight: this\.keyboardViewportHeight[\s\S]*?\.align\(Alignment.Center\)/,
   'the landscape canvas keeps its full height and moves upward inside the clipped available area')
-expect(remotePage, /keyboardViewportHeight = this\.isHandheldLandscape\(\) \? this\.componentHeight : 0/,
-  'opening the keyboard must snapshot the unscaled viewport height, not recompute a smaller fit')
+expect(remotePage, /keyboardViewportHeight = this\.isHandheldDevice\(\) \?[\s\S]*?this\.componentHeight/,
+  'opening the keyboard must preserve the unscaled canvas on all handheld aspect ratios')
+expect(remotePage, /openRemoteKeyboard\(\)[\s\S]*?this\.snapshotRemoteKeyboardViewport\(\)/,
+  'opening the keyboard must capture the current viewport before IME resize')
+expect(remotePage, /\.align\(Alignment\.Center\)[\s\S]*?\.translate\(\{ y: this\.getKeyboardCanvasShiftY\(\) \}\)/,
+  'canvas and both cursor layers must share input-anchor keyboard avoidance')
 expect(remotePage, /keyboardToolsCollapsed = !landscape;[\s\S]*?if \(landscape\) this\.remoteToolbarCollapsed = false/,
   'entering handheld landscape must expand both toolbars')
 

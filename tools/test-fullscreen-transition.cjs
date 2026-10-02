@@ -118,7 +118,7 @@ function policyHarness(deviceType = 'phone', initialStatus = 4) {
     assert.equal((screen.match(/buildRemoteViewportWithQualityMonitor\(\)/g) || []).length, 1);
     assert(screen.indexOf('buildRemoteViewportWithQualityMonitor()') < screen.indexOf('if ('));
     assert(!screen.includes('surfaceEpoch'));
-    assert(method('buildFullscreenButton').includes("Button(this.fullscreenTransitioning ?"));
+    assert(method('buildFullscreenButton').includes("Button(translate(this.fullscreenTransitioning ?"));
     assert(method('buildFullscreenButton').includes('.backgroundColor(this.isFullScreen ?'));
     assert(method('buildControlToolbarItem').includes('this.buildFullscreenButton('));
     assert(!method('buildControlToolbarItem').includes("buildToolbarButton(this.isFullScreen"));
@@ -131,7 +131,7 @@ function policyHarness(deviceType = 'phone', initialStatus = 4) {
     assert(source.includes('this.isFullScreen && !this.isHandheldDevice()) {\n        this.buildPcFullscreenExitButton()'));
     assert(screen.includes('if (!this.isFullScreen && this.isLargeLayout() && !this.isHandheldDevice())'));
     assert(screen.includes('this.buildSideToolbar()'));
-    assert(exitButton.includes("Button(this.fullscreenTransitioning ? '切换中…' : '退出全屏')"));
+    assert(exitButton.includes("Button(translate(this.fullscreenTransitioning ? '切换中…' : '退出全屏', this.uiLanguage))"));
     assert(exitButton.includes('this.exitFullScreen()'));
     assert(exitButton.includes('this.pageWidth - 100'));
     assert(exitButton.includes('.zIndex(70)'));

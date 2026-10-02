@@ -32,7 +32,7 @@ function Button(label) {
   } });
   return chain;
 }
-const context = vm.createContext({ exports: {}, RustDeskNapi: native,
+const context = vm.createContext({ exports: {}, RustDeskNapi: native, translate: key => key,
   hilog: { info() {}, warn() {} }, Button,
   ButtonType: { Capsule: 1 }, ButtonShapeModifier: class {},
   TextHeightAdaptivePolicy: { MAX_LINES_FIRST: 0 },

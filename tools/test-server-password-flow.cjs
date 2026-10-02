@@ -88,7 +88,7 @@ test('online status queries still use the rendezvous server', () => {
 
 test('missing connection password opens an input dialog', () => {
   assert.match(connectionPage, /@State showConnectionPasswordDialog: boolean = false/);
-  assert.match(connectionPage, /TextInput\(\{ placeholder: '连接密码'/);
+  assert.match(connectionPage, /TextInput\(\{ placeholder: translate\('连接密码', this\.uiLanguage\)/);
   assert.match(connectionPage, /Toggle\(\{ type: ToggleType\.Checkbox, isOn: this\.rememberConnectionPassword \}\)/);
   assert.match(connectionPage, /if \(password\.length <= 0\) \{\s*this\.pendingFileOnly = fileOnly;?\s*this\.openConnectionPasswordDialog\(\)/);
 });

@@ -1,3 +1,7 @@
+import { ENGLISH, TRADITIONAL, DYNAMIC_KEYS } from './I18nCatalog'
+
+// Existing English call sites remain valid; new custom UI text has a stable
+// Simplified-Chinese source key. These are display keys, never protocol values.
 const translations: Record<string, string> = {
   'Connection': '连接',
   'Remote ID': '远程ID',
@@ -101,8 +105,64 @@ const translations: Record<string, string> = {
   'Remote Desktop': '远程桌面',
   'Passwords do not match': '两次输入的密码不一致',
   'Back': '返回',
+  'Auto': '自动',
+  'OK': '确定',
 }
 
-export function translate(key: string): string {
-  return translations[key] ?? key
+export function resolveLanguage(preference: string, systemLanguage: string): string {
+  const locale: string = (preference === 'system' || preference.length === 0 ?
+    systemLanguage : preference).replace(/_/g, '-').toLowerCase()
+  if (locale.startsWith('zh')) {
+    if (locale.includes('hans')) return 'zh-Hans'
+    if (locale.includes('hant') || /(^|-)(tw|hk|mo)(-|$)/.test(locale)) return 'zh-Hant'
+    return 'zh-Hans'
+  }
+  return 'en'
+}
+
+class DynamicTranslation {
+  key: string
+  pattern: RegExp
+
+  constructor(key: string) {
+    this.key = key
+    const escaped: string = key.replace(/[.*+?^$()|[\]\\]/g, '\\$&')
+    this.pattern = new RegExp('^' + escaped.replace(/\{\d+\}/g, '([\\s\\S]*?)') + '$')
+  }
+}
+
+const dynamicTranslations: DynamicTranslation[] = DYNAMIC_KEYS.map((key: string) => new DynamicTranslation(key))
+
+export function translate(key: string, language: string = AppStorage.get<string>('uiLanguage') ?? 'zh-Hans'): string {
+  const source: string = translations[key] ?? key
+  const locale: string = resolveLanguage(language, 'en')
+  if (locale === 'zh-Hans') return source
+  const exact: string = locale === 'zh-Hant' ? TRADITIONAL[source] : ENGLISH[source]
+  if (exact !== undefined && exact.length > 0) return exact
+  // Combined status/file metadata is generated from stable source labels.
+  // Avoid scanning every template for ordinary ASCII values such as FPS/IDs.
+  if (!/[\u4e00-\u9fff]/.test(source)) return source
+  for (let index: number = 0; index < dynamicTranslations.length; index++) {
+    const entry: DynamicTranslation = dynamicTranslations[index]
+    const match: RegExpExecArray | null = entry.pattern.exec(source)
+    if (match === null) continue
+    const result: string = (locale === 'zh-Hant' ? TRADITIONAL[entry.key] : ENGLISH[entry.key]) ??
+      ENGLISH[entry.key] ?? entry.key
+    const values: string[] = []
+    for (let valueIndex: number = 1; valueIndex < match.length; valueIndex++) {
+      let value: string = match[valueIndex]
+      // Only known label-bearing templates translate their substitutions.
+      // Device names, filenames, IDs, paths and chat text stay untouched.
+      if (entry.key === '排序：{0}' || entry.key === '{0}，长按拖动调整顺序' ||
+        entry.key === '{0} · 硬解' || entry.key === '{0} · 软解' ||
+        entry.key === '{0} · 检测中' || (entry.key === '{0}（错误码 {1}）' && valueIndex === 1) ||
+        entry.key === '文件传输失败：{0}' || entry.key === '读取远端目录失败：{0}' ||
+        (entry.key === '确定永久删除“{0}”{1}？此操作不能撤销。' && valueIndex === 2) ||
+        (entry.key === '远端 {0} · {1} · {2} 项' && valueIndex === 2)) value = translate(value, locale)
+      values.push(value)
+    }
+    // One pass prevents a filename containing "{1}" from becoming a placeholder.
+    return result.replace(/\{(\d+)\}/g, (_token: string, index: string): string => values[Number(index)] ?? _token)
+  }
+  return ENGLISH[source] ?? source
 }

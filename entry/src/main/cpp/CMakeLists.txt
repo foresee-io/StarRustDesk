@@ -41,6 +41,7 @@ add_library(entry SHARED napi_init.cpp
                        core/audio_player.cpp
                        core/voice_capture.cpp
                        core/video_render.cpp
+                       core/video_color.cpp
                        core/video_decoder_selector.cpp
                        core/xcomponent_render.cpp
                        core/h264_decoder.cpp
@@ -53,6 +54,9 @@ add_library(entry SHARED napi_init.cpp
                        crypto/aead.cpp
                        crypto/chacha20.cpp
                        crypto/poly1305.cpp)
+
+# HDR software conversion is a per-pixel hot path, including in debug builds.
+set_source_files_properties(core/video_color.cpp PROPERTIES COMPILE_OPTIONS "-O2")
 
 target_include_directories(entry PRIVATE
                     ${NATIVERENDER_ROOT_PATH}

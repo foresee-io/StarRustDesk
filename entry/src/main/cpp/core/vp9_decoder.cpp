@@ -1,4 +1,6 @@
 #include "vp9_decoder.h"
+#include "video_color_format.h"
+#include "xcomponent_render.h"
 #include "diagnostic_log.h"
 #include "video_render.h"
 #include <algorithm>
@@ -96,6 +98,8 @@ void VP9Decoder::release() {
         inputSlots_.clear();
         pts_ = 0;
         lastSourcePts_ = -1;
+        color_ = {};
+        colorFormatDirty_.store(true);
     }
     // Stop/Destroy may wait for callbacks. Never hold mutex_ here because the
     // callbacks also take it before touching decoder state.
@@ -189,6 +193,8 @@ bool VP9Decoder::startLocked(OHNativeWindow* window, int width, int height) {
     inputBytes_ = 0;
     outputFrames_ = 0;
     firstKeyLogged_ = false;
+    color_ = {};
+    colorFormatDirty_.store(true);
     OH_LOG_INFO(LOG_APP, "VP9 decoder started %{public}dx%{public}d", width, height);
     DiagnosticLog::instance().append("I", "vp9",
         "decoder_started resolution=" + std::to_string(width) + "x" + std::to_string(height) +
@@ -262,6 +268,14 @@ void VP9Decoder::onError(OH_AVCodec* codec, int32_t errorCode, void* userData) {
 }
 
 void VP9Decoder::onStreamChanged(OH_AVCodec* codec, OH_AVFormat* format, void* userData) {
+    auto* decoder = static_cast<VP9Decoder*>(userData);
+    if (!decoder) return;
+    decoder->colorFormatDirty_.store(true);
+    std::unique_lock<std::mutex> lock(decoder->mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return;
+    if (!decoder->started_ || decoder->codec_ != codec) return;
+    decoder->color_ = readVideoColorFormat(format);
+    decoder->colorFormatDirty_.store(false);
     OH_LOG_INFO(LOG_APP, "VP9 decoder stream changed");
     DiagnosticLog::instance().append("I", "vp9", "stream_changed");
 }
@@ -291,6 +305,15 @@ void VP9Decoder::onNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH_AVBuffe
     if (!decoder->started_ || decoder->codec_ != codec) {
         return;
     }
+    if (decoder->colorFormatDirty_.exchange(false)) {
+        OH_AVFormat* format = OH_VideoDecoder_GetOutputDescription(codec);
+        decoder->color_ = readVideoColorFormat(format);
+        if (format) OH_AVFormat_Destroy(format);
+    }
+    auto color = decoder->color_;
+    enrichVideoColorFromBuffer(buffer, color);
+    color.output = XComponentRender::instance().applyVideoColor(decoder->window_, color);
+    VideoRender::instance().updateColorInfo(color);
     OH_AVErrCode ret = OH_VideoDecoder_RenderOutputBuffer(codec, index);
     VideoRender::instance().markDecodedFrame(2, decoder->width_, decoder->height_,
         static_cast<int>(decoder->decodeMode_), ret == AV_ERR_OK);

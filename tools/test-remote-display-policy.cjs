@@ -5,6 +5,7 @@ const path = require('node:path');
 const ts = require('C:/Program Files/Huawei/DevEco Studio/tools/ohpm/node_modules/typescript');
 const source = fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/service/RemoteDisplayPolicy.ets'), 'utf8');
 const storage = new Map();
+const hdrMasks = [];
 let id = 0, orientation = 4, listener;
 const main = {
   on: (_, fn) => { listener = fn; }, off: () => { listener = undefined; },
@@ -14,10 +15,11 @@ const main = {
 };
 const deviceInfo = { deviceType: 'phone' };
 const context = vm.createContext({
-  display: { getDefaultDisplaySync: () => ({ id: 0 }),
-    getDisplayByIdSync: id => ({ width: id === 2 ? 1080 : 1920, height: id === 2 ? 1920 : 1080 }) },
+  display: { getDefaultDisplaySync: () => ({ id: 0, hdrFormats: [1, 2, 3] }),
+    getDisplayByIdSync: id => ({ width: id === 2 ? 1080 : 1920, height: id === 2 ? 1920 : 1080,
+      hdrFormats: id === 0 ? [2, 3] : [] }) },
   window: { Orientation: { AUTO_ROTATION: 4, LANDSCAPE: 2 } }, deviceInfo,
-  RustDeskNapi: { appendDiagnosticLog() {} },
+  RustDeskNapi: { appendDiagnosticLog() {}, setHdrDisplayFormats: mask => hdrMasks.push(mask) },
   AppStorage: { setOrCreate: (k,v) => storage.set(k,v), get: k => storage.get(k) }
 });
 vm.runInContext(ts.transpile(source.replace(/^import .*$/gm, '').replace('export class', 'class') +
@@ -28,13 +30,16 @@ const p = context.Policy;
   assert.equal(storage.get('remoteExternalDisplay'), false);
   assert.equal(storage.get('remoteProjectionDisplayId'), 0);
   assert.equal(orientation, 4, 'phone keeps original local orientation');
+  assert.equal(hdrMasks.at(-1), 6, 'HDR capability comes from the owning display');
   id = 1; listener(1); await p.pending;
   assert.equal(storage.get('remoteExternalDisplay'), true);
   assert.equal(storage.get('remoteProjectionDisplayId'), 1);
   assert.equal(orientation, 2, 'wide external display uses landscape');
+  assert.equal(hdrMasks.at(-1), 0, 'SDR external screen must not inherit phone HDR capability');
   id = 0; listener(0); await p.pending;
   assert.equal(storage.get('remoteExternalDisplay'), false);
   assert.equal(orientation, 4, 'return to local restores original');
+  assert.equal(hdrMasks.at(-1), 6);
   deviceInfo.deviceType = 'tablet';
   p.toggleLandscape(); await p.pending;
   assert.equal(orientation, 2, 'tablet supports same manual override');

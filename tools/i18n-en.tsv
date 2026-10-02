@@ -1,0 +1,1010 @@
+# Chinese source key<TAB>English. Placeholders preserve user data; \n is a line break.
+跟随系统	Follow system
+连接	Connect
+简体中文	简体中文
+繁體中文	繁體中文
+语言	Language
+界面语言立即生效，不影响远控连接；系统权限提示在下次启动时应用。	UI changes immediately without disconnecting. System permission text applies on next launch.
+需要二次验证	Verification required
+已保存	Saved
+连接已保存	Connection saved
+编辑连接	Edit connection
+新建连接	New connection
+更多选项 ›	More options ›
+轻松连接并控制你的远端设备	Connect to and control your remote devices
+公共网络	Public network
+自建网络	Custom network
+关闭 ×	Close ×
+收起选项⌃	Less ⌃
+更多选项›	More ›
+远端 ID / IP	Remote ID / IP
+连接名称（可选）	Name (optional)
+保存到分组	Save to group
++ 分组	+ Group
+密码已保存	Password saved
+更换	Change
+密码待清除，保存后生效	Password will be cleared when saved
+撤销	Undo
+输入新密码	Enter new password
+取消更换，保留已保存密码	Cancel change, keep saved password
+已保存连接	Saved connections
+搜索名称或远端 ID	Search name or remote ID
+备份	Backup
+普通导出（不含密码）	Export without passwords
+加密导出（包含密码）	Encrypted export with passwords
+导入备份	Import backup
+暂无保存的连接	No saved connections
+可先创建分组，再保存连接	Create a group, then save a connection
+未找到匹配的设备	No matching devices
+可按设备名称或远端 ID 搜索	Search by device name or remote ID
+未分组	Ungrouped
+远端安全选项（仅对此设备生效）	Remote security (this device only)
+断开连接后锁定远端	Lock remote device on disconnect
+隐私屏幕（需被控端支持并允许）	Privacy screen (requires remote support and permission)
+自动解锁远端系统（需开启断开锁屏）	Automatically unlock remote system (requires lock on disconnect)
+仅在端到端加密连接中发送系统密码；密码与连接密码不同。若远端已解锁，可能输入到当前窗口。	System passwords are sent only over end-to-end encrypted connections. This is not the connection password. If already unlocked, input may reach the active window.
+系统密码已安全保存；输入可更换	System password securely saved; type to replace
+输入远端系统密码	Enter remote system password
+清除已保存的系统密码	Clear saved system password
+待确认	Unknown
+重命名分组	Rename group
+文件传输（不打开画面）	File transfer only
+移动到分组	Move to group
+修改连接	Edit connection
+删除连接	Delete connection
+新建分组	New group
+输入分组名称	Enter group name
+保存名称	Save name
+选择保存分组	Select a group
+移动连接到分组	Move connection to group
++ 新建分组	+ New group
+输入连接密码	Enter connection password
+连接密码	Connection password
+保存密码到此连接	Save password for this connection
+保存密码并保存此连接	Save password and connection
+密码将写入系统安全凭据库	Passwords are stored in the system secure credential store
+设置备份密码	Set backup password
+输入备份密码	Enter backup password
+连接密码将被加密写入备份。备份密码不会保存在应用中，忘记后无法恢复。	Connection passwords will be encrypted in the backup. The backup password is not stored and cannot be recovered.
+请输入创建该加密备份时设置的密码。	Enter the password used to create this encrypted backup.
+至少 8 位备份密码	Backup password (at least 8 characters)
+再次输入备份密码	Confirm backup password
+处理中…	Processing…
+加密并导出	Encrypt and export
+解密	Decrypt
+确认导入连接	Confirm connection import
+这是加密备份，连接密码将恢复到系统安全凭据库。	This encrypted backup restores passwords to the system secure credential store.
+普通备份不包含密码；新增连接需要重新填写密码。	Plain backups contain no passwords. Enter passwords for newly imported connections.
+合并导入	Merge
+覆盖现有	Replace
+覆盖后，当前已保存的连接、分组和连接密码将被替换。	This replaces existing saved connections, groups and connection passwords.
+相同远程 ID 会更新名称、分组和连接模式，并优先保留本机已有密码。	Matching IDs update names, groups and connection modes; existing local passwords are preferred.
+导入中…	Importing…
+开始导入	Import
+保存修改	Save changes
+保存连接	Save connection
+新建	New
+连接模式	Connection mode
+稳定	Stable
+高帧率	High FPS
+高流畅	Smooth
+高丝滑	Ultra smooth
+高清优先	Best quality
+高码率会增加流量、耗电和延迟风险，百分比不等于固定 Mbps。公共中继下超过 100% 将按官方规则回退至 50%，帧率最高 30 FPS；自建服务器或直连可用更高设置。保存后下次连接生效。	Higher bitrate may increase traffic, battery use and latency. Percentages are not fixed Mbps. Public relays limit values above 100% to 50% and 30 FPS; custom servers and direct connections allow higher settings. Applies on the next connection.
+请输入远程 ID	Enter a remote ID
+账号恢复失败或服务器配置已改变，请重试；必要时到设置中的 API 账号重新登录	Account restore failed or server configuration changed. Retry or sign in again under Settings > Server account.
+分组名称不能为空	Group name cannot be empty
+已存在同名分组	A group with this name already exists
+请输入连接密码	Enter the connection password
+暂无可导出的连接	No connections to export
+连接已导出，备份中不包含密码	Connections exported without passwords
+导出失败，请重新选择保存位置	Export failed; choose another save location
+备份密码至少需要 8 位	Backup password must contain at least 8 characters
+两次输入的备份密码不一致	Backup passwords do not match
+加密备份导出成功，请妥善保管备份密码	Encrypted backup exported. Keep the backup password safe.
+加密导出失败，请重试	Encrypted export failed; retry
+备份密码错误或文件已损坏	Incorrect backup password or corrupted file
+备份文件大小异常	Invalid backup file size
+无法读取备份，请确认文件格式正确	Cannot read backup; check the file format
+备份中没有有效连接	No valid connections in the backup
+导入失败，请检查备份后重试	Import failed; check the backup and retry
+未选择保存位置	No save location selected
+在线查询已关闭，仍可尝试连接	Online checks are off; you can still connect
+直连地址 · 状态未知，请尝试连接	Direct address · Status unknown; try connecting
+正在查询在线状态…	Checking availability…
+状态未知 · 查询未确认，仍可尝试连接	Status unknown · Check inconclusive; you can still connect
+请输入新密码，或取消更换后选择清除	Enter a new password, or cancel the change and choose Clear
+保存失败，请重试	Save failed; retry
+排序：{0}	Sort: {0}
+{0}远端 ID	{0}Remote ID
+{0}设备名称	{0}Device name
+{0}在线优先	{0}Online first
+请输入远端设备 {0} 的连接密码	Enter the connection password for {0}
+备份包含 {0} 个分组、{1} 个连接	Backup contains {0} groups and {1} connections
+码率比例：{0}%	Bitrate: {0}%
+目标帧率：{0} FPS	Target FPS: {0}
+已导入 {0} 个连接	Imported {0} connections
+等待视频	Waiting for video
+等待远端视频画面	Waiting for remote video
+录像已停止，可在录像列表中导出；若未收到关键帧则无有效画面	Recording stopped. Export it from recordings; a keyframe is required for valid video.
+网络传输中断，正在安全重连…	Transport interrupted; reconnecting securely…
+验证码错误，请重试	Incorrect verification code; retry
+隐私屏未启用：被控端不支持、未授权或启用失败	Privacy screen unavailable: unsupported, not permitted or activation failed
+此连接未启用端到端加密，请仅在可信网络使用	This connection is not end-to-end encrypted. Use only on trusted networks.
+已连接，但远端未发送画面。请检查远端屏幕录制权限或重连，并导出诊断日志。	Connected, but no video is being sent. Check remote screen-recording permission or reconnect, then export diagnostics.
+已收到视频，但暂未显示画面。请重连并导出诊断日志。	Video received but not displayed. Reconnect and export diagnostics.
+直连未收到响应，正在通过中继重试	No direct response; retrying through a relay
+正在取消准备…	Cancelling preparation…
+正在准备发送文件…	Preparing upload…
+独立文件会话 · 不采集远端画面，不发送键鼠输入	File-only session · No screen capture or keyboard/mouse input
+浏览 / 取回远端文件	Browse / download remote files
+发送本地文件（可多选）	Send local files (multiple selection)
+正在准备文件…	Preparing files…
+发送整个文件夹	Send folder
+正在连接远端设备	Connecting to remote device
+二次验证	Two-factor verification
+被控端已开启二次验证，请输入身份验证器中的 6 位验证码	The remote device requires two-factor authentication. Enter the 6-digit authenticator code.
+6 位验证码	6-digit code
+信任此设备，以后连接时不再询问验证码	Trust this device; do not ask for codes on future connections
+请输入 6 位数字验证码	Enter a 6-digit verification code
+验证码发送失败，请重试	Unable to send verification code; retry
+切换中…	Switching…
+从远端取回文件	Download remote files
+选择远端保存位置	Choose remote destination
+历史	History
+上一级	Up
+此电脑	This computer
+读取中…	Loading…
+降序 ↓	Descending ↓
+升序 ↑	Ascending ↑
+取消全选	Deselect all
+取回当前文件夹	Download current folder
+此文件夹为空	This folder is empty
+没有子文件夹	No subfolders
+等待远端确认操作…	Waiting for remote confirmation…
+发送到这里	Send here
+确认发送文件	Confirm upload
+正在取回文件	Downloading files
+正在发送文件	Uploading files
+正在取消…	Cancelling…
+计算中	Calculating
+左键按住	Left button held
+关闭虚拟鼠标	Hide virtual mouse
+虚拟鼠标	Virtual mouse
+手机操作	Phone controls
+手势说明	Gesture guide
+手势	Gestures
+结束移动	Stop panning
+移动画面	Pan view
+发送文件	Send files
+取回文件	Get files
+发送文件夹	Send folder
+停止录像	Stop recording
+开始远控录像	Record remote screen
+录像仅包含远端画面，不含音频。期间将请求 VP9 编码；请确认已获得必要授权。最长保存到约 4GB，切换显示器或分辨率后可能自动停止。	Records remote video only, without audio, using VP9. Obtain permission first. Recording stops at about 4 GB and may stop when display or resolution changes.
+无法开始录像，请检查连接和可用空间	Cannot start recording; check connection and free storage
+录像列表	Recordings
+剪贴板开	Clipboard on
+剪贴板关	Clipboard off
+关闭隐私屏	Privacy off
+隐私屏处理中	Privacy pending
+隐私屏	Privacy screen
+自动旋转	Auto rotate
+通话中	In call
+屏幕切换	Switch display
+鼠标 / 触摸模式	Mouse / touch mode
+边缘跟随	Auto pan
+聊天与语音	Chat and voice
+开始 / 停止录像	Start / stop recording
+横屏 / 自动旋转	Landscape / auto rotate
+Fn 功能键	Function keys
+更多按键	More keys
+释放修饰键	Release modifiers
+← 向左	← Left
+↑ 向上	↑ Up
+↓ 向下	↓ Down
+→ 向右	→ Right
+调整“更多”按键顺序	Reorder extra keys
+调整“键”按钮顺序	Reorder keyboard buttons
+调整“控”按钮顺序	Reorder control buttons
+长按条目上下拖动，松手自动保存顺序	Hold and drag items vertically. Release to save the order.
+恢复默认排序	Reset order
+控	Tools
+边缘跟随开	Auto pan on
+左键	Left
+右键	Right
+移动	Move
+触屏操作方式	Touch controls
+当前使用画面中的远端光标，不叠加本地指针	Using the cursor embedded in remote video; no local overlay
+仅控制本机物理鼠标指针，不影响远端画面	Controls only the local physical pointer, not remote video
+显示虚拟鼠标	Show virtual mouse
+显示与 RustDesk 官方一致的左右键、滚轮和拖动区；默认关闭	Shows RustDesk-style buttons, wheel and drag area; off by default
+鼠标画面跟随	Mouse view tracking
+放大后，手指移动鼠标到可视区域中心附近，画面即随手势平移，停手即停；实体鼠标仍在边缘停留后自动平移	When zoomed, move the cursor near the view center to pan with your gesture; stop to pause. Physical mice pan after hovering at an edge.
+仅在鼠标模式下生效	Available in mouse mode only
+手机 / 平板单独投屏	Phone / tablet app-only projection
+先通过系统控制中心连接无线投屏，再打开顶部投屏胶囊，按系统提示将 StarRustDesk 单独投屏。是否提供该入口取决于设备、系统版本和接收端。	Connect wireless projection in Control Center, then use the projection capsule to project StarRustDesk separately. Availability depends on the device, OS and receiver.
+投屏后画面仍竖向时，可在“控”中点“横屏”；点“自动旋转”恢复默认策略。横向外接屏被识别后会自动采用横屏。这里只调整本地窗口，不更改远端 Windows 分辨率。	If projection stays portrait, choose Landscape under Controls. Auto rotate restores the default. Detected landscape displays use landscape automatically. This changes the local window, not remote resolution.
+拖拽与框选	Drag and select
+鼠标模式：先将远端指针移到起点，轻点一次，第二次按住并拖动，松手结束。框选文件时请从文件列表或桌面的空白处开始；从文件上开始通常是拖动文件。	Mouse mode: move the cursor to the start, tap once, then hold the second tap and drag. Release to finish. To box-select files, start on empty space; starting on a file usually drags it.
+触摸模式：在目标位置按住并移动，松手结束。	Touch mode: hold at the target and move; release to finish.
+组合键与本地键盘	Shortcuts and local keyboard
+连接后默认显示折叠的“键”按钮，点击展开；“键”和“控”及其拖动柄均可移动到屏幕任意位置。	A collapsed Keys button appears after connecting. Tap to expand. Keys, Controls and their handles can be moved anywhere.
+横屏时“键”默认位于左上角，“控”默认位于右上角，两个面板都向下展开。长按任意功能按钮可调整排序。	In landscape, Keys defaults to the top left and Controls to the top right. Both expand downward. Hold a button to reorder it.
+Ctrl、Alt、Shift、Win/Cmd：点一下选中，相当于按住；再点一下释放，不需要手指一直按着。可以同时选中多个。	Tap Ctrl, Alt, Shift or Win/Cmd to hold it; tap again to release. Several modifiers can be selected together.
+例如 Ctrl+C：点亮 Ctrl，再输入 C，最后再次点击 Ctrl 取消选中。Mac 常用 Cmd+C。Ctrl/Shift 也可配合鼠标多选文件，用完记得释放。	For Ctrl+C, select Ctrl, type C, then release Ctrl. Macs usually use Cmd+C. Ctrl/Shift also work with mouse selection; release them afterwards.
+Ctrl+Shift+Esc 等完整组合键按钮：点一次发送整组按键，不会自动弹出本地键盘。	Full shortcuts such as Ctrl+Shift+Esc send all keys with one tap without opening the local keyboard.
+横屏打开键盘时画面会随可用区域上移和缩放，避免被键盘遮挡。	When the landscape keyboard opens, the view moves upward to avoid being covered.
+悬浮功能栏与移动画面	Floating controls and panning
+竖屏时“控”保持底部横向工具栏；横屏时默认移动到右上角并向下展开。点击收起后保留“控”按钮。	Controls use a bottom horizontal bar in portrait and expand down from the top right in landscape. Collapsing keeps the Controls button.
+未开启虚拟鼠标时，画面放大后可使用“移动画面”模式；开启虚拟鼠标后，直接单指拖动画面空白区域即可平移，鼠标本体专门控制远端指针。	Without the virtual mouse, use Pan view after zooming. With it enabled, drag elsewhere with one finger to pan; the mouse itself moves the remote pointer.
+全屏三指上滑用于打开本地键盘，不是滚动手势；滚动请使用双指平行滑动。	Swipe up with three fingers in full screen to open the keyboard. Use two parallel fingers to scroll.
+知道了	Got it
+音量−	Volume −
+音量+	Volume +
+释放	Release
+键	Keys
+连接信息	Connection info
+目标码率	Target bitrate
+解码	Decoder
+信息	Info
+端到端加密	End-to-end encrypted
+未加密	Unencrypted
+验证失败	Verification failed
+检测中	Detecting
+全屏切换失败，请稍后重试	Full-screen switch failed; retry later
+One-KVM 键鼠兼容	One-KVM input compatibility
+键鼠兼容（仅当前设备）	Input compatibility (this device only)
+自动：One-KVM 使用传统键盘，其他设备保持原有输入方式；输入法文字仍由本地输入法提交。	Auto: One-KVM uses legacy keyboard input; other devices retain their normal mode. IME text is submitted by the local input method.
+发送真实移动增量，仅显示远端光标。触屏可反复滑动；实体鼠标可移出画面操作本地按钮，重新进入不会跳位。关闭此开关恢复绝对模式。	Sends real movement deltas and shows only the remote cursor. Swipe repeatedly on touchscreens. Physical mice can leave the view and return without jumping. Disable to restore absolute mode.
+当前远端未声明支持相对鼠标；需要兼容的 Windows/One-KVM 端及 RustDesk 1.4.5 或以上协议。	Remote relative-mouse support was not advertised. Requires compatible Windows/One-KVM and RustDesk 1.4.5+ protocol.
+远端光标来源	Remote cursor source
+画面内嵌	Embedded
+独立光标	Separate cursor
+自动识别 One-KVM 的画面内嵌光标；若出现双鼠标可选择“画面内嵌”，停止额外绘制。相对模式始终隐藏本地指针。	Detects embedded One-KVM cursors. Select Embedded if two cursors appear. Relative mode always hides the local pointer.
+请先切换到屏1再开启隐私屏	Switch to display 1 before enabling privacy screen
+被控端不支持或未允许隐私屏	Privacy screen unsupported or not permitted remotely
+隐私屏切换失败	Privacy screen switch failed
+允许 Wayland 文本输入？	Allow Wayland text input?
+远端为 Wayland 桌面。软键盘和文本粘贴可能借助远端剪贴板，可能覆盖其内容。允许仅对本次连接生效，物理键盘不受影响。	On Wayland, soft-keyboard text and paste may use and overwrite the remote clipboard. Permission applies only to this session. Physical keyboards are unaffected.
+暂不允许	Not now
+本次允许	Allow this session
+已发送 Ctrl+Alt+Del	Ctrl+Alt+Del sent
+Ctrl+Alt+Del 发送失败	Unable to send Ctrl+Alt+Del
+已取消或目录层级过深	Cancelled or folder nesting too deep
+已取消	Cancelled
+无效文件名	Invalid filename
+文件夹含符号链接，请移除链接后重试	Folder contains symbolic links; remove them and retry
+文件数超过 10000，请分批发送	More than 10,000 files; send in smaller batches
+不支持特殊文件	Special files are not supported
+无法读取所选文件夹	Cannot read selected folder
+所选文件夹没有可发送的文件；空文件夹可在远端新建	No files to send. Create empty folders on the remote device.
+文件夹读取失败	Cannot read folder
+未选择文件或无法读取文件	No files selected or files cannot be read
+重命名远端项目	Rename remote item
+新建远端文件夹	New remote folder
+名称包含不允许的字符	Name contains invalid characters
+删除远端项目	Delete remote item
+及其全部内容	 and all its contents
+远端操作已完成	Remote operation completed
+远端拒绝操作，请检查权限、名称及客户端版本	Remote operation rejected; check permissions, name and client version
+未收到远端确认，请刷新核对结果，不要重复删除	No remote confirmation. Refresh to check the result; do not repeat deletion.
+远端目录数据无效	Invalid remote directory data
+读取远端目录超时	Remote directory request timed out
+修改时间	Modified
+磁盘	Drive
+压缩包	Archive
+PDF 文档	PDF document
+Word 文档	Word document
+表格	Spreadsheet
+演示文稿	Presentation
+安装包	Installer
+盘	Drive
+夹	Folder
+目录	Directory
+时间未知	Unknown time
+等待数据	Waiting for data
+ZIP 压缩包	ZIP archive
+开始取回文件	Download files
+未选择保存位置或无法创建下载任务	No save location selected or download cannot be created
+下载完成，但保存位置无效	Downloaded, but the save location is invalid
+文件已保存到所选位置	Files saved to selected location
+文件已取回，但压缩或保存 ZIP 失败	Downloaded, but ZIP creation or saving failed
+文件已取回，但保存到所选位置失败	Downloaded, but saving to the selected location failed
+文件开始传输	File transfer started
+取回完成，正在生成 ZIP 文件	Download complete; creating ZIP
+取回完成，正在保存到所选位置	Download complete; saving to selected location
+文件传输完成	File transfer completed
+文件传输失败	File transfer failed
+用户取消了文件传输	User cancelled file transfer
+文件传输已取消	File transfer cancelled
+服务器密钥不正确	Server key is incorrect
+无法验证自建服务器密钥。降级后，本次连接将不再验证远端身份，可能存在被冒充或窃听的风险。是否仅对本次连接使用未加密模式？	Cannot verify the custom server key. Continuing without encryption will not verify the remote identity and risks impersonation or eavesdropping. Continue unencrypted for this attempt only?
+取消连接	Cancel connection
+仅本次继续	Continue once
+远控连接已断开	Remote connection disconnected
+硬解	Hardware
+软解	Software
+{0} 项 · 文件夹优先	{0} items · Folders first
+{0}名称	{0}Name
+{0}类型（扩展名）	{0}Type (extension)
+{0}大小	{0}Size
+{0}修改时间	{0}Modified
+已选 {0} 项	{0} selected
+待发送 {0} 个项目 · 同名文件将覆盖；文件夹递归发送文件内容，空文件夹不保留	{0} items to send · Same-name files will be overwritten. Folders are recursive; empty folders are not preserved.
+取回所选 ({0})	Get selected ({0})
+即将发送 {0} 个文件。同名远端文件会被覆盖，请确认目录正确。	Send {0} files? Same-name remote files will be overwritten. Check the destination.
+{0}/{1} 项	{0}/{1} items
+屏{0}	Display {0}
+聊天 {0}	Chat {0}
+{0}，长按拖动调整顺序	{0}; hold and drag to reorder
+{0}发送失败 ({1})	Unable to send {0} ({1})
+屏幕 {0}	Display {0}
+已发送 {0}	Sent {0}
+{0} 发送失败	Unable to send {0}
+确定永久删除“{0}”{1}？此操作不能撤销。	Permanently delete “{0}”{1}? This cannot be undone.
+无法发送文件操作 ({0})	Unable to send file operation ({0})
+无法读取远端目录 ({0})	Cannot read remote directory ({0})
+读取远端目录失败：{0}	Remote directory read failed: {0}
+{0} 文件	{0} file
+无法启动取回任务 ({0})	Cannot start download ({0})
+取回文件失败 ({0})	Download failed ({0})
+开始取回，完成后将生成 {0}	Downloading; will create {0} when complete
+{0} 项已压缩并保存	{0} items archived and saved
+无法启动发送任务 ({0})	Cannot start upload ({0})
+发送文件失败 ({0})	Upload failed ({0})
+无法取消文件传输 ({0})	Unable to cancel transfer ({0})
+文件传输失败：{0}	File transfer failed: {0}
+{0} · 硬解	{0} · Hardware
+{0} · 软解	{0} · Software
+{0} · 检测中	{0} · Detecting
+清除	Clear
+收起	Collapse
+创建	Create
+未知	Unknown
+未连接	Not connected
+断开	Disconnect
+刷新	Refresh
+录像	Record
+开始	Start
+横屏	Landscape
+剪贴板	Clipboard
+触摸模式	Touch mode
+显示本地鼠标指针	Show local pointer
+适合控制电脑：\n• 单指滑动：移动鼠标\n• 单击：左键\n• 轻点一次，第二次按住并移动：拖拽，松手结束\n• 长按或双指轻点：右键\n• 双指平行滑动：滚动\n• 双指捏合：缩放画面\n• 虚拟鼠标：左右键、中键和滚轮与实体鼠标一致，按住鼠标拖动区即可移动远端指针\n• 虚拟鼠标开启且画面放大后：单指拖动画面其他区域直接平移视野\n• 边缘跟随开启后：手机/平板放大画面，手指移动鼠标到可视区域中心附近，视野立即跟随；停手即停，抬手再滑无需等待\n• 虚拟鼠标拖动区同样支持中心跟随；到达远端桌面边界后，鼠标继续移动\n• 实体鼠标：靠近画面边缘并短暂停留后自动平移，越靠边越快\n• 全屏三指上滑：调出系统键盘，输入直达远端	For computers:\n• One-finger swipe: move cursor\n• Tap: left click\n• Tap, then hold the second tap and move: drag; release to finish\n• Long press or two-finger tap: right click\n• Two parallel fingers: scroll\n• Pinch: zoom\n• Virtual mouse: left/right/middle buttons and wheel; hold its drag area to move the cursor\n• With virtual mouse enabled and zoomed: drag elsewhere to pan\n• With tracking enabled: move the cursor near the view center to pan immediately; stop to pause; subsequent swipes need no waiting\n• Virtual mouse dragging also supports center tracking\n• Physical mouse: hover briefly near an edge to pan; closer means faster\n• Three-finger swipe up in full screen: open local keyboard and type remotely
+适合直接点按：\n• 点按位置：左键\n• 按住移动：拖拽\n• 双指轻点：右键\n• 双指平行滑动：滚动\n• 双指捏合：缩放画面\n• 放大后点“移动画面”：按钮变为淡蓝色，单指平移视野且不点击远端\n• 移动画面模式下，双指滚动和捏合缩放仍可使用\n• 全屏三指上滑：调出系统键盘，输入直达远端	For direct touch:\n• Tap position: left click\n• Hold and move: drag\n• Two-finger tap: right click\n• Two parallel fingers: scroll\n• Pinch: zoom\n• When zoomed, select Pan view (light blue) to pan with one finger without clicking remotely\n• Two-finger scrolling and pinch zoom remain available while panning\n• Three-finger swipe up in full screen: open local keyboard and type remotely
+任务	Recents
+延迟	Latency
+编码	Codec
+键盘模式	Keyboard mode
+1:1 映射	1:1 mapping
+传统	Legacy
+相对鼠标	Relative mouse
+文件夹	Folder
+图片	Image
+视频	Video
+文本	Text
+直连	Direct
+中继	Relay
+未开启	Not enabled
+云备份密码	Cloud backup password
+密码仅保存在本机安全存储中，新设备恢复时需要重新输入。	The password is stored securely on this device only. Enter it again when restoring on another device.
+连接质量、网络服务与外观	Connection quality, network services and appearance
+服务器账号	Server account
+API 登录与地址簿	API login and address book
+服务器账号，API 登录与地址簿	Server account, API login and address book
+仅控制本机连接的物理鼠标指针，远端真实光标始终显示	Controls only the local physical pointer. The remote cursor remains visible.
+播放远端声音	Play remote audio
+播放远端设备的系统声音；有真实音频时接入系统播控中心	Plays remote system audio. Active audio integrates with system media controls.
+华为云空间	HUAWEI Cloud
+在同一华为账号的设备间备份和恢复已保存连接、分组与服务器地址。	Back up and restore saved connections, groups and server addresses across devices using the same HUAWEI ID.
+个人云空间同步	Personal cloud sync
+同步连接密码和服务器密钥	Sync passwords and server keys
+同步时使用 AES-256-GCM 加密敏感信息	Sensitive information is encrypted with AES-256-GCM
+默认不上传敏感信息	Sensitive information is excluded by default
+备份密码仅保存在本机	Backup password stored locally only
+更换密码	Change password
+同步中…	Syncing…
+立即同步	Sync now
+从云端恢复	Restore from cloud
+还需在系统“设置 > 华为账号 > 云空间”中允许 StarRustDesk 同步。	Also enable StarRustDesk sync in system Settings > HUAWEI ID > Cloud.
+已关闭	Off
+等待首次同步	Waiting for first sync
+无法读取本机云备份密码，请稍后重试	Cannot read local cloud backup password; retry later
+备份密码保存失败	Unable to save backup password
+正在从云端恢复…	Restoring from cloud…
+正在同步…	Syncing…
+需要云备份密码	Cloud backup password required
+云同步未完成，请开启诊断日志后重试	Cloud sync incomplete; enable diagnostics and retry
+云端的连接、分组和服务器配置将覆盖本机对应内容。未加密备份不会覆盖本机已有密码与服务器密钥。	Cloud connections, groups and server settings will replace their local counterparts. Unencrypted backups do not replace existing local passwords or keys.
+已开启，尚未完成同步	Enabled; sync not completed yet
+上次同步 {0}-{1} {2}:{3}	Last synced {0}-{1} {2}:{3}
+问题诊断	Diagnostics
+诊断默认关闭。开启后记录连接、网络通道、视频编码和解码状态；不会记录密码、验证码、剪贴板内容或密钥。	Diagnostics are off by default. Records connection, transport, codec and decoder status, but never passwords, verification codes, clipboard content or keys.
+诊断日志	Diagnostic logging
+本地记录运行及系统故障日志，不自动上传；关闭时清除已采集的系统故障记录	Records local runtime and system faults without uploading. Turning off clears collected system fault records.
+已关闭，不会在后台写入诊断日志	Off; no background diagnostic logging
+正在导出…	Exporting…
+导出诊断日志	Export diagnostics
+包含已采集的崩溃/卡死记录；闪退后请重新打开应用，稍候再导出	Includes collected crash/hang records. After a crash, reopen the app and wait briefly before exporting.
+清除诊断日志	Clear diagnostics
+诊断日志导出成功	Diagnostics exported
+诊断日志导出失败，请重新选择保存位置	Diagnostic export failed; choose another destination
+清除后，当前、上一份诊断日志和已采集的系统故障记录都无法恢复。确定继续吗？	Clear current and previous logs and collected system faults? This cannot be undone.
+诊断日志已清除	Diagnostics cleared
+查看 v{0} 的更新内容	View changes in v{0}
+文件传输历史	Transfer history
+查看发送、取回、失败和取消记录	View uploads, downloads, failures and cancellations
+会话录像	Session recordings
+查看 / 导出  >	View / export >
+加入 QQ 群	Join QQ group
+群号 {0}	Group {0}
+浙ICP备2026058556号-2A	浙ICP备2026058556号-2A
+未检测到 QQ，群号 {0} 已复制	QQ not detected. Group number {0} copied.
+请在 QQ 中搜索群号 {0}	Search for group {0} in QQ
+查询服务器/设备在线状态	Check server / device availability
+默认关闭；开启后定期查询已保存设备，手动连接不受影响	Off by default. Periodically checks saved devices when enabled. Manual connections are unaffected.
+按钮样式	Button style
+应用到连接、设置、远控功能栏和弹窗，立即生效并记住选择	Applies immediately to connection, settings, remote controls and dialogs; your choice is remembered
+✓ 圆角长方形	✓ Rounded rectangle
+圆角长方形	Rounded rectangle
+经典圆润	Classic rounded
+✓ 经典圆润	✓ Classic rounded
+服务器没有提供网页登录方式，可使用账号密码登录	No web login methods available; use username and password
+正在打开安全登录网页…	Opening secure login page…
+请在浏览器完成登录后返回，正在等待确认（最多 3 分钟）	Complete login in the browser, then return. Waiting for confirmation (up to 3 minutes).
+登录成功	Login successful
+操作失败，请稍后重试	Operation failed; retry later
+已退出账号，本地已保存连接不受影响	Signed out. Saved local connections are unchanged.
+已获取 {0} 台设备，请勾选后导入	Loaded {0} devices; select to import
+已新增 {0} 台设备；已有设备已跳过，未覆盖密码或修改服务器地址	Added {0} devices. Existing devices skipped; passwords and server addresses unchanged.
+请核对以下双向同步变更，再点击确认执行	Review two-way sync changes, then confirm
+本地和服务器一致，无需变更	Local and server data match; no changes needed
+双向同步完成，未同步密码	Two-way sync completed; passwords excluded
+上传至服务器	Upload to server
+更新至本地	Update locally
+删除服务器记录	Delete server record
+删除本地记录	Delete local record
+两端冲突	Conflict
+服务器设备信息已保存	Server device information saved
+删除地址簿设备	Delete address book device
+从服务器地址簿删除“{0}”？不会删除远端设备或其文件。	Delete “{0}” from the server address book? The remote device and files will not be deleted.
+已从服务器地址簿删除	Deleted from server address book
+服务器账号与地址簿	Server account and address book
+取消请求	Cancel request
+已取消网页登录	Web login cancelled
+官方 / Server Pro	Official / Server Pro
+第三方 rustdesk-api	Third-party rustdesk-api
+API 地址，例如 https://api.example.com	API URL, e.g. https://api.example.com
+允许 HTTP（账号密码和令牌可能被窃听）	Allow HTTP (credentials and tokens may be intercepted)
+服务器账号，不是远端设备 ID	Server username, not remote device ID
+账号密码	Account password
+记住登录（仅令牌保存在本机安全存储）	Remember login (only token stored securely on this device)
+用于当前自建 ID 服务器的连接权限认证（需公钥）	Authenticate connections to the current custom ID server (public key required)
+官方公共网络登录后自动用于官方连接；自建网络需勾选上方连接认证。账号密码不是远端设备密码。	Official network login applies to official connections automatically. Custom networks require the authentication option above. Account passwords are not remote device passwords.
+获取网页登录方式	Get web login methods
+通过 {0} 登录	Sign in with {0}
+请输入邮箱验证码	Enter email verification code
+请输入身份验证器验证码	Enter authenticator code
+重新登录	Sign in again
+已登录：{0}	Signed in: {0}
+选择个人或共享地址簿	Select personal or shared address book
+预览双向同步	Preview two-way sync
+手动同步本地全部 ID 连接与当前地址簿，请确认它们属于同一服务器。IP 直连、密码及服务器密钥不参与同步。删除及冲突会先列出，不会自动执行。	Manually sync all local ID connections with this address book; ensure they use the same server. Direct IP entries, passwords and keys are excluded. Deletions and conflicts are previewed, not automatic.
+冲突时使用本地版本（不选则使用服务器版本）	Prefer local version on conflict (otherwise use server version)
+确认执行上述变更（含删除）	Confirm changes (including deletions)
+取消同步	Cancel sync
+标签，用逗号分隔	Tags, separated by commas
+保存到服务器	Save to server
+取消修改	Cancel edit
+导入已选 ({0})	Import selected ({0})
+设备	Device
+修改名称 / 标签	Edit name / tags
+正在请求服务器…	Requesting server…
+API 用于账号和地址簿，不替代 ID/中继服务器。导入后沿用当前中继配置，请确保属于同一网络。不会自动上传本地连接；不导入远端密码或密码哈希。	API manages accounts and address books, not ID/relay service. Imports retain current relay settings; ensure the same network. Local connections are not uploaded automatically. Remote passwords and hashes are not imported.
+正在呼叫，等待远端接听…	Calling; waiting for answer…
+通话中 · 麦克风已关闭	In call · Microphone muted
+通话中 · 麦克风正在使用	In call · Microphone active
+远端已拒绝语音通话	Remote declined the voice call
+语音通话已结束	Voice call ended
+远端未接听，或该客户端暂不支持语音通话	No answer, or remote client does not support voice calls
+文字聊天与远端语音通话	Text chat and remote voice calls
+聊天与通话	Chat and calls
+开启麦克风	Unmute
+取消呼叫	Cancel call
+挂断	Hang up
+发起语音	Call
+暂无消息	No messages
+发送的文字将显示在远端 RustDesk 聊天窗口	Messages appear in the remote RustDesk chat window
+远端	Remote
+记录仅保留本次连接；已接通的语音在系统允许时可后台继续，挂断即停止采集，建议使用耳机。	History lasts for this connection only. Connected calls may continue in the background if permitted; hanging up stops microphone capture. Headphones recommended.
+聊天记录仅保留本次连接。	Chat history lasts for this connection only.
+本机保存最近 90 天，最多 500 条 · 共 {0} 条	Last 90 days stored locally, up to 500 records · {0} total
+全部	All
+取回	Download
+暂无传输记录	No transfer history
+完成发送或取回后会显示在这里	Completed uploads and downloads appear here
+当前筛选条件下没有记录	No records match this filter
+远端 {0} · {1} · {2} 项	Remote {0} · {1} · {2} items
+{0} · {1} · 平均 {2}	{0} · {1} · Average {2}
+清空文件传输历史	Clear transfer history
+只会删除本机记录，不会删除已经传输的文件。	Deletes local history only, not transferred files.
+已完成	Completed
+大小未知	Unknown size
+速度未知	Unknown speed
+不足 1 秒	Less than 1 second
+{0} 秒	{0} sec
+{0} 分 {1} 秒	{0} min {1} sec
+请输入名称	Enter a name
+确定	OK
+录像已导出	Recording exported
+已取消，原录像仍保留	Cancelled; original recording retained
+导出失败，原录像仍保留	Export failed; original recording retained
+删除本地录像	Delete local recording
+确定删除这份录像？	Delete this recording?
+删除失败	Delete failed
+远控会话录像	Remote session recordings
+仅保存远端画面，不含声音；停止、断开或离开后可导出。取消导出不会删除原录像。	Video only, without audio. Export after stopping, disconnecting or leaving. Cancelling export keeps the original recording.
+暂无已结束的录像	No completed recordings
+二维码不是有效的 RustDesk 服务器配置	QR code is not a valid RustDesk server configuration
+✓ 已识别配置，请核对服务器地址后点击确定保存	✓ Configuration recognized; check addresses and confirm to save
+无法扫码，请使用导入或检查设备是否支持扫码	Cannot scan; import instead or check device support
+扫描中	Scanning
+扫码导入服务器配置	Scan server configuration
+收起配置二维码	Hide configuration QR code
+显示配置二维码	Show configuration QR code
+包含当前填写的服务器地址与公钥，不含连接密码。请仅向可信设备展示。	Contains entered server addresses and public key, not connection passwords. Show only to trusted devices.
+导入	Import
+为连接指定自建的 ID、Relay 与 API 服务	Configure custom ID, relay and API services
+IPv6 可输入裸地址，指定端口时请使用 [IPv6]:端口，例如 [2001:db8::1]:21116	Enter IPv6 directly, or use [IPv6]:port for a custom port, e.g. [2001:db8::1]:21116
+导出配置与 RustDesk 官方格式兼容，并包含服务器 Key，请勿发送给不可信的人。	Export uses the official RustDesk format and includes the server key. Share only with trusted people.
+请先填写 ID 服务器地址	Enter ID server address first
+服务器配置已导出到剪贴板	Server configuration copied to clipboard
+导出失败，请重试	Export failed; retry
+剪贴板为空，请先复制服务器配置	Clipboard is empty; copy server configuration first
+服务器配置无效	Invalid server configuration
+服务器配置已导入并生效	Server configuration imported and applied
+请先选择要导入的设备	Select devices to import
+本地连接数据异常，已取消导入，未覆盖原数据	Invalid local connection data. Import cancelled; original data retained.
+地址簿 · {0}	Address book · {0}
+本地连接格式错误	Invalid local connection format
+同步基线格式错误，已停止，未改动数据	Invalid sync baseline. Stopped without changing data.
+账号或本地连接已改变，请重试	Account or local connections changed; retry
+账号或本地数据已变化，请重新预览	Account or local data changed; preview again
+服务器数据已变化，请重新预览	Server data changed; preview again
+地址簿只读，请使用导入功能	Read-only address book; use Import
+账号已改变，同步停止	Account changed; sync stopped
+上传已执行，但账号或本地又有修改；请重新预览，未覆盖本地数据	Uploaded, but account or local data changed. Preview again; local data retained.
+同步期间数据发生变化，请重新预览	Data changed during sync; preview again
+服务器未完整保存或又有修改，请重新预览；未更新同步基线	Server save incomplete or changed again. Preview again; sync baseline unchanged.
+云同步未开启	Cloud sync is off
+其他云同步任务正在进行，请完成后再试	Another cloud sync task is running; retry after it finishes
+云同步设置已改变，本次结果不再应用	Cloud settings changed; this result will not be applied
+本机配置在同步期间已修改，已保留修改，请再次同步	Local configuration changed during sync and was retained. Sync again.
+云端暂无 StarRustDesk 备份，本机数据未改动	No StarRustDesk cloud backup; local data unchanged
+云端备份格式异常，已保留原文件，未进行覆盖	Invalid cloud backup format; original file retained without replacement
+云端与本机已是最新	Cloud and local data are up to date
+{0}（错误码 {1}）	{0} (error {1})
+请先设置至少 8 位的云备份密码	Set a cloud backup password of at least 8 characters
+本次快照已同步，但本机又有新修改待同步，请再次同步	Snapshot synced, but new local changes remain. Sync again.
+已同步到华为云空间	Synced to HUAWEI Cloud
+该云备份已加密，请输入备份密码	Encrypted cloud backup; enter backup password
+备份密码错误或云备份已损坏	Incorrect password or damaged cloud backup
+已从华为云空间恢复	Restored from HUAWEI Cloud
+系统尚未提供云同步目录；若 StarRustDesk 专用开关已开启，请稍后重试	Cloud directory is unavailable. If StarRustDesk sync is enabled in system settings, retry later.
+云备份未完整写入，原备份已保留	Cloud backup write incomplete; original backup retained
+无法创建独立云快照，原备份已保留，请重试	Cannot create cloud snapshot; original retained. Retry.
+云快照未完整写入，原备份已保留	Cloud snapshot write incomplete; original retained
+云快照写入校验失败，原备份已保留	Cloud snapshot verification failed; original retained
+云快照名称冲突，原备份已保留，请重试	Cloud snapshot name conflict; original retained. Retry.
+云快照未完整读取，请等待下载完成后重试；原备份已保留	Cloud snapshot read incomplete. Wait for download and retry; original retained.
+云备份不完整或校验失败，请稍后重试；已保留全部备份，本机配置未改动	Cloud backup incomplete or verification failed. Retry later; backups retained and local settings unchanged.
+系统云同步服务尚未就绪；若 StarRustDesk 专用开关已开启，请稍后重试	Cloud sync service is not ready. If StarRustDesk sync is enabled in system settings, retry later.
+云同步网络不可用，请检查网络或云空间的移动数据限制	Cloud sync network unavailable; check network and mobile data restrictions
+电量过低，系统暂停云同步，请充电后重试	Battery too low; cloud sync paused. Charge and retry.
+暂时无法连接系统云同步服务，请稍后重试	Cannot connect to cloud sync service; retry later
+同步文件或目录暂不可用，请稍后重试	Sync file or directory unavailable; retry later
+同步文件读写失败，请检查本机存储后重试	Sync file I/O failed; check local storage and retry
+系统云目录拒绝此次文件操作，原备份已保留；请导出诊断日志排查兼容性	Cloud directory rejected the operation; original backup retained. Export diagnostics to investigate.
+应用无法访问云同步目录，请检查本应用的云空间授权	App cannot access cloud directory; check cloud permissions
+当前系统暂不支持所需的云文件同步能力	Required cloud file sync is unsupported on this system
+云同步未完成，请开启诊断日志后重试并导出日志	Cloud sync incomplete; enable diagnostics, retry and export logs
+云同步任务失败，请稍后重试	Cloud sync task failed; retry later
+所有网络均不可用，请连接网络后重试	No network available; connect and retry
+云同步需要可用的 Wi-Fi，请检查云空间的移动数据限制	Cloud sync needs Wi-Fi; check cloud mobile data restrictions
+电量过低，请充电后再同步	Battery too low; charge before syncing
+系统因电量不足暂停云同步，请充电后重试	System paused cloud sync due to low battery; charge and retry
+华为云空间容量不足，请释放云端空间	HUAWEI Cloud storage full; free cloud space
+本机存储空间不足，请释放空间后重试	Local storage full; free space and retry
+设备温度过高，系统暂停云同步	Device too hot; cloud sync paused
+华为云端服务暂不可用，请稍后重试	HUAWEI Cloud service unavailable; retry later
+云同步已关闭，本次结果不再应用	Cloud sync turned off; result will not be applied
+系统已暂停云同步，请稍后重试	System paused cloud sync; retry later
+等待云同步结果超时，尚未确认完成；系统可能仍在同步，请稍后重试	Cloud sync confirmation timed out. System may still be syncing; completion unconfirmed. Retry later.
+云同步已关闭	Cloud sync is off
+发送失败，请检查远控连接后重试	Send failed; check remote connection and retry
+需要麦克风权限才能发起语音通话	Microphone permission is required for voice calls
+请在远控连接正常且应用在前台时呼叫	Call with an active remote connection while the app is in foreground
+呼叫发送失败	Unable to send call request
+无法申请麦克风权限，请到系统设置检查	Cannot request microphone permission; check system settings
+后台通话任务尚未就绪，语音已安全结束；远控连接保留	Background call task unavailable; voice ended safely. Remote connection retained.
+麦克风恢复失败，通话已结束	Microphone resume failed; call ended
+远控连接已断开，本次聊天记录已清空	Remote disconnected; session chat history cleared
+系统已暂停或取消后台语音任务，通话已结束	System paused or cancelled background voice task; call ended
+麦克风启动失败，通话已结束	Microphone failed to start; call ended
+会话通信异常，请重新连接	Session communication error; reconnect
+普通备份不得包含连接密码	Plain backups must not contain connection passwords
+加密结果无效	Invalid encryption result
+加密备份参数无效	Invalid encrypted backup parameters
+加密备份内容不完整	Encrypted backup incomplete
+不支持的加密备份格式	Unsupported encrypted backup format
+不支持的连接备份格式	Unsupported connection backup format
+备份内容数量异常	Invalid backup item count
+备份中的分组信息无效	Invalid groups in backup
+备份中的连接信息无效	Invalid connections in backup
+备份中的服务器配置无效	Invalid server configuration in backup
+普通备份不得包含服务器密钥	Plain backups must not contain server keys
+远端传输中断	Peer transport interrupted
+连接已取消或服务器配置已改变，请重试	Connection cancelled or server configuration changed; retry
+与远端安全握手失败	Peer secure handshake failed
+直连安全握手失败，正在通过加密中继重试	Direct secure handshake failed; retrying through an encrypted relay
+ID 服务器未响应	ID server did not respond
+注册服务器未响应，正在重新连接（{0}/2）	ID server did not respond; reconnecting ({0}/2)
+中继连接失败	Relay connection failed
+连接超时	Connection timed out
+中继连接失败，正在重新申请中继线路	Relay failed; requesting a new relay route
+服务器密钥无效	Server key is invalid
+远端设备 {0}	Remote device {0}
+远端设备声音	Remote device audio
+请先在服务器配置中填写自建 ID 服务器及公钥，再启用账号连接认证	Configure the custom ID server and public key before enabling account authentication
+账号登录恢复未完成，请检查网络后重试，或到设置中的 API 账号重新登录	Account restore incomplete. Check network and retry, or sign in again in Settings.
+API 地址过长	API URL is too long
+请输入完整 API 地址，例如 https://api.example.com	Enter a complete API URL, e.g. https://api.example.com
+默认只允许 HTTPS；确需 HTTP 时请明确勾选风险确认	HTTPS only by default. Explicitly accept the risk to use HTTP.
+API 地址不能包含账号、密码、查询参数或片段	API URL must not contain credentials, query parameters or fragments
+不支持的 API 类型	Unsupported API type
+请求已取消	Request cancelled
+服务器返回的账号信息无效	Invalid account information from server
+服务器配置已改变，官方账号认证未启用	Server configuration changed; official account authentication disabled
+官方账号认证上下文设置失败，请重新登录	Official authentication setup failed; sign in again
+服务器配置已改变，账号连接认证未启用；请在新网络下重新登录绑定	Server configuration changed; account authentication disabled. Sign in again for the new network.
+已登录地址簿，但 ID 服务器公钥无效，账号连接认证未启用	Address book login succeeded, but ID server key is invalid; connection authentication disabled
+请输入账号和密码	Enter username and password
+请输入 6 位验证码	Enter a 6-digit verification code
+网页登录选项格式不兼容	Incompatible web login options
+请先刷新服务器提供的网页登录方式	Refresh server web login methods first
+网页登录响应无效	Invalid web login response
+网页登录地址无效	Invalid web login URL
+网页登录仅允许安全 HTTPS 地址	Web login requires a secure HTTPS URL
+网页登录已取消，请重新开始	Web login cancelled; start again
+网页登录已超时，请重试	Web login timed out; retry
+二次验证响应无效	Invalid two-factor response
+服务器未返回兼容的登录令牌，请检查 API 版本和登录策略，或重新选择网页登录方式	No compatible login token returned. Check API version and login policy, or choose another web login method.
+已登录，但安全存储失败；退出应用后需要重新登录	Signed in, but secure storage failed. Sign in again after restarting.
+本机已退出；服务器注销未确认，可在服务端撤销会话	Signed out locally. Server logout unconfirmed; revoke the session on the server if needed.
+个人地址簿	Personal address book
+个人地址簿（旧版）	Personal address book (legacy)
+共享地址簿格式不兼容	Incompatible shared address book format
+共享地址簿	Shared address book
+地址簿数量过多，请在服务端缩小范围	Too many address books; narrow the scope on the server
+服务器未返回明确的设备列表，已取消同步	No explicit device list returned; sync cancelled
+旧版地址簿格式不兼容	Incompatible legacy address book format
+旧版地址簿内容无效	Invalid legacy address book content
+地址簿设备列表无效	Invalid address book device list
+设备列表含无效或重复记录，已取消同步	Invalid or duplicate devices; sync cancelled
+服务器未返回完整设备列表，已取消同步	Incomplete device list; sync cancelled
+服务器未正确分页，设备列表不完整，请升级 API 服务	Invalid server pagination; device list incomplete. Upgrade API service.
+设备超过分页限制，请在服务端分组后重试	Device pagination limit exceeded; group devices on the server and retry
+当前地址簿为只读，不能上传或修改	Read-only address book; upload and editing disabled
+设备 ID 不支持地址簿同步	Device ID does not support address book sync
+当前地址簿为只读，不能删除	Read-only address book; deletion disabled
+旧版地址簿格式不兼容，未覆盖	Incompatible legacy format; not overwritten
+旧版地址簿内容无效，已取消写入	Invalid legacy content; write cancelled
+操作已取消	Operation cancelled
+旧版地址簿被其他客户端修改，请重新预览	Legacy address book changed by another client; preview again
+请先登录	Sign in first
+服务器响应超过安全大小限制	Server response exceeds safety size limit
+API 地址发生跳转，请填写最终地址；为保护凭据已阻止跳转	API redirect blocked to protect credentials. Enter the final URL.
+账号或密码不正确，或登录已过期，请重新登录	Incorrect credentials or expired session; sign in again
+API 请求被拒绝（HTTP {0}），请检查地址和账号权限	API request rejected (HTTP {0}); check URL and account permissions
+服务器没有返回 JSON，请检查 API 地址是否指向网页	Server did not return JSON; check whether the API URL points to a webpage
+API 响应格式不兼容	Incompatible API response
+服务器拒绝操作，请检查账号密码、验证码、权限及服务端登录策略	Server rejected the operation. Check credentials, verification code, permissions and server login policy.
+API 网络请求失败，请检查网络、端口和 HTTPS 证书	API network request failed. Check network, port and HTTPS certificate.
+录像尚未收到关键帧，没有可导出画面	No recording keyframe received; no video to export
+录像读取失败	Recording read failed
+录像保存失败	Recording save failed
+录像大小校验失败	Recording size verification failed
+无法连接 ID 服务器	Cannot connect to ID server
+向 ID 服务器发送连接请求失败	Cannot send connection request to ID server
+ID 服务器未返回远端地址	ID server returned no peer address
+ID 服务器未返回远端或中继地址	ID server returned no peer or relay address
+ID 服务器返回了异常响应	Unexpected ID server response
+无法解析 ID 服务器的响应	Cannot parse ID server response
+远端 ID 不存在	Remote ID not found
+远端设备已离线	Remote device offline
+ID 服务器密钥不匹配	ID server key mismatch
+服务器授权使用量已超限	Server license usage limit exceeded
+ID 服务器拒绝了连接请求	ID server rejected the connection request
+与远端直连失败	Direct peer connection failed
+远端登录失败	Remote login failed
+远端连接已断开	Remote connection closed
+当前连接已被其他连接替换	Connection replaced by another connection
+上一次连接尚未关闭，请稍后重试	Previous connection still closing; retry later
+连接正忙，请稍后重试	Connection busy; retry later
+直连 IP 地址或端口无效	Invalid direct IP address or port
+服务器要求账号登录，请到设置中的 API 账号登录；这不是远端设备密码	Server requires account login. Sign in under Settings > Server account; this is not the remote device password.
+服务器账号登录已过期或令牌无效，请到设置中的 API 账号重新登录	Server login expired or token invalid. Sign in again under Settings > Server account.
+服务器拒绝访问，请检查账号的远控权限	Server denied access; check account remote-control permissions
+ID 服务器连接中断，请重试；如持续失败，请导出诊断日志	ID server connection interrupted. Retry; export diagnostics if it persists.
+连接失败（错误码：	Connection failed (error: 
+连接失败（错误码：{0}）	Connection failed (error: {0})
+远端密码错误	Incorrect remote password
+远端未启用密码访问	Remote password access disabled
+远端拒绝连接	Remote rejected connection
+远端密码错误次数过多，请稍后重试	Too many incorrect remote passwords; retry later
+远端拒绝访问，请检查权限	Remote denied access; check permissions
+远端已主动断开连接	Remote closed the connection
+远端登录失败，请检查远端设备并导出诊断日志	Remote login failed; check remote device and export diagnostics
+本次更新内容	What's new
+StarRustDesk 已更新	StarRustDesk updated
+1.2.19（1002019）· 实体鼠标、画面跟随与大字体适配	1.2.19 (1002019) · Physical mouse, tracking and large fonts
+修复远端光标图层可能遮挡实体鼠标点击的问题；优化鼠标与触摸兼容事件的识别及点击去重，避免左右键被误拦截。	Fixed cursor overlays blocking physical mouse clicks; improved mouse/touch classification and click deduplication.
+修复输入 Windows 登录密码后，本地键盘已收起但放大画面的鼠标跟随仍被阻止的问题；按实际键盘可见性和编辑状态恢复跟随，保留缩放比例与画面位置。	Restores zoomed-view tracking after the Windows login keyboard closes, using actual visibility and editing state while preserving zoom and position.
+优化系统大字体下的按钮适配：常用按钮、键控快捷栏和底部导航随字体调整尺寸，已保存连接工具区支持换行，减少文字被截断。	Buttons, floating controls and navigation adapt to larger system fonts. Saved-connection tools wrap to reduce clipping.
+补充键盘显示、焦点与画面跟随阻止原因的脱敏诊断，不记录输入内容；有线应用单独投屏的实体鼠标兼容问题仍待实机排查与验证。	Added sanitized keyboard visibility, focus and tracking diagnostics without input content. Wired app-only projection mouse compatibility still needs device investigation.
+1.2.18（1002018）· 投屏鼠标与软键盘组合键	1.2.18 (1002018) · Projection mouse and soft-keyboard shortcuts
+修复应用单独投屏时，实体鼠标连续移动事件可能被误过滤的问题；按事件类型和坐标精准去重，保留点击、拖动及触控原有路径。	Improved filtering of continuous physical mouse movement during app-only projection, preserving clicks, dragging and touch paths.
+优化投屏窗口的远端指针显示与位置更新，切换显示设备时清理旧输入状态；补充鼠标移动、过滤原因及指针状态诊断，便于排查设备差异。	Improved projected cursor updates and reset old input state on display changes; added movement, filtering and cursor diagnostics.
+修复选中 Ctrl 后使用软键盘输入 Q 等字母时，远端可能多出 Shift 的问题；区分字母字符与功能键编码，保留明确选中的 Shift、普通文字及中文输入。	Fixed extra Shift when typing letters such as Q with Ctrl selected. Preserves explicit Shift, regular text and Chinese input.
+投屏输入日志仅在诊断开关开启时记录，并限制输出频率；具体有线投屏兼容性仍需结合设备实测。	Projection input logs are diagnostic-only and rate-limited. Wired projection compatibility still requires device tests.
+1.2.17（1002017）· 方向键与翻页操作	1.2.17 (1002017) · Arrow and paging keys
+“键 → 更多”新增 ←、↑、↓、→ 四个方向按钮，支持配合选中的 Ctrl、Shift 等修饰键操作；点击不主动弹出软键盘，长按可调整顺序。	Added arrow buttons under Keys > More, with modifiers and reordering, without opening the soft keyboard.
+修复打开本地键盘后，外接键盘或 PC 键盘的方向键、翻页键未正确传递到远端的问题；补齐 PageUp、PageDown、Home、End 和 Insert 映射。	Fixed external/PC navigation keys with the local keyboard open; completed PageUp, PageDown, Home, End and Insert mapping.
+优化实体方向键长按连续输入、重复事件去重及失去焦点后的松键处理，避免重复发送和卡键；中文组字时保留本地输入法选词。	Improved arrow-key repeats, deduplication and key release on focus loss; preserves local IME candidate selection.
+补充方向键与输入法状态的脱敏诊断记录，不记录输入文字或候选内容；保留原有自定义按键排序。	Added sanitized navigation/IME diagnostics without text or candidates; custom ordering retained.
+1.2.16（1002016）· 连接错误提示	1.2.16 (1002016) · Connection errors
+连接失败错误码改为中文提示，区分 ID 服务器密钥不匹配、服务器密钥无效、连接超时及中继失败等情况。	Added Chinese connection errors distinguishing ID server key mismatch, invalid keys, timeouts and relay failures.
+远端密码错误、权限拒绝与连接中断等常见提示同步中文化；保留自动重连和用户确认后降级连接的原有判断。	Localized common password, permission and disconnection errors while preserving reconnect and user-approved security fallback logic.
+1.2.15（1002015）· 连接稳定性与 PC 全屏	1.2.15 (1002015) · Connection stability and PC full screen
+自建 ID 服务器未配置 API 账号时，连接前跳过不必要的账号会话准备；已记住账号或配置 API 时仍按原流程处理。	Skips unnecessary account preparation for custom servers without API accounts; remembered/configured accounts keep their normal flow.
+在线状态查询只连接 ID 服务器的辅助 TCP 端口，不再探测相邻 WebSocket 端口，减少对远控建链的干扰。	Availability checks use only the auxiliary ID-server TCP port, avoiding adjacent WebSocket probes and connection interference.
+WebSocket 连接失败后的重试限定次数并共用超时期限，避免异常服务器导致反复尝试。	WebSocket retries are bounded and share a timeout deadline.
+修复鸿蒙 PC 远控全屏：进入沉浸式全屏后，右侧功能栏收为右上角悬浮“控”按钮，保留独立的“退出全屏”按钮；退出后恢复固定侧栏。	Fixed immersive PC full screen: controls float at top right with a separate Exit full screen button; fixed sidebar returns on exit.
+1.2.14（1002014）· 虚拟鼠标边缘操作	1.2.14 (1002014) · Virtual mouse edges
+放大远端画面后，虚拟鼠标拖到右侧或下侧边缘时，继续拖动可让画面移开并露出黑色操作空间；控件和自带箭头保持贴合。	In a zoomed view, dragging beyond right/bottom edges exposes black operating space while keeping the virtual mouse and arrow aligned.
+修复在画面其他区域平移后，虚拟鼠标控件与自带箭头可能分离的问题；反向拖动可收回边缘空白。	Fixed virtual mouse/arrow separation after panning elsewhere; reverse dragging removes edge space.
+开启虚拟鼠标时，控件外的单指拖动只用于移动画面，不再误移动远端光标；未放大时不再把该手势当作触控板输入。	Outside the virtual mouse, one-finger dragging pans only and no longer moves the remote cursor or acts as a trackpad when unzoomed.
+1.2.13（1002013）· 远端安全选项	1.2.13 (1002013) · Remote security
+新增按设备配置断开后锁定远端、隐私屏幕和自动解锁远端系统；功能是否生效取决于被控端支持与授权。	Added per-device lock-on-disconnect, privacy screen and automatic system unlock, subject to remote support and permission.
+自动解锁仅在符合条件的加密连接中发送本机安全保存的系统密码；密码不参与连接备份或云同步。	Automatic unlock sends securely stored system passwords only on eligible encrypted connections; excluded from backups and cloud sync.
+补充远端安全操作的脱敏诊断日志，记录请求、回执与跳过原因，不记录密码或验证码。	Added sanitized security request, response and skip diagnostics without passwords or verification codes.
+关闭在线状态查询后，已保存设备图标不再显示状态圆点和状态图例；开启后恢复显示。	Status dots and legends hide when availability checks are off and return when enabled.
+改进个人云空间同步的完成确认、错误提示及云目录快照写入兼容性；真实跨设备恢复仍需在云服务上验证。	Improved cloud sync confirmation, errors and snapshot writing compatibility; cross-device restoration still needs real cloud testing.
+1.2.12（1002012）· 在线状态查询开关	1.2.12 (1002012) · Availability toggle
+设置中的“查询服务器/设备在线状态”默认关闭；关闭时首页不再定时向服务器查询已保存设备的在线状态。	Availability checks default to off, disabling periodic saved-device server queries.
+需要在线状态提示时可手动开启；此开关不影响输入 ID 后连接远端。	Enable availability hints if needed; manual ID connections are unaffected.
+1.2.10（1002010）· 全屏、画面跟随与故障诊断	1.2.10 (1002010) · Full screen, tracking and diagnostics
+修复全屏按钮文字与选中状态未及时更新的问题；切换中防止重复点击，失败时恢复状态并提示，退出远控时恢复系统栏。	Fixed full-screen labels and selection state; blocks repeated switching, restores state on failure and system bars on exit.
+全屏与普通模式复用视频显示组件，仅系统栏或黑边区域变化时不再重复重建解码器；保留实际旋转、换屏和显示目标变化时的安全重绑定，减少切换黑屏。	Reuses the video surface across full-screen changes without unnecessary decoder rebuilds, while retaining safe rebinding for rotation and display changes.
+优化手机和平板放大后的鼠标画面跟随：开启边缘跟随后，手指将鼠标移到可视区域中心附近即可连续平移视野，停手即停，再次滑动无需等待；虚拟鼠标拖动区同步支持。	Improved zoomed phone/tablet tracking: moving near the view center pans immediately, stopping pauses, and repeated swipes need no waiting; virtual mouse dragging also supported.
+补充全屏切换、系统窗口调用、画面复用与恢复的阶段、耗时和失败码日志，方便排查设备兼容问题。	Added phase, timing and error diagnostics for full screen, window calls and video reuse/recovery.
+诊断模式新增系统崩溃、卡死及系统终止事件的本地脱敏采集，可随诊断日志导出；是否获得完整调用栈取决于系统投递，诊断默认关闭，不自动上传。	Diagnostics can collect sanitized system crash, hang and termination records locally. Stack availability depends on system delivery; off by default, never uploaded automatically.
+增强已保存设备在线查询的分阶段诊断与 Wi-Fi、蜂窝网络类型关联，辅助定位家庭 Wi-Fi 下保存连接或查询时的异常；这项增强不代表已确认修复相关闪退原因。	Added availability-check phase and Wi-Fi/cellular diagnostics to investigate home-network crashes; not a confirmed crash fix.
+1.2.0（1002006）· 控制端功能与诊断修订	1.2.0 (1002006) · Controller features and diagnostics
+新增独立文件传输会话、批量和文件夹上传，以及远端新建文件夹、重命名和删除；文件夹上传暂不保留空文件夹。	Added file-only sessions, batch/folder uploads and remote create/rename/delete. Empty upload folders are not preserved.
+新增地址簿手动双向同步预览、冲突处理和设备标签管理，不同步本地连接密码与密钥。	Added manual two-way address book sync preview, conflict handling and tags, excluding passwords and keys.
+支持扫描和显示服务器配置二维码，扫码后确认保存才生效。	Added server configuration QR scanning/display; scanned settings apply after confirmation.
+新增远端画面录像、录像导出和删除；录像为 WebM，仅包含画面，不包含声音。	Added remote WebM video recording, export and deletion, without audio.
+完善前台会话网络中断后的限次重连、Wayland 文本输入授权提示及已接通语音的后台任务处理。	Improved bounded reconnects, Wayland text permission prompts and background handling for connected voice calls.
+优化单独投屏方向策略；实际可用性仍受设备与接收端能力限制。	Improved app-only projection orientation; availability depends on device and receiver capabilities.
+完善文件传输、地址簿同步、录像、扫码、重连和语音诊断，记录操作阶段、耗时和错误码；日志默认关闭，敏感内容不写入新增日志。	Expanded transfer, sync, recording, QR, reconnect and voice diagnostics with phases, timing and error codes; off by default and excludes sensitive content.
+1.2.0（1002006）· 账号登录与操控优化	1.2.0 (1002006) · Account login and controls
+完善官方服务器账号认证与网页登录流程，优化登录恢复、连接等待、取消和异常提示；补充脱敏诊断日志。	Improved official account/web login, session restore, connection waiting, cancellation and sanitized diagnostics.
+修复服务器账号与地址簿弹窗请求结束后按钮仍不可点击的问题，优化设置入口的文字层级及深浅色可读性。	Fixed disabled account dialog buttons after requests and improved light/dark text readability.
+单指移动画面按显示帧合并更新；光标图片未变化时不再重复复制，减少界面处理开销。	Coalesces one-finger panning per display frame and avoids copying unchanged cursor images.
+优化 VP9 软解码入队与渲染的锁分离，减少视频提交对输入发送的间接阻塞。	Separated VP9 software decode queue and rendering locks to reduce input blocking.
+更新应用单层图标为 1024×1024 方角不透明图片，修正透明边角并校验打包后的图标。	Updated single-layer icon to opaque square 1024×1024 and verified the packaged icon.
+1.2.0（1002005）· 密码保护与认证诊断	1.2.0 (1002005) · Password protection and authentication diagnostics
+整合本轮密码显示保护：已保存密码不再回显，支持更换、取消与保存后清除；新输入密码仍可临时查看。	Saved passwords no longer display; supports changing, cancelling and clearing on save. Newly typed passwords can be viewed temporarily.
+保留连接认证脱敏诊断、PC 自适应布局与 One-KVM 键鼠兼容改进；升级后首次启动展示更新说明。	Retains sanitized authentication diagnostics, adaptive PC layout and One-KVM improvements; shows changes on first launch after upgrading.
+1.2.0（1002004）· 密码保护、PC 布局与键鼠兼容	1.2.0 (1002004) · Password protection, PC layout and input compatibility
+已保存连接的密码仅显示“密码已保存”，不再回填或明文查看；新输入密码仍可临时查看，保存后立即隐藏。	Saved passwords show a status only, never plaintext or autofill. Newly typed passwords hide immediately after saving.
+支持更换、取消更换和清除密码，清除在保存后生效；修改名称或分组保留原密码，更换远端 ID 不再沿用旧设备密码。	Password changes/cancellation/clearing are supported. Names/groups retain passwords; changing remote ID does not reuse the old device password.
+增强连接认证诊断：细分服务器拒绝原因，记录令牌是否携带及配置匹配状态；不记录密码、令牌或服务器敏感原文，不改变认证和加密策略。	Added sanitized authentication rejection/token-presence/configuration diagnostics without credentials or changes to encryption policy.
+优化鸿蒙 PC 连接首页：顶部快捷连接、下方自适应双列/三列设备列表，详细选项在右侧展开，窄窗口恢复单列。	Improved PC home: quick connection above adaptive two/three-column device lists, right-side details and single-column narrow layout.
+新增按设备保存的自动、1:1 映射和传统键盘模式，识别 One-KVM 后优先使用传统模式，避免扫描码解释不一致导致串键。	Added per-device automatic, 1:1 and legacy keyboard modes; One-KVM prefers legacy to avoid scan-code mismatches.
+新增相对鼠标协议，支持触屏、虚拟鼠标和实体鼠标的移动增量；模式切换先释放按键，出入画面及切屏时重置取样，减少跳位。	Added relative mouse deltas for touch, virtual and physical mice; releases buttons and resets samples on mode/display changes.
+新增远端光标来源选项，识别 One-KVM 的画面内嵌光标，避免双光标叠加；普通远端保留真实光标反馈。	Added remote cursor source selection to avoid duplicate One-KVM embedded cursors while retaining normal remote feedback.
+1.2.0（1002003）· 语音呼叫与高清画质	1.2.0 (1002003) · Voice calls and high-quality video
+新增“高清优先”和“自定义”画质模式，支持码率比例 10%～2000% 与目标帧率 5～120 FPS，参数可随连接保存、备份与同步。	Added Best quality and Custom modes with 10–2000% bitrate and 5–120 FPS, saved/backed up/synced with connections.
+画质入口位于新建或编辑连接的“更多选项 → 连接模式”，保存后下次连接生效；码率百分比不代表固定 Mbps。	Quality is under More options > Connection mode; applies next connection. Percentages are not fixed Mbps.
+公共中继下自定义码率超过 100% 时回退至 50%，目标帧率最高 30 FPS；自建服务器或直连可使用更高设置，保留原有默认模式。	Public relays cap settings above 100% at 50% and 30 FPS; custom/direct connections allow more. Existing defaults retained.
+后台保持低帧率，返回前台恢复所选画质；登录、画质重发和解码回退时保留自定义参数。	Background uses low FPS and restores quality in foreground; custom parameters survive login/resend/decoder fallback.
+恢复聊天面板中的“发起语音”入口及通话状态提示，支持取消呼叫、静音和挂断。	Restored voice call entry and status, with cancellation, mute and hang-up.
+语音仅在获得麦克风授权且远端接听后开始采集，进入后台或断开连接时结束通话。	Voice capture begins only after microphone permission and remote answer; ends on background/disconnect in this version.
+保留文字聊天、账号地址簿及上一版本的界面优化；语音通话需远端客户端支持。	Retained chat, accounts/address books and UI improvements. Voice requires remote client support.
+1.2.0（1002002）· 账号地址簿与操作体验	1.2.0 (1002002) · Accounts, address books and usability
+新增官方 RustDesk Server Pro 与第三方 rustdesk-api 账号登录入口，支持记住登录、退出及邮箱或身份验证器二次验证。	Added official Server Pro and third-party rustdesk-api login, remembered sessions, logout and email/authenticator verification.
+支持读取个人、共享及旧版地址簿，勾选设备导入已保存连接；已有设备自动跳过，不覆盖名称、密码和分组。	Reads personal/shared/legacy address books for selected import; skips existing devices without overwriting names, passwords or groups.
+新增可选的自建 ID 服务器账号权限认证；登录令牌仅保存在本机安全存储，不进入连接备份或云同步。	Added optional custom ID-server account authentication; tokens are securely local only, excluded from backups/cloud sync.
+新增与远端的文字聊天，支持发送、接收和未读提示；聊天记录仅保留本次连接。	Added remote text chat with unread hints and session-only history.
+优化平板横屏首页：上方快速连接，下方集中显示已保存设备，详细编辑选项使用侧边面板。	Improved landscape tablet home with quick connection above saved devices and side-panel editing.
+横屏远控默认展开两侧快捷栏；弹出键盘时保持当前画面比例并上移避让，不再整体缩小。	Landscape opens both control bars by default; keyboard moves the view upward without shrinking it.
+连接信息默认关闭，按需展开并支持拖动；优化拖动边界和点击判定。	Connection info defaults closed, expands on demand and supports dragging with improved bounds/click detection.
+保存连接后新增“已保存”提示，自动向上淡出；常用按钮统一圆角矩形风格，可在设置中切换。	Added upward-fading Saved tip and optional rounded-rectangle button style.
+1.2.0（1002001）· 虚拟鼠标与横屏操控	1.2.0 (1002001) · Virtual mouse and landscape controls
+优化“键 / 控”按钮排序：排序列表改为长按后上下拖动，替代上移、下移按钮，松手自动保存，并支持恢复默认顺序。	Reordering uses hold-and-drag instead of up/down buttons; saves on release and supports reset.
+“键 → 更多”中的按键和组合键新增独立排序；长按任意按键进入排序列表，重新打开或重启应用后保留顺序，不影响主快捷栏。	Extra keys/shortcuts have independent persistent ordering, opened by long press without affecting main controls.
+手机和平板新增可开关的虚拟鼠标，支持左右键点击、按住拖动、滚轮滚动和中键操作，并记住开关状态。	Added persistent phone/tablet virtual mouse with left/right buttons, dragging, wheel and middle button.
+虚拟鼠标采用透明蓝灰玻璃外观、细描边和淡蓝色按下反馈，清晰区分左右键、滚轮与移动区域。	Virtual mouse uses transparent blue-gray glass, fine borders and pale-blue pressed feedback with distinct operating areas.
+修复虚拟鼠标与远端光标漂移、缩放和平移后位置不同步的问题，改善多屏切换后的光标对齐。	Fixed virtual/remote cursor drift and alignment after zoom, pan and display switching.
+修复关闭虚拟鼠标后按钮仍显示选中，以及左右键、滚轮点击无效或重复触发的问题。	Fixed stale virtual-mouse selection and invalid/duplicate button and wheel actions.
+开启虚拟鼠标并放大画面后，可拖动鼠标移动远端光标，单指拖动画面其他区域平移视野。	With virtual mouse and zoom, drag the mouse for pointer movement and other areas to pan.
+手机和平板横屏时，“键”默认位于左上角、“控”位于右上角，展开方向改为向下；两组悬浮栏支持在屏幕内自由拖动。	Landscape defaults Keys top left and Controls top right, both expanding down and draggable anywhere.
+长按“键 / 控”栏中的具体按钮可自定义排列顺序并保存；优化横屏软键盘弹出后的画面避让。	Hold buttons to customize persistent ordering; improved landscape keyboard avoidance.
+1.2.0（1002000）· 云同步、连接协议与界面体验	1.2.0 (1002000) · Cloud sync, protocols and UI
+新增华为个人云空间同步，可在同一华为账号的设备间同步已保存连接、分组和服务器配置。	Added HUAWEI Cloud sync for saved connections, groups and server configuration across devices sharing an account.
+密码与服务器密钥默认不上传；用户可选择使用 AES-256-GCM 加密后同步敏感信息，并支持手动同步和云端恢复。	Passwords and keys excluded by default; optional AES-256-GCM encrypted sync, manual sync and restore supported.
+完善官方服务器与自建服务器连接流程，补充 IPv4/IPv6、TCP、中继、UDP/KCP 与 WebRTC 连接能力及诊断信息。	Expanded official/custom connection flows with IPv4/IPv6, TCP, relay, UDP/KCP and WebRTC support and diagnostics.
+优化连接建立、打洞和中继回退速度，修复候选地址选择、连接重试及快速重连中的多项稳定性问题。	Improved setup, hole punching and relay fallback; fixed candidate selection and retry/reconnect stability.
+修复多屏远控时屏幕画面与远端光标状态可能串屏、跳动或显示不一致的问题。	Fixed multi-display video/cursor state mixing, jumps and inconsistencies.
+自建服务器配置保存后立即生效，支持配置导入与导出；连接密码弹窗可直接输入，并可选择是否保存。	Custom server settings apply immediately with import/export; password dialogs accept input and optional saving.
+优化长按拖动判定，降低鼠标左键长按和触摸操作的误触发。	Improved hold/drag classification to reduce accidental actions.
+更新连接页紧凑布局、排序操作和连接信息面板；首页展开折叠及“连接 / 设置”切换增加平滑过渡动画。	Added compact connection layout, sorting/info improvements and smooth expansion/tab animations.
+1.1.0（1001007）· 界面、文件排序与连接恢复	1.1.0 (1001007) · UI, file sorting and connection recovery
+连接页与设置页统一柔和卡片、悬浮导航和淡蓝色选中风格，同时适配深色模式。	Unified soft cards, floating navigation and pale-blue selection with dark-mode support.
+远控上方默认显示折叠的“键”快捷栏；上下“键 / 控”统一收放样式、尺寸与伸缩过渡，降低展开面板的遮挡。	Keys defaults collapsed; Keys/Controls share sizing and expansion transitions with less obstruction.
+修复 Ctrl、Alt、Shift、Win/Cmd 选中状态显示不及时；折叠后保留按键状态，并以小蓝点提示仍有修饰键选中。	Fixed modifier selection updates; collapsed controls preserve state and show a blue active-modifier dot.
+快捷栏新增“释放”按钮，一次取消所有已选修饰键，不折叠面板、不打开或关闭本地键盘；补充手势和组合键说明。	Added Release to clear modifiers without collapsing or changing keyboard visibility; expanded help.
+底部鼠标/触摸模式按钮改为居中的纯文字，统一与相邻功能按钮的视觉风格。	Mouse/touch button uses centered text matching adjacent controls.
+远端文件浏览新增名称、类型、大小、修改时间排序及升降序切换，文件夹优先，名称支持数字自然排序，切换排序保留已选文件。	Added remote file sorting by name/type/size/date and direction, folders first, natural numeric names and preserved selection.
+优化取回文件界面，长文件名最多显示三行，详细信息两行，增加项目数量和空目录提示。	Improved download browser with three-line names, two-line details, counts and empty-folder hints.
+修复直连安全握手失败后连接路线丢失，导致未触发加密中继重试的问题；不自动降级为未加密连接。	Preserves failed direct routes so encrypted relay retries trigger correctly; no automatic unencrypted fallback.
+完善后台任务错误码兼容和失败回退判断，补充连接路线、登录失败原因及后台任务诊断信息。	Improved background task error compatibility/fallback with route, login and task diagnostics.
+1.1.0（1001006）· 键盘、快捷栏与连接界面优化	1.1.0 (1001006) · Keyboard, controls and connection UI
+手机远控功能栏改为半透明悬浮胶囊，支持拖动、收起和展开；平板及 PC 侧栏同步优化外观。	Phone controls use translucent draggable/collapsible capsules; tablet and PC sidebars updated.
+屏幕切换、鼠标模式、移动画面及边缘跟随统一使用淡蓝色选中态，并适配深色模式。	Displays, input mode, panning and auto-pan share pale-blue selection with dark-mode support.
+修复手机底部功能按钮显示不全，调整工具栏高度、间距及常用按钮宽度。	Fixed clipped phone controls by adjusting bar height, spacing and widths.
+修复多屏切换后旧光标坐标反复隐藏鼠标的问题，改善 PC 屏幕 1、2 光标偶发消失，并补充诊断记录。	Fixed stale multi-display cursor coordinates hiding the cursor, improving PC displays 1/2 with diagnostics.
+远控键盘快捷栏支持拖动，可收起为半透明小按钮，点击小按钮即可重新展开。	Keyboard controls are draggable and collapse to a translucent button.
+优化已保存连接的搜索布局，搜索框从按钮左侧展开，搜索、备份和分组按钮不再位移。	Search expands left without shifting Search, Backup or Group buttons.
+快捷栏发送 Ctrl+Shift+Esc、Ctrl+Shift+Del、Alt+F4 或 Ctrl+Alt+Del 后不再自动弹出本地软键盘。	Full shortcut buttons no longer automatically open the local keyboard.
+补齐 F1–F12 物理功能键传递，修复控制 macOS 时 F3 无法送达远端的问题。	Completed physical F1–F12 forwarding, including macOS F3.
+左右 Ctrl、Shift、Alt/Option 与 Meta/Command 按键分别按 RustDesk 官方协议传递，改善 Ctrl+↑ 等多键组合。	Forwards left/right modifiers separately using official protocol, improving combinations such as Ctrl+Up.
+组合键不再把当前修饰键重复附加到自身事件，降低 macOS、Linux 被控端忽略快捷键或产生按键残留的风险。	Modifiers no longer duplicate themselves in events, reducing ignored shortcuts and stuck keys on macOS/Linux.
+断开连接、切换页面或失去输入焦点时释放已按下的修饰键，避免下一次输入受到旧按键状态影响。	Releases modifiers on disconnect, page changes or focus loss.
+直连安全握手失败时自动保持加密并改走中继；注册服务器无响应和中继超时会进行有限次数的全新连接重试。	Secure direct failures retry via encrypted relay; ID/relay timeouts use bounded fresh retries.
+1.1.0（1001005）· Linux 外接键盘映射修复	1.1.0 (1001005) · Linux external keyboard mapping
+修复 HarmonyOS 6 平板使用蓝牙或 USB 外接键盘控制 Ubuntu/KDE 时，Q、W 等按键错误变成数字键的问题。	Fixed Q/W and other keys becoming digits on Ubuntu/KDE with external HarmonyOS 6 tablet keyboards.
+物理键盘改用通用 USB HID 位置码传递，再根据被控端系统转换为 Windows、Linux、macOS 或 Android 对应键码。	Physical keys use USB HID positions converted for the remote OS.
+Linux 被控端使用正确的 Xorg/XKB 键码，Windows 原有扫描码行为保持不变。	Linux uses correct Xorg/XKB codes; Windows scan codes unchanged.
+同步覆盖数字、标点、Shift 大小写、按键释放和会话重置，降低跨平台键位偏移与按键残留风险。	Covers digits, punctuation, Shift case, releases and session reset to reduce cross-platform mapping errors and stuck keys.
+1.1.0（1001004）· 键盘特殊符号输入修复	1.1.0 (1001004) · Keyboard symbols
+修复 HarmonyOS PC 使用物理键盘时，Shift 配合数字行无法输入 ! @ # $ % ^ & * ( ) 的问题。	Fixed Shift+number-row symbols on HarmonyOS PC physical keyboards.
+普通数字、Shift 大小写及中文输入保持原有行为，不受本次修复影响。	Regular digits, Shift case and Chinese input remain unchanged.
+Ctrl、Alt 或 Win 配合 Shift 与数字键的快捷键继续按物理按键传递，避免破坏远端快捷操作。	Ctrl/Alt/Win with Shift and digits remain physical shortcuts.
+完善数字行长按重复、按键释放和会话重置处理，降低 Shift 或数字键状态残留的风险。	Improved number-row repeats, releases and session resets to prevent stuck Shift/digits.
+1.1.0（1001003）· 服务器密钥异常提示	1.1.0 (1001003) · Server key warnings
+自建服务器密钥无效、格式错误或与服务器身份不匹配时，不再只显示笼统的安全握手失败。	Invalid/malformed/mismatched custom server keys now have specific errors.
+新增明确的风险提示，可取消连接，或由用户主动选择“仅本次继续”并临时使用未加密连接。	Added explicit risk prompt to cancel or choose unencrypted continuation for this attempt only.
+降级授权只对当前一次连接有效，不写入设置；断开连接或重新发起普通连接后自动恢复安全校验。	Fallback permission applies only once and is not saved; normal security checks resume on new connections.
+文件传输会话只在当前远控会话已获用户授权时沿用临时降级状态，避免重复失败或永久降低安全性。	File sessions inherit temporary fallback only from an authorized current session, without permanently lowering security.
+补充服务器密钥异常、用户选择及临时降级流程的诊断记录和自动回归检查。	Added key-warning, user-choice and fallback diagnostics and regressions.
+1.1.0（1001002）· 手势、PC组合键与网络连接修复	1.1.0 (1001002) · Gestures, PC shortcuts and networking
+修复双指、三指滚动后因手指分批抬起误触右键的问题，保留双指轻点右键，取消手势不再触发点击。	Fixed unintended right clicks after staggered multi-finger release; two-finger taps retained, cancelled gestures do not click.
+键盘和鼠标采用统一事件队列，修复 Ctrl/Shift 配合鼠标多选的事件顺序问题，分别跟踪左右修饰键。	Unified input queue fixes modifier/mouse selection ordering and tracks left/right modifiers separately.
+修复 Shift 先松开时字母按键释放不匹配的问题，保留普通字母的远端输入法路径；输入队列异常时释放已按住的按键和鼠标。	Fixed release mismatches when Shift releases first; retains remote IME paths and releases held inputs on queue errors.
+新增 IPv4/IPv6 地址直连及指定端口支持，远控和文件会话均可绕过 ID 服务器；未加密连接显示明确提醒。	Added direct IPv4/IPv6 and custom ports for control/files without an ID server; unencrypted connections clearly warned.
+修正公共服务器默认地址与公钥配置，不覆盖用户的自建服务器设置；远控密码不用于服务器访问令牌。	Corrected public server defaults and keys without overwriting custom settings; remote passwords are not server access tokens.
+完善连接总超时、取消和快速重连，限制文件会话建立与在线状态查询的等待时间，防止旧任务继续运行。	Added bounded setup/availability waits, total connection timeout and cancellation to stop stale tasks during fast reconnects.
+修复在线状态查询长时间黄灯、迟到结果被丢弃等问题；IP直连地址显示独立的状态未知提示，不误报在线或离线。	Fixed persistent unknown status and discarded late results; direct IP entries show unknown instead of falsely online/offline.
+后台视频子模式被系统拒绝后，依次尝试普通多设备互联和兼容接口，补齐任务取消、暂停、恢复和失败重试处理。	Background video falls back to normal multi-device/compatible APIs with cancellation, pause, resume and retry handling.
+已保存连接支持按 ID、名称、在线状态排序并记住选择；诊断日志补充手势判定、键鼠顺序、连接阶段与构建标识。	Saved connections remember ID/name/status sorting; added gesture, input ordering, connection phase and build diagnostics.
+包含上一轮首帧、解码恢复及双栈 Wi-Fi 中继回退优化，详情见下方 1001001 修复记录。	Includes earlier first-frame, decoder recovery and dual-stack Wi-Fi relay improvements; see 1001001 below.
+1.1.0（1001001）· 在线状态与连接稳定性	1.1.0 (1001001) · Availability and connection stability
+修复多指滚动、缩放和三指手势结束后误触右键的问题；保留双指轻点右键，取消手势不再触发点击。	Fixed unintended right clicks after multi-finger gestures; two-finger taps retained, cancellation does not click.
+修复鸿蒙 PC 键鼠事件顺序与组合键状态同步，分别跟踪左右 Ctrl/Shift，改善组合键配合鼠标多选。	Fixed PC input ordering/modifier synchronization with separate left/right Ctrl/Shift tracking.
+已保存连接支持按 ID、名称或在线状态排序，并记住选择。	Saved connections remember sorting by ID, name or availability.
+新增 IPv4/IPv6 地址直接连接，支持指定端口，不再依赖 ID 服务器；直连地址显示独立的状态未知提示。	Added direct IPv4/IPv6 and custom ports without ID-server dependency; direct addresses show unknown status.
+修正公共连接服务器默认地址，保留自建配置；连接取消、文件会话建立和在线查询均有独立时限。	Corrected public defaults while retaining custom settings; cancellation, file setup and availability have separate deadlines.
+修复在线状态查询超时后丢弃迟到结果的问题，避免已在线设备持续显示黄色，并补充状态查询耗时与结果诊断。	Accepts late availability results to avoid persistent yellow status and adds timing/result diagnostics.
+取消连接时及时停止旧连接的网络等待，增加连接总时限，减少快速重连时旧任务继续运行的问题。	Cancellation stops old network waits; total deadlines reduce stale reconnect tasks.
+优化双栈网络下 IPv4/IPv6 地址尝试，限制 DNS 与直连等待时间，改善部分 Wi-Fi 和自建服务器的中继回退。	Improved dual-stack attempts with bounded DNS/direct waits for Wi-Fi/custom relay fallback.
+增加连接后无首帧的分阶段恢复：请求刷新画面、尝试 VP9 协商，并在持续无画面时显示明确提示。	Added staged missing-first-frame recovery: refresh, VP9 negotiation and clear no-video warnings.
+修复解码健康检查在没有画面时不执行的问题，补充后台视频暂停期间的保护。	Decoder health checks now run without video and respect background video pauses.
+视频统计按连接重置，分别记录收到数据、解码输出和成功提交画面，修复黑屏被误判为已有画面的问题。	Per-session statistics separate received data, decoded output and submitted frames to avoid falsely detecting video.
+直连后登录或首帧长时间无响应时自动尝试一次中继连接；主动取消或等待二次验证时不会自动重试。	Direct login/first-frame stalls retry once via relay; cancellation and verification waits do not auto-retry.
+增加解码器重启恢复；横竖屏切换时保留软解码参考帧，减少切换后黑屏。	Added decoder restart recovery and preserves software reference frames across rotation.
+导出日志补充应用版本、原生构建标识和连接阶段耗时；签名校验失败时拒绝连接，未加密连接新增提醒。	Logs include version/native build/phase timing; signature failures reject connections and unencrypted sessions show warnings.
+修复后台任务模式与子模式兼容性问题，增加能力探测与多设备互联回退，并补齐音频和文件传输的子模式参数。	Improved background mode compatibility, capability detection, multi-device fallback and audio/transfer parameters.
+1.1.0（1001000）· 连接管理、安卓控制与多屏鼠标	1.1.0 (1001000) · Connections, Android controls and multi-display cursors
+新建连接区域支持展开和折叠；已保存连接改为一键直连，并将移动、修改和删除统一收纳到“更多”菜单。	Connection form collapses; saved devices connect directly with move/edit/delete under More.
+新增已保存连接的导入与导出：普通备份不包含密码，加密备份可包含密码，并支持合并或覆盖导入。	Added plain/encrypted connection backups with optional passwords and merge/replace import.
+增强自建服务器中继连接兼容性，中继失败时使用新的连接和会话标识自动重试。	Improved custom relay compatibility with fresh connection/session retry on relay failure.
+连接安卓被控端时新增返回、主页、最近任务、音量和电源等系统操作。	Added Android Back, Home, Recents, volume and power actions.
+安卓被控端的手机操作改为底部悬浮条，支持拖动和位置记忆，并取消遮挡远端画面的全屏遮罩。	Android controls use a draggable bottom bar with remembered position and no full-screen blocking overlay.
+修复多显示器切换后鼠标状态残留，以及部分屏幕错误声明已嵌入鼠标而导致远端鼠标不显示的问题。	Fixed stale cursor state and incorrect embedded-cursor declarations after display changes.
+1.0.9（1000906）· 鼠标拖动显示	1.0.9 (1000906) · Drag cursor display
+修复鼠标模式按住拖动时，本地预测鼠标与远端真实鼠标同时出现并逐渐岔开的问题。	Fixed local predicted and remote cursors appearing together and diverging during dragging.
+拖动开始时保留短暂的本地预测以维持跟手感，随后自动切换到远端真实鼠标坐标进行校正。	Uses brief local prediction at drag start, then remote coordinates for correction.
+保留双击按住框选、左键拖动和“左键按住”状态提示，不影响远端文件框选操作。	Retains double-tap hold selection, left-button dragging and held-button hints.
+1.0.9（1000905）· 鼠标框选与拖拽	1.0.9 (1000905) · Selection and dragging
+优化手机鼠标模式的双击按住拖动，扩大识别时间和触点容错范围，降低框选手势识别失败的概率。	Improved double-tap hold dragging with larger timing/touch tolerances.
+修复远端文件管理器无法拉出文件选框的问题，框选时使用干净的“左键按下、移动、抬起”事件序列。	Fixed box selection with clean left-button down/move/up sequences.
+触摸拖拽期间不再因输入焦点短暂切换提前释放左键，并在异常释放后自动恢复左键按下状态。	Dragging survives brief focus changes and restores left-button state after unexpected release.
+拖拽生效时新增蓝色“左键按住”提示，并补充双击、拖拽和左键恢复诊断日志。	Added a blue held-button hint and double-tap/drag/recovery diagnostics.
+1.0.9（1000904）· 连接状态、文件取回、输入与视频	1.0.9 (1000904) · Availability, downloads, input and video
+已保存连接新增在线状态灯，并修复状态查询端口错误导致设备可以连接却一直显示黄色的问题；绿色表示在线，灰色表示离线。	Added availability dots and fixed query port errors; green is online and gray offline.
+修复远端文件已经传输完成，但保存到手机后变成 0 字节或提示保存失败的问题。	Fixed completed downloads becoming zero-byte files or showing save failures.
+重新设计远端文件选择界面，补充文件类型、大小、修改时间和更完整的文件名显示。	Redesigned file picker with type, size, date and more complete names.
+文件传输进度新增实时速度、已传输大小和批量任务数量，并支持随时取消；取消取回时会清理未完成文件。	Transfer progress includes speed, bytes and batch counts with cancellation and incomplete-download cleanup.
+修复 Shift 配合字母输入失效的问题，同时避免中文输入法被错误切换为直接输入英文字母。	Fixed Shift letters while preserving Chinese IME input.
+优化放大画面后的拖动和边缘跟随，扩大有效平移范围并提升物理鼠标靠边移动的响应速度。	Improved zoomed panning range and physical mouse edge tracking.
+视频编码改为自动协商：双方支持且远端具备编码能力时可优先使用 H.265，同时保留 VP9 黑屏恢复方案。	Automatically negotiates codecs, preferring supported H.265 while retaining VP9 recovery.
+1.0.9（1000902）· 远端取回、输入与连接	1.0.9 (1000902) · Downloads, input and connections
+新增从远端取回文件，支持单文件、多选批量取回以及整个文件夹递归下载。	Added single/batch and recursive folder downloads.
+批量或文件夹取回完成后在本机压缩为一个 ZIP，保留目录层级并只需选择一次保存位置。	Batch/folder downloads create one local ZIP preserving structure with a single save destination.
+修复批量文件实际保存成功却提示失败的问题，并补充取回、压缩和保存阶段的诊断记录。	Fixed false batch save failures and added download/archive/save diagnostics.
+修复 HarmonyOS PC 使用 Ctrl、Shift 和 CapsLock 配合鼠标或键盘时，组合操作未正确传递到远端的问题。	Fixed PC Ctrl/Shift/CapsLock with mouse and keyboard operations.
+新增远控会话后台保持：锁屏或切换到其他应用后继续维持连接，解锁返回时自动恢复视频画面。	Added background session retention across locking/app switching, with video restored on return.
+设置中新增诊断日志开关，默认关闭；仅在用户主动开启后记录连接和解码信息。	Added opt-in diagnostic logging, off by default.
+修复边缘跟随开启后按钮选中状态不刷新的问题，并统一所有选中按钮为主蓝色。	Fixed stale auto-pan selection and unified selected colors.
+移动画面模式的单指平移速度提高 50%，改善手机和平板上的画面拖动效率。	One-finger panning speed increased by 50% on phones/tablets.
+1.0.9（1000900）· PC 鼠标体验	1.0.9 (1000900) · PC mouse
+修复 HarmonyOS PC 使用物理鼠标或触控板时，远端左键偶发无响应的问题。	Fixed intermittent left-click failures on PC mice/touchpads.
+修复关闭本地鼠标后，指针进入状态栏、工具栏、按钮或弹窗仍保持隐藏的问题。	Local pointers reappear over app controls when hidden in remote video.
+隐藏本地指针时继续显示并同步远端真实鼠标，改善缩放和平移后的操作一致性。	Retains synchronized remote cursors when hiding local pointers.
+1000816 · 边缘跟随与输入	1000816 · Auto pan and input
+新增放大画面后的边缘自动平移，鼠标在边缘短暂停留后视野会平滑跟随。	Added smooth zoomed edge panning after brief cursor hover.
+加入触发延迟、渐进速度和自动停止保护，降低画面意外移动。	Added delayed triggering, gradual speed and automatic stop protection.
+调整远控工具栏，将“键盘”和“移动画面”按钮位置对调。	Swapped Keyboard and Pan view buttons.
+修复 PC 端物理鼠标或触控板偶发丢失左键抬起，导致后续点击失效的问题。	Fixed lost physical left-button releases breaking later clicks.
+1000815 · 远端鼠标同步	1000815 · Remote cursor sync
+显示远端真实鼠标样式，并修复缩放、平移和多显示器场景下的坐标漂移。	Shows real remote cursor shapes and fixes zoom/pan/multi-display drift.
+分离本机鼠标指针开关与远端鼠标显示，关闭本机指针后远端鼠标仍然可见。	Separates local pointer visibility from remote cursor display.
+修复手机触控移动远端鼠标时，电脑端已经移动但手机端光标停在原位的问题。	Fixed stale phone cursor positions after remote movement.
+1000814 · 画面移动	1000814 · Panning
+新增放大画面后的“移动画面”模式，单指可平移视野且不会误操作远端鼠标。	Added one-finger zoomed panning without remote clicks.
+移动模式选中后按钮显示绿色，并在平移视野时继续显示远端鼠标位置。	Pan selection used green in this version and retained remote cursor display.
+移动画面模式保留双指滚动和捏合缩放，并在全屏提供悬浮入口。	Panning retains two-finger scroll/pinch with a full-screen floating entry.
+1000813 · 连接稳定性与诊断	1000813 · Stability and diagnostics
+优化网络延迟探测响应兼容性，降低部分远端主动断开连接的风险。	Improved latency-probe compatibility to reduce remote disconnects.
+增强完整诊断日志，记录协议消息、视频接收、远端关闭原因和连接结束统计。	Expanded protocol/video/disconnect/session-summary diagnostics.
+完善异常连接的日志导出信息，便于继续定位已连接黑屏和断线问题。	Improved exported diagnostics for black screens and disconnects.
+1000812 · 视频解码兼容	1000812 · Decoder compatibility
+新增 VP8、AV1 和 H.265 视频解码支持，扩大对不同远端编码配置的兼容范围。	Added VP8, AV1 and H.265 decoding.
+状态信息新增当前视频编码格式，并标明硬件解码或软件解码。	Status shows the codec and hardware/software decoding.
+完善 VP9 软件解码回退，提升部分旧系统、虚拟机和特殊显卡环境的出画成功率。	Improved VP9 software fallback for older systems, VMs and unusual GPUs.
+1000811 · 黑屏与横屏修复	1000811 · Black screen and landscape fixes
+修复断开后快速重新连接时偶发无响应的问题。	Fixed unresponsive fast reconnects.
+修复部分无显卡直通虚拟机已收到视频流但持续黑屏的问题。	Fixed received-video black screens on some VMs without GPU passthrough.
+完整处理批量视频帧并保留关键帧和时间戳，提升首屏成功率。	Processes batch video frames with keyframes/timestamps for better first-frame delivery.
+H264 解码无画面时自动请求关键帧，并支持切换 VP9 恢复画面。	Requests keyframes and supports VP9 recovery when H.264 shows no video.
+修复切换横屏时偶发闪退和部分页面未适配的问题。	Fixed landscape crashes and layout gaps.
+1.0.8 · 界面与输入	1.0.8 · UI and input
+移除远控时遮挡画面的本地输入框，只保留系统键盘。	Removed the obstructive local input box, retaining the system keyboard.
+修复物理键盘 Ctrl、Shift、Alt、Meta 和组合键传递。	Fixed physical modifiers and shortcuts.
+修复横屏页面内容被底部导航遮挡的问题。	Fixed bottom navigation covering landscape content.
+优化横屏双栏页面，连接列表和编辑区域可以独立上下滚动。	Landscape connection lists and editors scroll independently.
+调整分组箭头、输入框清除按钮和首页蓝色扇形背景。	Refined group arrows, input clear buttons and blue home background.
+优化深色模式可读性以及手机、平板的页面布局。	Improved dark-mode readability and phone/tablet layouts.
+1.0.8 · 连接与管理	1.0.8 · Connections and management
+已保存连接支持新建分组、重命名、展开折叠和移动连接。	Saved connections support groups, renaming, expansion and moving.
+新增 IPv6 地址连接支持，指定端口时可使用 [IPv6]:端口。	Added IPv6 connections with [IPv6]:port support.
+完善中继安全握手与二次验证流程。	Improved secure relay handshake and two-factor flows.
+尝试修复同一 Wi-Fi 下无法控制安卓被控端的问题。	Attempted same-Wi-Fi Android connection improvements.
+1.0.8 · 远控体验	1.0.8 · Remote control
+新增手机、平板和 2in1 横屏及全屏远控，支持自动旋转。	Added landscape/full-screen remote control and automatic rotation.
+全屏三指上滑可调出系统键盘，输入直接传递到远端。	Three-finger swipe up in full screen opens the keyboard for remote typing.
+完善鼠标和触摸模式，支持拖动、右键、滚动与双指缩放。	Improved mouse/touch dragging, right click, scrolling and pinch zoom.
+同步远端真实鼠标位置，并在远端已显示光标时自动隐藏本地指针。	Synchronizes remote cursors and avoids duplicate local overlays.
+动态范围	Dynamic range
+未标记	Unspecified
+系统适配	System managed
+输出不支持	Output unsupported
+1.2.20（1002020）· 多语言、折叠屏与 HDR 视频适配	1.2.20 (1002020) · Languages, foldable screens and HDR video
+新增简体中文、繁体中文和英语，默认跟随系统；可在设置中手动切换，保存语言偏好，不影响远控连接、按键和用户文件名。	Added Simplified Chinese, Traditional Chinese and English with system language as the default. Manual language preferences are saved without changing remote connections, keys or user filenames.
+优化折叠屏内外屏及横竖屏的软键盘避让：保留远端画面当前比例，按可见区域和最后鼠标位置上移画面，光标同步移动；折叠、展开和旋转后重新计算。	Improved keyboard avoidance on inner and outer foldable screens in both orientations. The remote view keeps its scale and shifts with the cursor based on the visible area and last pointer position; layout is recalculated after folding, unfolding or rotation.
+新增实验性 HDR 视频接收与显示适配，识别 HDR10/PQ 和 HLG；连接信息增加动态范围与输出路径，补充色彩、位深和显示设备的脱敏诊断。	Added experimental HDR reception and display handling for HDR10/PQ and HLG. Connection information now shows dynamic range and output path, with redacted color, bit-depth and display diagnostics.
+AV1 软件解码增加 HDR 转 SDR，完善 VP9/AV1 高位深画面转换及解码切换的色彩状态清理。真正 HDR 显示需要远端发送 HDR 视频及设备支持，不能恢复已转换为 SDR 的画面，实际效果仍需真机验证。	Added HDR-to-SDR conversion for software AV1, improved high-bit-depth VP9/AV1 conversion and color-state cleanup when switching decoders. True HDR requires an HDR stream from the remote device and a supported display; SDR-converted video cannot be restored to HDR. Real-device validation is still required.

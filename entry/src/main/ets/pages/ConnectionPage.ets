@@ -66,6 +66,7 @@ const PEER_STATE_QUERY_TIMEOUT_MS: number = 12000
 
 @Component
 export struct ConnectionPage {
+  @StorageLink('uiLanguage') uiLanguage: string = 'zh-Hans'
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('uiFontScale') uiFontScale: number = 1
   @State connectionName: string = ''
@@ -240,11 +241,11 @@ export struct ConnectionPage {
     RemoteSessionBackgroundTask.syncForConnectionStatus(status)
     this.connectionStatusValue = status
     if (status === ConnectionStatus.CONNECTING) {
-      this.connectionStatusText = translate('Connecting...')
+      this.connectionStatusText = translate('Connecting...', this.uiLanguage)
       this.connectionStatusColor = RustDeskTheme.WARNING
       this.isConnecting = true
     } else if (status === ConnectionStatus.CONNECTED) {
-      this.connectionStatusText = translate('Connected')
+      this.connectionStatusText = translate('Connected', this.uiLanguage)
       this.connectionStatusColor = RustDeskTheme.SUCCESS
       this.isConnecting = false
     } else if (status === ConnectionStatus.WAITING_2FA) {
@@ -253,7 +254,7 @@ export struct ConnectionPage {
       this.isConnecting = false
     } else if (status === ConnectionStatus.FAILED) {
       let error: string = ConnectionService.getLastConnectionError()
-      this.connectionStatusText = error.length > 0 ? error : translate('Connection failed')
+      this.connectionStatusText = error.length > 0 ? error : translate('Connection failed', this.uiLanguage)
       this.connectionStatusColor = RustDeskTheme.ERROR
       this.isConnecting = false
       this.hasOpenedRemotePage = false
@@ -371,7 +372,7 @@ export struct ConnectionPage {
       }
 
       if (this.saveTipVisible) {
-        Text('已保存')
+        Text(translate('已保存', this.uiLanguage))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.isDarkMode ? '#DCEBFF' : '#215FAE')
@@ -384,7 +385,7 @@ export struct ConnectionPage {
           .translate({ y: this.saveTipOffsetY })
           .zIndex(30)
           .hitTestBehavior(HitTestMode.None)
-          .accessibilityText('连接已保存')
+          .accessibilityText(translate('连接已保存', this.uiLanguage))
       }
 
       if (this.showGroupNameDialog || this.showGroupPicker || this.showConnectionPasswordDialog ||
@@ -445,7 +446,7 @@ export struct ConnectionPage {
   @Builder
   buildWideQuickConnect() {
     Row({ space: 20 }) {
-      Text(this.selectedConnectionId.length > 0 ? '编辑连接' : '新建连接')
+      Text(translate(this.selectedConnectionId.length > 0 ? '编辑连接' : '新建连接', this.uiLanguage))
         .fontSize(20)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -453,7 +454,7 @@ export struct ConnectionPage {
         this.buildRemoteIdInput()
       }
       .layoutWeight(1)
-      Button('更多选项 ›')
+      Button(translate('更多选项 ›', this.uiLanguage))
         .height(44)
         .fontSize(14)
         .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
@@ -477,7 +478,7 @@ export struct ConnectionPage {
           .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .width('100%')
-        Text('轻松连接并控制你的远端设备')
+        Text(translate('轻松连接并控制你的远端设备', this.uiLanguage))
           .fontSize(14)
           .fontColor(this.isDarkMode ? '#B7C0CF' : RustDeskTheme.TEXT_SECONDARY)
           .width('100%')
@@ -490,7 +491,7 @@ export struct ConnectionPage {
           .width(8)
           .height(8)
           .fill(this.isUsingPublicServer || this.customServerHint.length > 0 ? RustDeskTheme.SUCCESS : RustDeskTheme.WARNING)
-        Text(this.isUsingPublicServer ? '公共网络' : '自建网络')
+        Text(translate(this.isUsingPublicServer ? '公共网络' : '自建网络', this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_SECONDARY)
       }
@@ -510,13 +511,13 @@ export struct ConnectionPage {
   buildConnectionForm() {
     Column({ space: 10 }) {
       Row() {
-        Text(this.selectedConnectionId.length > 0 ? '编辑连接' : '新建连接')
+        Text(translate(this.selectedConnectionId.length > 0 ? '编辑连接' : '新建连接', this.uiLanguage))
           .fontSize(20)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Button(this.isWideDeviceLayout() ? '关闭 ×' :
-          (this.connectionFormExpanded ? '收起选项⌃' : '更多选项›'))
+        Button(translate(this.isWideDeviceLayout() ? '关闭 ×' :
+          (this.connectionFormExpanded ? '收起选项⌃' : '更多选项›'), this.uiLanguage))
           .height(34)
           .fontSize(14)
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
@@ -569,7 +570,7 @@ export struct ConnectionPage {
   @Builder
   buildUpdateBanner() {
     Row() {
-      Text(translate('Download new version'))
+      Text(translate('Download new version', this.uiLanguage))
         .fontSize(RustDeskTheme.FONT_SIZE_SMALL)
         .fontColor(Color.White)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
@@ -591,14 +592,14 @@ export struct ConnectionPage {
         .width(8)
         .height(8)
         .fill(this.connectionStatusColor)
-      Text(this.connectionStatusText)
+      Text(translate(this.connectionStatusText, this.uiLanguage))
         .fontSize(14)
         .fontColor(this.connectionStatusColor)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .margin({ left: 6 })
 
       if (this.connectionStatusValue === ConnectionStatus.FAILED) {
-        Button(translate('Retry'))
+        Button(translate('Retry', this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .backgroundColor(Color.Transparent)
@@ -610,7 +611,7 @@ export struct ConnectionPage {
       }
 
       if (this.connectionStatusValue === ConnectionStatus.CONNECTED) {
-        Button(translate('Disconnect'))
+        Button(translate('Disconnect', this.uiLanguage))
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
           .backgroundColor(Color.Transparent)
@@ -633,7 +634,7 @@ export struct ConnectionPage {
     Column() {
       Row() {
         Stack({ alignContent: Alignment.End }) {
-          TextInput({ placeholder: '远端 ID / IP', text: this.remoteId })
+          TextInput({ placeholder: translate('远端 ID / IP', this.uiLanguage), text: this.remoteId })
             .type(InputType.Normal)
             .fontSize(20)
             .fontWeight(RustDeskTheme.FONT_WEIGHT_BOLD)
@@ -706,7 +707,7 @@ export struct ConnectionPage {
 
   @Builder
   buildConnectionNameInput() {
-    TextInput({ placeholder: '连接名称（可选）', text: this.connectionName })
+    TextInput({ placeholder: translate('连接名称（可选）', this.uiLanguage), text: this.connectionName })
       .type(InputType.Normal)
       .fontSize(RustDeskTheme.FONT_SIZE_BODY)
       .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -728,10 +729,10 @@ export struct ConnectionPage {
   buildConnectionGroupSelector() {
     Row({ space: 8 }) {
       Column({ space: 2 }) {
-        Text('保存到分组')
+        Text(translate('保存到分组', this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
-        Text(this.groupNameForId(this.selectedGroupId))
+        Text(this.selectedGroupId.length === 0 ? translate('未分组', this.uiLanguage) : this.groupNameForId(this.selectedGroupId))
           .fontSize(14)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
@@ -741,7 +742,7 @@ export struct ConnectionPage {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
-      Button('选择')
+      Button(translate('选择', this.uiLanguage))
         .height(32)
         .fontSize(12)
         .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
@@ -752,7 +753,7 @@ export struct ConnectionPage {
         })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
 
-      Button('+ 分组')
+      Button(translate('+ 分组', this.uiLanguage))
         .height(32)
         .fontSize(12)
         .fontColor(Color.White)
@@ -777,17 +778,17 @@ export struct ConnectionPage {
     Column({ space: 8 }) {
       if (this.passwordEditMode === 'keep' && this.hasSavedConnectionPassword()) {
         Row({ space: 8 }) {
-          Text('密码已保存')
+          Text(translate('密码已保存', this.uiLanguage))
             .fontSize(16)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
             .layoutWeight(1)
-          Button('更换')
+          Button(translate('更换', this.uiLanguage))
             .fontSize(14)
             .height(36)
             .backgroundColor(this.selectedControlBackground())
             .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
             .onClick(() => { this.startPasswordReplacement() })
-          Button('清除')
+          Button(translate('清除', this.uiLanguage))
             .fontSize(14)
             .height(36)
             .backgroundColor(Color.Transparent)
@@ -801,11 +802,11 @@ export struct ConnectionPage {
         .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
       } else if (this.passwordEditMode === 'clear') {
         Row({ space: 8 }) {
-          Text('密码待清除，保存后生效')
+          Text(translate('密码待清除，保存后生效', this.uiLanguage))
             .fontSize(14)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .layoutWeight(1)
-          Button('撤销')
+          Button(translate('撤销', this.uiLanguage))
             .fontSize(14)
             .height(36)
             .backgroundColor(this.selectedControlBackground())
@@ -814,7 +815,7 @@ export struct ConnectionPage {
         }
         .width('100%')
       } else {
-        TextInput({ placeholder: this.hasSavedConnectionPassword() ? '输入新密码' : translate('Password'), text: this.password })
+        TextInput({ placeholder: translate(this.hasSavedConnectionPassword() ? '输入新密码' : 'Password', this.uiLanguage), text: this.password })
       .type(InputType.Password)
       .showPasswordIcon(true)
       .fontSize(RustDeskTheme.FONT_SIZE_BODY)
@@ -833,7 +834,7 @@ export struct ConnectionPage {
         this.passwordEditMode = 'replace'
       })
         if (this.passwordEditMode === 'replace' && this.hasSavedConnectionPassword()) {
-          Button('取消更换，保留已保存密码')
+          Button(translate('取消更换，保留已保存密码', this.uiLanguage))
             .fontSize(13)
             .height(32)
             .backgroundColor(Color.Transparent)
@@ -866,13 +867,13 @@ export struct ConnectionPage {
             this.toggleSavedConnectionsExpanded()
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 21, ButtonType.Capsule))
-        Text('已保存连接')
+        Text(translate('已保存连接', this.uiLanguage))
           .fontSize(20)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .maxLines(1)
           .margin({ left: 8 })
-        Text(`${this.savedConnections.length}`)
+        Text(translate(`${this.savedConnections.length}`, this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
           .padding({ left: 8, right: 8, top: 3, bottom: 3 })
@@ -887,7 +888,7 @@ export struct ConnectionPage {
 
       Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
         if (this.savedConnectionSearchExpanded) {
-          Search({ value: this.savedConnectionSearch, placeholder: '搜索名称或远端 ID' })
+          Search({ value: this.savedConnectionSearch, placeholder: translate('搜索名称或远端 ID', this.uiLanguage) })
             .layoutWeight(1)
             .height(this.savedToolbarButtonHeight())
             .textFont({ size: 12 })
@@ -904,8 +905,8 @@ export struct ConnectionPage {
               this.savedConnectionSearch = value
             })
         } else {
-          Button(`排序：${this.savedConnectionSort === 'name' ? '名称' :
-            this.savedConnectionSort === 'online' ? '在线' : 'ID'}`)
+          Button(translate(`排序：${this.savedConnectionSort === 'name' ? '名称' :
+            this.savedConnectionSort === 'online' ? '在线' : 'ID'}`, this.uiLanguage))
             .height(this.savedToolbarButtonHeight())
             .fontSize(12)
             .labelStyle({ maxLines: 2, minFontSize: 10, maxFontSize: 12,
@@ -914,16 +915,16 @@ export struct ConnectionPage {
             .backgroundColor(Color.Transparent)
             .padding({ left: 0, right: 2 })
             .bindMenu([
-              { value: `${this.savedConnectionSort === 'id' ? '✓ ' : ''}远端 ID`,
+              { value: translate(`${this.savedConnectionSort === 'id' ? '✓ ' : ''}远端 ID`, this.uiLanguage),
                 action: () => { this.setSavedConnectionSort('id') } },
-              { value: `${this.savedConnectionSort === 'name' ? '✓ ' : ''}设备名称`,
+              { value: translate(`${this.savedConnectionSort === 'name' ? '✓ ' : ''}设备名称`, this.uiLanguage),
                 action: () => { this.setSavedConnectionSort('name') } },
-              { value: `${this.savedConnectionSort === 'online' ? '✓ ' : ''}在线优先`,
+              { value: translate(`${this.savedConnectionSort === 'online' ? '✓ ' : ''}在线优先`, this.uiLanguage),
                 action: () => { this.setSavedConnectionSort('online') } }
             ], { placement: Placement.BottomLeft, enableArrow: true })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
           Button() {
-            Text(this.savedConnectionSortAscending ? '▲' : '▼')
+            Text(translate(this.savedConnectionSortAscending ? '▲' : '▼', this.uiLanguage))
               .fontSize(10)
               .fontColor(this.isDarkMode ? '#AFCBFF' : RustDeskTheme.TEXT_SECONDARY)
           }
@@ -939,7 +940,7 @@ export struct ConnectionPage {
             Blank()
           }
         }
-        Button('备份')
+        Button(translate('备份', this.uiLanguage))
           .width(this.savedToolbarButtonWidth(48))
           .height(this.savedToolbarButtonHeight())
           .fontSize(12)
@@ -952,19 +953,19 @@ export struct ConnectionPage {
           .margin({ left: 8 })
           .bindMenu([
             {
-              value: '普通导出（不含密码）',
+              value: translate('普通导出（不含密码）', this.uiLanguage),
               action: () => {
                 this.exportPlainBackup()
               }
             },
             {
-              value: '加密导出（包含密码）',
+              value: translate('加密导出（包含密码）', this.uiLanguage),
               action: () => {
                 this.openEncryptedExportDialog()
               }
             },
             {
-              value: '导入备份',
+              value: translate('导入备份', this.uiLanguage),
               action: () => {
                 this.selectBackupForImport()
               }
@@ -974,7 +975,7 @@ export struct ConnectionPage {
             enableArrow: true
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button('+ 分组')
+        Button(translate('+ 分组', this.uiLanguage))
           .width(this.savedToolbarButtonWidth(56))
           .height(this.savedToolbarButtonHeight())
           .fontSize(12)
@@ -989,7 +990,7 @@ export struct ConnectionPage {
             this.openNewGroupDialog()
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button(this.savedConnectionSearchExpanded ? '收起' : '搜索')
+        Button(translate(this.savedConnectionSearchExpanded ? '收起' : '搜索', this.uiLanguage))
           .width(this.savedToolbarButtonWidth(48))
           .height(this.savedToolbarButtonHeight())
           .fontSize(12)
@@ -1022,10 +1023,10 @@ export struct ConnectionPage {
         Column({ space: 8 }) {
           if (this.savedConnections.length === 0 && this.connectionGroups.length === 0) {
             Column({ space: 8 }) {
-              Text('暂无保存的连接')
+              Text(translate('暂无保存的连接', this.uiLanguage))
                 .fontSize(15)
                 .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_PRIMARY)
-              Text('可先创建分组，再保存连接')
+              Text(translate('可先创建分组，再保存连接', this.uiLanguage))
                 .fontSize(12)
                 .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             }
@@ -1037,10 +1038,10 @@ export struct ConnectionPage {
             .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
           } else if (this.filteredSavedConnectionCount() === 0) {
             Column({ space: 6 }) {
-              Text('未找到匹配的设备')
+              Text(translate('未找到匹配的设备', this.uiLanguage))
                 .fontSize(15)
                 .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_PRIMARY)
-              Text('可按设备名称或远端 ID 搜索')
+              Text(translate('可按设备名称或远端 ID 搜索', this.uiLanguage))
                 .fontSize(12)
                 .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             }
@@ -1085,12 +1086,12 @@ export struct ConnectionPage {
   @Builder
   buildRemoteSecurityOptions() {
     Column({ space: 8 }) {
-      Text('远端安全选项（仅对此设备生效）')
+      Text(translate('远端安全选项（仅对此设备生效）', this.uiLanguage))
         .fontSize(15)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
       Row() {
-        Text('断开连接后锁定远端')
+        Text(translate('断开连接后锁定远端', this.uiLanguage))
           .fontSize(14)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .layoutWeight(1)
@@ -1101,7 +1102,7 @@ export struct ConnectionPage {
           })
       }.width('100%')
       Row() {
-        Text('隐私屏幕（需被控端支持并允许）')
+        Text(translate('隐私屏幕（需被控端支持并允许）', this.uiLanguage))
           .fontSize(14)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .layoutWeight(1)
@@ -1109,7 +1110,7 @@ export struct ConnectionPage {
           .onChange((value: boolean) => { this.privacyMode = value })
       }.width('100%')
       Row() {
-        Text('自动解锁远端系统（需开启断开锁屏）')
+        Text(translate('自动解锁远端系统（需开启断开锁屏）', this.uiLanguage))
           .fontSize(14)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .layoutWeight(1)
@@ -1118,11 +1119,11 @@ export struct ConnectionPage {
           .onChange((value: boolean) => { this.autoUnlock = value })
       }.width('100%')
       if (this.autoUnlock) {
-        Text('仅在端到端加密连接中发送系统密码；密码与连接密码不同。若远端已解锁，可能输入到当前窗口。')
+        Text(translate('仅在端到端加密连接中发送系统密码；密码与连接密码不同。若远端已解锁，可能输入到当前窗口。', this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
-        TextInput({ placeholder: this.hasStoredOsPassword && !this.clearOsPassword ?
-          '系统密码已安全保存；输入可更换' : '输入远端系统密码', text: this.osPasswordDraft })
+        TextInput({ placeholder: translate(this.hasStoredOsPassword && !this.clearOsPassword ?
+          '系统密码已安全保存；输入可更换' : '输入远端系统密码', this.uiLanguage), text: this.osPasswordDraft })
           .type(InputType.Password)
           .maxLength(240)
           .showPasswordIcon(false)
@@ -1132,7 +1133,7 @@ export struct ConnectionPage {
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .onChange((value: string) => { this.osPasswordDraft = value })
         if (this.hasStoredOsPassword && !this.clearOsPassword) {
-          Button('清除已保存的系统密码')
+          Button(translate('清除已保存的系统密码', this.uiLanguage))
             .fontSize(12)
             .backgroundColor(Color.Transparent)
             .fontColor(RustDeskTheme.ERROR)
@@ -1155,19 +1156,19 @@ export struct ConnectionPage {
     Row({ space: 14 }) {
       Row({ space: 5 }) {
         Circle().width(8).height(8).fill(RustDeskTheme.SUCCESS)
-        Text('在线')
+        Text(translate('在线', this.uiLanguage))
           .fontSize(11)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
       }
       Row({ space: 5 }) {
         Circle().width(8).height(8).fill(this.isDarkMode ? '#697386' : '#A5ADBA')
-        Text('离线')
+        Text(translate('离线', this.uiLanguage))
           .fontSize(11)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
       }
       Row({ space: 5 }) {
         Circle().width(8).height(8).fill(RustDeskTheme.WARNING)
-        Text('待确认')
+        Text(translate('待确认', this.uiLanguage))
           .fontSize(11)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
       }
@@ -1203,13 +1204,13 @@ export struct ConnectionPage {
     Column() {
       Row({ space: 6 }) {
         this.buildGroupFolderIcon()
-        Text(groupName)
+        Text(groupId.length === 0 ? translate('未分组', this.uiLanguage) : groupName)
           .fontSize(14)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(`${this.connectionsForGroup(groupId).length}`)
+        Text(translate(`${this.connectionsForGroup(groupId).length}`, this.uiLanguage))
           .fontSize(11)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
           .padding({ left: 7, right: 7, top: 2, bottom: 2 })
@@ -1224,7 +1225,7 @@ export struct ConnectionPage {
             .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
             .backgroundColor(Color.Transparent)
             .padding(0)
-            .bindMenu([{ value: '重命名分组', action: () => { this.openRenameGroupDialog(groupId) } }],
+            .bindMenu([{ value: translate('重命名分组', this.uiLanguage), action: () => { this.openRenameGroupDialog(groupId) } }],
               { placement: Placement.BottomRight, enableArrow: true })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 12, ButtonType.Capsule))
         }
@@ -1297,7 +1298,7 @@ export struct ConnectionPage {
             }
             .layoutWeight(1)
 
-            Button('连接')
+            Button(translate('连接', this.uiLanguage))
               .width(68)
               .height(32)
               .fontSize(12)
@@ -1319,24 +1320,24 @@ export struct ConnectionPage {
               .borderRadius(RustDeskTheme.HOME_CONTROL_RADIUS)
               .padding(0)
               .bindMenu([
-                { value: '文件传输（不打开画面）', action: () => {
+                { value: translate('文件传输（不打开画面）', this.uiLanguage), action: () => {
                   this.applySavedConnection(item)
                   this.onConnect(true)
                 } },
                 {
-                  value: '移动到分组',
+                  value: translate('移动到分组', this.uiLanguage),
                   action: () => {
                     this.openGroupPickerForConnection(item.id)
                   }
                 },
                 {
-                  value: '修改连接',
+                  value: translate('修改连接', this.uiLanguage),
                   action: () => {
                     this.editSavedConnection(item)
                   }
                 },
                 {
-                  value: '删除连接',
+                  value: translate('删除连接', this.uiLanguage),
                   action: () => {
                     this.deleteSavedConnection(item.id)
                   }
@@ -1370,13 +1371,13 @@ export struct ConnectionPage {
   @Builder
   buildGroupNameDialog() {
     Column({ space: 14 }) {
-      Text(this.editingGroupId.length > 0 ? '重命名分组' : '新建分组')
+      Text(translate(this.editingGroupId.length > 0 ? '重命名分组' : '新建分组', this.uiLanguage))
         .fontSize(19)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
 
-      TextInput({ placeholder: '输入分组名称', text: this.groupNameDraft })
+      TextInput({ placeholder: translate('输入分组名称', this.uiLanguage), text: this.groupNameDraft })
         .width('100%')
         .height(48)
         .fontSize(15)
@@ -1392,14 +1393,14 @@ export struct ConnectionPage {
         })
 
       if (this.groupNameError.length > 0) {
-        Text(this.groupNameError)
+        Text(translate(this.groupNameError, this.uiLanguage))
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
           .width('100%')
       }
 
       Row({ space: 10 }) {
-        Button('取消')
+        Button(translate('取消', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_SECONDARY)
@@ -1409,7 +1410,7 @@ export struct ConnectionPage {
             this.closeGroupDialogs()
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button(this.editingGroupId.length > 0 ? '保存名称' : '创建')
+        Button(translate(this.editingGroupId.length > 0 ? '保存名称' : '创建', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(Color.White)
@@ -1435,12 +1436,12 @@ export struct ConnectionPage {
   buildGroupPickerDialog() {
     Column({ space: 12 }) {
       Row() {
-        Text(this.groupPickerForForm ? '选择保存分组' : '移动连接到分组')
+        Text(translate(this.groupPickerForForm ? '选择保存分组' : '移动连接到分组', this.uiLanguage))
           .fontSize(19)
           .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
           .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         Blank()
-        Button('关闭')
+        Button(translate('关闭', this.uiLanguage))
           .height(30)
           .fontSize(12)
           .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_SECONDARY)
@@ -1464,7 +1465,7 @@ export struct ConnectionPage {
       .width('100%')
       .height(Math.min(320, 58 + this.connectionGroups.length * 48))
 
-      Button('+ 新建分组')
+      Button(translate('+ 新建分组', this.uiLanguage))
         .width('100%')
         .height(40)
         .fontColor(this.isDarkMode ? RustDeskTheme.CONTROL_SELECTED_TEXT_DARK : RustDeskTheme.CONTROL_SELECTED_TEXT)
@@ -1487,18 +1488,18 @@ export struct ConnectionPage {
   @Builder
   buildConnectionPasswordDialog() {
     Column({ space: 12 }) {
-      Text('输入连接密码')
+      Text(translate('输入连接密码', this.uiLanguage))
         .fontSize(19)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
 
-      Text(`请输入远端设备 ${this.remoteId} 的连接密码`)
+      Text(translate(`请输入远端设备 ${this.remoteId} 的连接密码`, this.uiLanguage))
         .fontSize(13)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
 
-      TextInput({ placeholder: '连接密码', text: this.connectionPasswordDraft })
+      TextInput({ placeholder: translate('连接密码', this.uiLanguage), text: this.connectionPasswordDraft })
         .type(InputType.Password)
         .width('100%')
         .height(48)
@@ -1525,11 +1526,11 @@ export struct ConnectionPage {
             this.rememberConnectionPassword = isOn
           })
         Column({ space: 2 }) {
-          Text(this.selectedConnectionId.length > 0 ? '保存密码到此连接' : '保存密码并保存此连接')
+          Text(translate(this.selectedConnectionId.length > 0 ? '保存密码到此连接' : '保存密码并保存此连接', this.uiLanguage))
             .fontSize(14)
             .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
             .width('100%')
-          Text('密码将写入系统安全凭据库')
+          Text(translate('密码将写入系统安全凭据库', this.uiLanguage))
             .fontSize(11)
             .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
             .width('100%')
@@ -1541,14 +1542,14 @@ export struct ConnectionPage {
       .alignItems(VerticalAlign.Center)
 
       if (this.connectionPasswordError.length > 0) {
-        Text(this.connectionPasswordError)
+        Text(translate(this.connectionPasswordError, this.uiLanguage))
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
           .width('100%')
       }
 
       Row({ space: 10 }) {
-        Button('取消')
+        Button(translate('取消', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_SECONDARY)
@@ -1558,7 +1559,7 @@ export struct ConnectionPage {
             this.closeConnectionPasswordDialog()
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button('连接')
+        Button(translate('连接', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(Color.White)
@@ -1583,20 +1584,20 @@ export struct ConnectionPage {
   @Builder
   buildBackupPasswordDialog() {
     Column({ space: 12 }) {
-      Text(this.backupPasswordMode === 'export' ? '设置备份密码' : '输入备份密码')
+      Text(translate(this.backupPasswordMode === 'export' ? '设置备份密码' : '输入备份密码', this.uiLanguage))
         .fontSize(19)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
 
-      Text(this.backupPasswordMode === 'export' ?
+      Text(translate(this.backupPasswordMode === 'export' ?
         '连接密码将被加密写入备份。备份密码不会保存在应用中，忘记后无法恢复。' :
-        '请输入创建该加密备份时设置的密码。')
+        '请输入创建该加密备份时设置的密码。', this.uiLanguage))
         .fontSize(13)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
 
-      TextInput({ placeholder: '至少 8 位备份密码', text: this.backupPasswordDraft })
+      TextInput({ placeholder: translate('至少 8 位备份密码', this.uiLanguage), text: this.backupPasswordDraft })
         .type(InputType.Password)
         .width('100%')
         .height(46)
@@ -1613,7 +1614,7 @@ export struct ConnectionPage {
         })
 
       if (this.backupPasswordMode === 'export') {
-        TextInput({ placeholder: '再次输入备份密码', text: this.backupPasswordConfirm })
+        TextInput({ placeholder: translate('再次输入备份密码', this.uiLanguage), text: this.backupPasswordConfirm })
           .type(InputType.Password)
           .width('100%')
           .height(46)
@@ -1631,14 +1632,14 @@ export struct ConnectionPage {
       }
 
       if (this.backupPasswordError.length > 0) {
-        Text(this.backupPasswordError)
+        Text(translate(this.backupPasswordError, this.uiLanguage))
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
           .width('100%')
       }
 
       Row({ space: 10 }) {
-        Button('取消')
+        Button(translate('取消', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_SECONDARY)
@@ -1648,7 +1649,7 @@ export struct ConnectionPage {
             this.closeBackupDialogs()
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button(this.backupBusy ? '处理中…' : (this.backupPasswordMode === 'export' ? '加密并导出' : '解密'))
+        Button(translate(this.backupBusy ? '处理中…' : (this.backupPasswordMode === 'export' ? '加密并导出' : '解密'), this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(Color.White)
@@ -1673,26 +1674,26 @@ export struct ConnectionPage {
   @Builder
   buildImportPreviewDialog() {
     Column({ space: 12 }) {
-      Text('确认导入连接')
+      Text(translate('确认导入连接', this.uiLanguage))
         .fontSize(19)
         .fontWeight(RustDeskTheme.FONT_WEIGHT_SEMI_BOLD)
         .fontColor(this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
 
-      Text(`备份包含 ${this.importPreviewGroupCount} 个分组、${this.importPreviewConnectionCount} 个连接`)
+      Text(translate(`备份包含 ${this.importPreviewGroupCount} 个分组、${this.importPreviewConnectionCount} 个连接`, this.uiLanguage))
         .fontSize(14)
         .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_PRIMARY)
         .width('100%')
 
-      Text(this.importPreviewIncludesPasswords ?
+      Text(translate(this.importPreviewIncludesPasswords ?
         '这是加密备份，连接密码将恢复到系统安全凭据库。' :
-        '普通备份不包含密码；新增连接需要重新填写密码。')
+        '普通备份不包含密码；新增连接需要重新填写密码。', this.uiLanguage))
         .fontSize(12)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
 
       Row({ space: 4 }) {
-        Button('合并导入')
+        Button(translate('合并导入', this.uiLanguage))
           .layoutWeight(1)
           .height(38)
           .fontSize(13)
@@ -1704,7 +1705,7 @@ export struct ConnectionPage {
             this.importReplaceExisting = false
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, 5, ButtonType.Capsule))
-        Button('覆盖现有')
+        Button(translate('覆盖现有', this.uiLanguage))
           .layoutWeight(1)
           .height(38)
           .fontSize(13)
@@ -1723,19 +1724,19 @@ export struct ConnectionPage {
       .borderRadius(12)
 
       if (this.importReplaceExisting) {
-        Text('覆盖后，当前已保存的连接、分组和连接密码将被替换。')
+        Text(translate('覆盖后，当前已保存的连接、分组和连接密码将被替换。', this.uiLanguage))
           .fontSize(12)
           .fontColor(RustDeskTheme.ERROR)
           .width('100%')
       } else {
-        Text('相同远程 ID 会更新名称、分组和连接模式，并优先保留本机已有密码。')
+        Text(translate('相同远程 ID 会更新名称、分组和连接模式，并优先保留本机已有密码。', this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
           .width('100%')
       }
 
       Row({ space: 10 }) {
-        Button('取消')
+        Button(translate('取消', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(this.isDarkMode ? '#D6DCE7' : RustDeskTheme.TEXT_SECONDARY)
@@ -1745,7 +1746,7 @@ export struct ConnectionPage {
             this.closeBackupDialogs()
           })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
-        Button(this.backupBusy ? '导入中…' : '开始导入')
+        Button(translate(this.backupBusy ? '导入中…' : '开始导入', this.uiLanguage))
           .layoutWeight(1)
           .height(40)
           .fontColor(Color.White)
@@ -1771,13 +1772,13 @@ export struct ConnectionPage {
   buildGroupPickerOption(groupId: string, groupName: string) {
     Button() {
       Row() {
-        Text(groupName)
+        Text(groupId.length === 0 ? translate('未分组', this.uiLanguage) : groupName)
           .fontSize(14)
           .fontColor(this.groupPickerCurrentGroupId() === groupId ? this.selectedControlText() : (this.isDarkMode ? Color.White : RustDeskTheme.TEXT_PRIMARY))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Blank()
-        Text(this.groupPickerCurrentGroupId() === groupId ? '✓' : '')
+        Text(translate(this.groupPickerCurrentGroupId() === groupId ? '✓' : '', this.uiLanguage))
           .fontSize(16)
           .fontColor(this.selectedControlText())
       }
@@ -1797,7 +1798,7 @@ export struct ConnectionPage {
   @Builder
   buildConnectionEditActions() {
     Row({ space: 10 }) {
-      Button(this.selectedConnectionId.length > 0 ? '保存修改' : '保存连接')
+      Button(translate(this.selectedConnectionId.length > 0 ? '保存修改' : '保存连接', this.uiLanguage))
         .enabled(!this.savingConnection && this.remoteId.trim().length > 0)
         .height(this.connectionEditButtonHeight())
         .layoutWeight(1)
@@ -1812,7 +1813,7 @@ export struct ConnectionPage {
         })
         .attributeModifier(new ButtonShapeModifier(this.roundedRectButtons, RustDeskTheme.HOME_CONTROL_RADIUS, ButtonType.Capsule))
 
-      Button('新建')
+      Button(translate('新建', this.uiLanguage))
         .height(this.connectionEditButtonHeight())
         .fontSize(14)
         .labelStyle({ maxLines: 2, minFontSize: 11, maxFontSize: 14,
@@ -1835,7 +1836,7 @@ export struct ConnectionPage {
         .width(6)
         .height(6)
         .fill(RustDeskTheme.SUCCESS)
-      Text(translate('Custom Server') + ': ' + this.customServerHint)
+      Text(translate('Custom Server', this.uiLanguage) + ': ' + this.customServerHint)
         .fontSize(12)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .margin({ left: 6 })
@@ -1847,7 +1848,7 @@ export struct ConnectionPage {
   @Builder
   buildPerformancePresetSelector() {
     Column({ space: 8 }) {
-      Text('连接模式')
+      Text(translate('连接模式', this.uiLanguage))
         .fontSize(13)
         .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
         .width('100%')
@@ -1872,7 +1873,7 @@ export struct ConnectionPage {
       .borderRadius(12)
 
       if (PerformanceSettings.isCustom(this.performancePreset)) {
-        Text(`码率比例：${PerformanceSettings.bitrate(this.performancePreset)}%`)
+        Text(translate(`码率比例：${PerformanceSettings.bitrate(this.performancePreset)}%`, this.uiLanguage))
           .fontSize(13)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
           .width('100%')
@@ -1881,7 +1882,7 @@ export struct ConnectionPage {
           .onChange((value: number) => {
             this.performancePreset = PerformanceSettings.custom(value, PerformanceSettings.fps(this.performancePreset))
           })
-        Text(`目标帧率：${PerformanceSettings.fps(this.performancePreset)} FPS`)
+        Text(translate(`目标帧率：${PerformanceSettings.fps(this.performancePreset)} FPS`, this.uiLanguage))
           .fontSize(13)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_PRIMARY_DARK : RustDeskTheme.TEXT_PRIMARY)
           .width('100%')
@@ -1890,7 +1891,7 @@ export struct ConnectionPage {
           .onChange((value: number) => {
             this.performancePreset = PerformanceSettings.custom(PerformanceSettings.bitrate(this.performancePreset), value)
           })
-        Text('高码率会增加流量、耗电和延迟风险，百分比不等于固定 Mbps。公共中继下超过 100% 将按官方规则回退至 50%，帧率最高 30 FPS；自建服务器或直连可用更高设置。保存后下次连接生效。')
+        Text(translate('高码率会增加流量、耗电和延迟风险，百分比不等于固定 Mbps。公共中继下超过 100% 将按官方规则回退至 50%，帧率最高 30 FPS；自建服务器或直连可用更高设置。保存后下次连接生效。', this.uiLanguage))
           .fontSize(12)
           .fontColor(this.isDarkMode ? RustDeskTheme.TEXT_SECONDARY_DARK : RustDeskTheme.TEXT_SECONDARY)
           .width('100%')
@@ -1913,7 +1914,7 @@ export struct ConnectionPage {
 
   @Builder
   buildPresetButton(label: string, preset: string) {
-    Button(label)
+    Button(translate(label, this.uiLanguage))
       .height(36)
       .layoutWeight(1)
       .fontSize(12)
@@ -1976,7 +1977,7 @@ export struct ConnectionPage {
     }
     if (peerId.length > 0 && !this.isConnecting) {
       this.isConnecting = true
-      this.connectionStatusText = translate('Connecting...')
+      this.connectionStatusText = translate('Connecting...', this.uiLanguage)
       this.connectionStatusColor = RustDeskTheme.WARNING
       AppStorage.set<string>('connectedPeerId', peerId)
       this.preparingAccount = true
@@ -2400,7 +2401,7 @@ export struct ConnectionPage {
 
   openEncryptedExportDialog(): void {
     if (this.savedConnections.length <= 0 || this.backupBusy) {
-      promptAction.showToast({ message: '暂无可导出的连接' })
+      promptAction.showToast({ message: translate('暂无可导出的连接', this.uiLanguage) })
       return
     }
     this.closeGroupDialogs()
@@ -2414,7 +2415,7 @@ export struct ConnectionPage {
 
   async exportPlainBackup(): Promise<void> {
     if (this.savedConnections.length <= 0 || this.backupBusy) {
-      promptAction.showToast({ message: '暂无可导出的连接' })
+      promptAction.showToast({ message: translate('暂无可导出的连接', this.uiLanguage) })
       return
     }
     this.backupBusy = true
@@ -2422,9 +2423,9 @@ export struct ConnectionPage {
       let payload: ConnectionBackupPayload = this.buildBackupPayload(false)
       let content: string = ConnectionBackupService.createPlainText(payload)
       await this.saveBackupFile(content, `StarRustDesk连接备份-${this.backupTimestamp()}.json`)
-      promptAction.showToast({ message: '连接已导出，备份中不包含密码' })
+      promptAction.showToast({ message: translate('连接已导出，备份中不包含密码', this.uiLanguage) })
     } catch (_error) {
-      promptAction.showToast({ message: '导出失败，请重新选择保存位置' })
+      promptAction.showToast({ message: translate('导出失败，请重新选择保存位置', this.uiLanguage) })
     } finally {
       this.backupBusy = false
     }
@@ -2452,7 +2453,7 @@ export struct ConnectionPage {
         await this.saveBackupFile(content, `StarRustDesk加密备份-${this.backupTimestamp()}.srdbak`)
         this.backupBusy = false
         this.closeBackupDialogs()
-        promptAction.showToast({ message: '加密备份导出成功，请妥善保管备份密码' })
+        promptAction.showToast({ message: translate('加密备份导出成功，请妥善保管备份密码', this.uiLanguage) })
       } catch (_error) {
         this.backupBusy = false
         this.backupPasswordError = '加密导出失败，请重试'
@@ -2513,7 +2514,7 @@ export struct ConnectionPage {
         this.prepareImportPreview(ConnectionBackupService.parsePlainText(raw))
       }
     } catch (_error) {
-      promptAction.showToast({ message: '无法读取备份，请确认文件格式正确' })
+      promptAction.showToast({ message: translate('无法读取备份，请确认文件格式正确', this.uiLanguage) })
     } finally {
       if (source !== undefined) {
         try {
@@ -2558,10 +2559,10 @@ export struct ConnectionPage {
       this.savedConnectionsVersion++
       this.nextPeerOnlineRefreshAt = 0
       this.refreshSavedConnectionOnlineStates(true)
-      promptAction.showToast({ message: `已导入 ${importedCount} 个连接` })
+      promptAction.showToast({ message: translate(`已导入 ${importedCount} 个连接`, this.uiLanguage) })
     } catch (_error) {
       this.backupBusy = false
-      promptAction.showToast({ message: '导入失败，请检查备份后重试' })
+      promptAction.showToast({ message: translate('导入失败，请检查备份后重试', this.uiLanguage) })
     }
   }
 
@@ -3013,7 +3014,7 @@ export struct ConnectionPage {
   async saveConnectionWithTip(): Promise<void> {
     if (this.savingConnection || this.normalizeRemoteId(this.remoteId).length === 0) return
     if (this.passwordEditMode === 'replace' && this.password.trim().length === 0) {
-      promptAction.showToast({ message: '请输入新密码，或取消更换后选择清除' })
+      promptAction.showToast({ message: translate('请输入新密码，或取消更换后选择清除', this.uiLanguage) })
       return
     }
     this.savingConnection = true
@@ -3024,7 +3025,7 @@ export struct ConnectionPage {
         this.showSavedTip()
       }
     } catch (_e) {
-      if (this.savePageActive) promptAction.showToast({ message: '保存失败，请重试' })
+      if (this.savePageActive) promptAction.showToast({ message: translate('保存失败，请重试', this.uiLanguage) })
     } finally {
       this.savingConnection = false
     }

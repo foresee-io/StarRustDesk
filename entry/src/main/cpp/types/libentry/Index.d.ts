@@ -20,6 +20,9 @@ export interface VideoFrameInfo {
   decoderMode?: number;
   delayMs?: number;
   targetBitrateKb?: number;
+  dynamicRange?: number;
+  colorOutput?: number;
+  bitDepth?: number;
 }
 
 export const sendChatMessage: (text: string) => number;
@@ -151,6 +154,7 @@ export const getAllOptions: () => string;
 export const testIfValidServer: (server: string) => string;
 export const isUsingPublicServer: () => boolean;
 export const getVideoFrame: () => VideoFrameInfo;
+export const setHdrDisplayFormats: (formats: number) => number;
 export const setSurfaceId: (surfaceId: string) => number;
 export const prepareSurfaceRebind: () => number;
 export const rebindSurface: (surfaceId: string) => number;
