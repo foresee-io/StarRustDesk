@@ -2,8 +2,8 @@ import { translate } from '../utils/I18n'
 import { ButtonShapeModifier } from '../theme/ButtonShapeModifier'
 import { RustDeskTheme } from '../theme/RustDeskTheme'
 
-export const RELEASE_NOTES_VERSION: string = '1.2.20'
-export const RELEASE_NOTES_BUILD: string = '1002020'
+export const RELEASE_NOTES_VERSION: string = '1.2.21'
+export const RELEASE_NOTES_BUILD: string = '1002021'
 export const RELEASE_NOTES_SHOWN_ID: string = `${RELEASE_NOTES_VERSION}-${RELEASE_NOTES_BUILD}`
 export const RELEASE_NOTES_SHOWN_OPTION: string = 'release-notes-shown-version'
 
@@ -48,6 +48,12 @@ export struct ReleaseNotesDialog {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.buildSection('1.2.21（1002021）· 系统旋转锁定与屏幕方向', [
+            '修复应用忽略系统旋转锁定的问题，手机和平板默认跟随系统旋转设置，不再强制自动切换横竖屏。',
+            '“控”中的屏幕方向按钮改为选择菜单，支持跟随系统、固定竖屏和固定横屏；手动选择仅对本次远控生效。',
+            '单独投屏使用独立方向策略：默认适配横向外接屏，也可手动固定方向；返回手机或平板后恢复本屏选择，不改变远端分辨率。',
+            '更新手势说明和多语言文字，补充方向选择与窗口应用的诊断日志；取消菜单或切换显示设备时不误修改另一块屏幕的方向。'
+          ])
           this.buildSection('1.2.20（1002020）· 多语言、折叠屏与 HDR 视频适配', [
             '新增简体中文、繁体中文和英语，默认跟随系统；可在设置中手动切换，保存语言偏好，不影响远控连接、按键和用户文件名。',
             '优化折叠屏内外屏及横竖屏的软键盘避让：保留远端画面当前比例，按可见区域和最后鼠标位置上移画面，光标同步移动；折叠、展开和旋转后重新计算。',

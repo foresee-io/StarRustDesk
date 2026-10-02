@@ -21,7 +21,7 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:starrustdesk_start_icon",
         "startWindowBackground": "$color:start_window_background",
-        "orientation": "auto_rotation",
+        "orientation": "auto_rotation_restricted",
         "backgroundModes": [
           "multiDeviceConnection",
           "audioPlayback",

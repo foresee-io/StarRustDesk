@@ -26,7 +26,7 @@ import { SessionRecording } from '../service/SessionRecording';
 import { OperationDiagnostic } from '../service/OperationDiagnostic';
 import { RecordingDialog } from '../widget/RecordingDialog';
 import { sortRemoteFiles } from '../utils/RemoteFileSort';
-import { RemoteDisplayPolicy } from '../service/RemoteDisplayPolicy';
+import { RemoteDisplayPolicy, RemoteOrientationMode } from '../service/RemoteDisplayPolicy';
 import { RemoteFullscreenPolicy } from '../service/RemoteFullscreenPolicy';
 import { followTouchMouseAxis } from '../utils/TouchMouseFollow';
 
@@ -158,7 +158,7 @@ struct RemotePage {
   @StorageLink('roundedRectButtons') roundedRectButtons: boolean = true
   @StorageLink('isDarkMode') isDarkMode: boolean = false;
   @StorageLink('uiFontScale') uiFontScale: number = 1;
-  @StorageLink('remoteLandscapeLocked') remoteLandscapeLocked: boolean = false;
+  @StorageLink('remoteOrientationMode') remoteOrientationMode: string = 'system';
   @StorageLink('remoteExternalDisplay') remoteExternalDisplay: boolean = false;
   @StorageLink('remoteProjectionDisplayId') @Watch('onProjectionDisplayChanged') remoteProjectionDisplayId: number = -1;
   @StorageLink('appForegroundEpoch') @Watch('onAppForegroundEpochChanged') appForegroundEpoch: number = 0;
@@ -2462,9 +2462,9 @@ struct RemotePage {
     } else if (item === 'fullscreen') {
       this.buildFullscreenButton(vertical ? 80 : 68, item)
     } else if (item === 'orientation' && this.isHandheldDevice()) {
-      this.buildToolbarButton(this.remoteLandscapeLocked ? '自动旋转' : '横屏', 88,
-        this.remoteLandscapeLocked, false, true, () => {
-          RemoteDisplayPolicy.toggleLandscape();
+      this.buildToolbarButton(this.orientationModeLabel(), 88,
+        this.remoteOrientationMode !== RemoteOrientationMode.SYSTEM, false, true, () => {
+          this.showOrientationMenu();
         }, item)
     } else if (item === 'disconnect') {
       this.buildToolbarButton('断开', vertical ? 80 : 64, false, true, true, () => {
@@ -2522,7 +2522,7 @@ struct RemotePage {
       case 'zoomIn': return '放大';
       case 'zoomOut': return '缩小';
       case 'fullscreen': return '全屏';
-      case 'orientation': return '横屏 / 自动旋转';
+      case 'orientation': return '屏幕方向';
       case 'disconnect': return '断开';
       case 'ctrl': return 'Ctrl';
       case 'alt': return 'Alt';
@@ -3625,7 +3625,7 @@ struct RemotePage {
         }
 
         this.buildGestureHelpSection('手机 / 平板单独投屏',
-          '先通过系统控制中心连接无线投屏，再打开顶部投屏胶囊，按系统提示将 StarRustDesk 单独投屏。是否提供该入口取决于设备、系统版本和接收端。\n投屏后画面仍竖向时，可在“控”中点“横屏”；点“自动旋转”恢复默认策略。横向外接屏被识别后会自动采用横屏。这里只调整本地窗口，不更改远端 Windows 分辨率。')
+          '先通过系统控制中心连接无线投屏，再打开顶部投屏胶囊，按系统提示将 StarRustDesk 单独投屏。是否提供该入口取决于设备、系统版本和接收端。\n手机本屏默认跟随系统旋转锁定；可在“控”的屏幕方向菜单选择“跟随系统”“固定竖屏”或“固定横屏”。\n单独投屏时方向独立设置：默认适配横向外接屏，也可手动固定竖屏或横屏；返回手机后恢复本屏选择。方向选择仅对本次远控生效，不更改远端分辨率。')
         this.buildGestureHelpSection('拖拽与框选',
           '鼠标模式：先将远端指针移到起点，轻点一次，第二次按住并拖动，松手结束。框选文件时请从文件列表或桌面的空白处开始；从文件上开始通常是拖动文件。\n触摸模式：在目标位置按住并移动，松手结束。')
         this.buildGestureHelpSection('组合键与本地键盘',
@@ -6528,6 +6528,40 @@ struct RemotePage {
       }
     }
     ConnectionService.sendText(text);
+  }
+
+  orientationModeLabel(): string {
+    if (this.remoteOrientationMode === RemoteOrientationMode.PORTRAIT) return '固定竖屏';
+    if (this.remoteOrientationMode === RemoteOrientationMode.LANDSCAPE) return '固定横屏';
+    return this.remoteExternalDisplay ? '自动适配' : '跟随系统';
+  }
+
+  showOrientationMenu(): void {
+    const displayId: number = this.remoteProjectionDisplayId;
+    const modes: RemoteOrientationMode[] = [RemoteOrientationMode.SYSTEM,
+      RemoteOrientationMode.PORTRAIT, RemoteOrientationMode.LANDSCAPE];
+    const selectedColor: string = this.isDarkMode ? '#A7CFFF' : '#2467BF';
+    const normalColor: string = this.isDarkMode ? '#E5E7EB' : '#182033';
+    try {
+      this.getUIContext().getPromptAction().showActionMenu({
+        title: translate(this.remoteExternalDisplay ? '投屏方向（仅本次）' : '屏幕方向（仅本次）', this.uiLanguage),
+        buttons: [
+          { text: translate(this.remoteExternalDisplay ? '自动适配' : '跟随系统', this.uiLanguage),
+            color: this.remoteOrientationMode === RemoteOrientationMode.SYSTEM ? selectedColor : normalColor },
+          { text: translate('固定竖屏', this.uiLanguage),
+            color: this.remoteOrientationMode === RemoteOrientationMode.PORTRAIT ? selectedColor : normalColor },
+          { text: translate('固定横屏', this.uiLanguage),
+            color: this.remoteOrientationMode === RemoteOrientationMode.LANDSCAPE ? selectedColor : normalColor },
+        ],
+      }).then((result) => {
+        // A projection change while the menu is open must not alter the other screen's policy.
+        if (!this.remotePageVisible || this.remoteProjectionDisplayId !== displayId ||
+          result.index < 0 || result.index >= modes.length) return;
+        RemoteDisplayPolicy.setOrientationMode(modes[result.index]);
+      }).catch(() => {}); // Dismissing the selector does not change orientation.
+    } catch (_error) {
+      RustDeskNapi.appendDiagnosticLog('projection', 'orientation_picker_unavailable');
+    }
   }
 
   toggleRemoteKeyboard(): void {
